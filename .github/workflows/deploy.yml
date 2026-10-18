@@ -1,0 +1,58 @@
+name: Deploy do site (FTP)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-ftp
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gerar assets/js/config.js a partir das Variables do repositório
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}
+          WHATSAPP_NUMBER: ${{ vars.WHATSAPP_NUMBER }}
+          ADDRESS: ${{ vars.ADDRESS }}
+          FORMSPREE_ID: ${{ vars.FORMSPREE_ID }}
+          GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          path = "assets/js/config.js"
+          src = open(path, encoding="utf-8").read()
+          defaults = json.loads(re.search(r"=\s*(\{.*?\});", src, re.S).group(1))
+          keys = ["SITE_URL", "CONTACT_EMAIL", "CONTACT_PHONE", "WHATSAPP_NUMBER",
+                  "ADDRESS", "FORMSPREE_ID", "GA_MEASUREMENT_ID"]
+          cfg = {k: (os.environ.get(k) or defaults.get(k, "")) for k in keys}
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("// Gerado automaticamente no deploy.\nwindow.SITE_CONFIG = "
+                      + json.dumps(cfg, ensure_ascii=False, indent=2) + ";\n")
+          PY
+
+      - name: Preparar pasta pública
+        run: |
+          mkdir -p _site
+          cp -r index.html assets _site/
+
+      - name: Enviar por FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
+        with:
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          local-dir: ./_site/
+          server-dir: ${{ secrets.FTP_SERVER_DIR || './public_html/' }}
