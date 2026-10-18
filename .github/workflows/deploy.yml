@@ -1,4 +1,4 @@
-name: Deploy do site (GitHub Pages)
+name: Deploy do site (FTP)
 
 on:
   push:
@@ -7,19 +7,14 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
-  group: pages
-  cancel-in-progress: true
+  group: deploy-ftp
+  cancel-in-progress: false
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -46,22 +41,18 @@ jobs:
                       + json.dumps(cfg, ensure_ascii=False, indent=2) + ";\n")
           PY
 
-      - name: Domínio personalizado (CNAME)
-        if: ${{ vars.CUSTOM_DOMAIN != '' }}
-        env:
-          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
-        run: printf '%s\n' "$CUSTOM_DOMAIN" > CNAME
-
       - name: Preparar pasta pública
         run: |
           mkdir -p _site
           cp -r index.html assets _site/
-          [ -f CNAME ] && cp CNAME _site/ || true
-          touch _site/.nojekyll
 
-      - uses: actions/configure-pages@v5
-      - uses: actions/upload-pages-artifact@v3
+      - name: Enviar por FTP
+        uses: SamKirkland/FTP-Deploy-Action@v4.3.5
         with:
-          path: _site
-      - id: deployment
-        uses: actions/deploy-pages@v4
+          server: ${{ secrets.FTP_SERVER }}
+          username: ${{ secrets.FTP_USERNAME }}
+          password: ${{ secrets.FTP_PASSWORD }}
+          port: ${{ secrets.FTP_PORT || 21 }}
+          protocol: ${{ secrets.FTP_PROTOCOL || 'ftp' }}
+          local-dir: ./_site/
+          server-dir: ${{ secrets.FTP_SERVER_DIR || './public_html/' }}
