@@ -1,0 +1,67 @@
+name: Deploy do site (GitHub Pages)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Gerar assets/js/config.js a partir das Variables do repositório
+        env:
+          SITE_URL: ${{ vars.SITE_URL }}
+          CONTACT_EMAIL: ${{ vars.CONTACT_EMAIL }}
+          CONTACT_PHONE: ${{ vars.CONTACT_PHONE }}
+          WHATSAPP_NUMBER: ${{ vars.WHATSAPP_NUMBER }}
+          ADDRESS: ${{ vars.ADDRESS }}
+          FORMSPREE_ID: ${{ vars.FORMSPREE_ID }}
+          GA_MEASUREMENT_ID: ${{ vars.GA_MEASUREMENT_ID }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re
+          path = "assets/js/config.js"
+          src = open(path, encoding="utf-8").read()
+          defaults = json.loads(re.search(r"=\s*(\{.*?\});", src, re.S).group(1))
+          keys = ["SITE_URL", "CONTACT_EMAIL", "CONTACT_PHONE", "WHATSAPP_NUMBER",
+                  "ADDRESS", "FORMSPREE_ID", "GA_MEASUREMENT_ID"]
+          cfg = {k: (os.environ.get(k) or defaults.get(k, "")) for k in keys}
+          with open(path, "w", encoding="utf-8") as f:
+              f.write("// Gerado automaticamente no deploy.\nwindow.SITE_CONFIG = "
+                      + json.dumps(cfg, ensure_ascii=False, indent=2) + ";\n")
+          PY
+
+      - name: Domínio personalizado (CNAME)
+        if: ${{ vars.CUSTOM_DOMAIN != '' }}
+        env:
+          CUSTOM_DOMAIN: ${{ vars.CUSTOM_DOMAIN }}
+        run: printf '%s\n' "$CUSTOM_DOMAIN" > CNAME
+
+      - name: Preparar pasta pública
+        run: |
+          mkdir -p _site
+          cp -r index.html assets _site/
+          [ -f CNAME ] && cp CNAME _site/ || true
+          touch _site/.nojekyll
+
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

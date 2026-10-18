@@ -1,0 +1,274 @@
+<!doctype html>
+<html lang="pt-BR" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ArVirtual | Pesquisa &amp; Desenvolvimento</title>
+  <meta name="description" content="ArVirtual: pesquisa e desenvolvimento em automação com ESP32 e IoT, otimização de processos, integrações de marketplaces com ERP TOTVS Protheus e customizações em ADVPL/TLPP.">
+  <meta name="theme-color" content="#1a5f9e">
+  <meta property="og:title" content="ArVirtual | Pesquisa & Desenvolvimento">
+  <meta property="og:description" content="Do hardware ao ERP: automação com ESP32, integrações de marketplaces com TOTVS Protheus e soluções personalizadas.">
+  <meta property="og:image" content="assets/img/logo.jpg">
+  <meta property="og:type" content="website">
+  <link rel="icon" href="assets/img/favicon.png" type="image/png">
+  <link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/css/style.css">
+  <script>
+    // Aplica o tema antes da renderização para evitar "piscar".
+    (function () {
+      var t = null;
+      try { t = localStorage.getItem("arv-theme"); } catch (e) {}
+      if (!t) t = window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+      document.documentElement.setAttribute("data-theme", t);
+    })();
+  </script>
+  <script src="assets/js/config.js"></script>
+</head>
+<body>
+  <a class="skip" href="#conteudo">Pular para o conteúdo</a>
+
+  <header class="nav" id="topo">
+    <div class="container nav__inner">
+      <a href="#topo" class="brand" aria-label="ArVirtual - início">
+        <img src="assets/img/logo-mark.png" alt="" width="54" height="32">
+        <span class="brand__text">ARVIRTUAL<small>Pesquisa &amp; Desenvolvimento</small></span>
+      </a>
+      <nav class="menu" id="menu" aria-label="Principal">
+        <a href="#solucoes">Soluções</a>
+        <a href="#integracoes">Integrações</a>
+        <a href="#iot">IoT &amp; ESP32</a>
+        <a href="#processo">Como trabalhamos</a>
+        <a href="#contato" class="btn btn--sm">Fale conosco</a>
+      </nav>
+      <div class="nav__actions">
+        <button class="theme-toggle" id="themeToggle" type="button" aria-label="Alternar tema escuro">
+          <svg class="i-moon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+          <svg class="i-sun" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4.5"/><path d="M12 1.5v3M12 19.5v3M1.5 12h3M19.5 12h3M4.6 4.6l2.1 2.1M17.3 17.3l2.1 2.1M4.6 19.4l2.1-2.1M17.3 6.7l2.1-2.1"/></svg>
+        </button>
+        <button class="burger" id="burger" type="button" aria-label="Abrir menu" aria-expanded="false" aria-controls="menu"><span></span><span></span><span></span></button>
+      </div>
+    </div>
+  </header>
+
+  <main id="conteudo">
+    <!-- HERO -->
+    <section class="hero">
+      <div class="hero__bg" aria-hidden="true"></div>
+      <div class="container hero__grid">
+        <div class="hero__copy reveal">
+          <span class="eyebrow">Pesquisa &amp; Desenvolvimento</span>
+          <h1>Do <span class="hl">chip</span> ao <span class="hl">ERP</span>: tecnologia sob medida para o seu negócio.</h1>
+          <p class="lead">Desenvolvemos automações com <strong>ESP32</strong> e IoT, otimizamos processos e integramos <strong>marketplaces</strong> ao <strong>TOTVS Protheus</strong> com customizações em <strong>ADVPL/TLPP</strong>. Uma única parceira cuidando do sensor no chão de fábrica até o pedido faturado no ERP.</p>
+          <div class="hero__cta">
+            <a href="#contato" class="btn">Solicitar diagnóstico</a>
+            <a href="#solucoes" class="btn btn--ghost">Conhecer soluções</a>
+          </div>
+          <ul class="hero__stats">
+            <li><strong>Hardware</strong><span>ESP32 · sensores · IoT</span></li>
+            <li><strong>Software</strong><span>APIs · web · automação</span></li>
+            <li><strong>ERP</strong><span>Protheus · ADVPL · TLPP</span></li>
+          </ul>
+        </div>
+        <div class="hero__visual reveal" aria-hidden="true">
+          <div class="orbit">
+            <img src="assets/img/logo-mark.png" alt="" class="orbit__logo">
+            <span class="node n1">ESP32</span>
+            <span class="node n2">Protheus</span>
+            <span class="node n3">Marketplaces</span>
+            <span class="node n4">APIs REST</span>
+            <span class="node n5">MQTT</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SOLUÇÕES -->
+    <section class="section" id="solucoes">
+      <div class="container">
+        <header class="section__head reveal">
+          <span class="eyebrow">O que fazemos</span>
+          <h2>Soluções completas, do protótipo à produção</h2>
+          <p>Unimos pesquisa aplicada e engenharia de software para resolver problemas reais de operação, vendas e gestão.</p>
+        </header>
+        <div class="cards">
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><rect x="6" y="6" width="12" height="12" rx="2"/><path d="M9 2v4M15 2v4M9 18v4M15 18v4M2 9h4M2 15h4M18 9h4M18 15h4"/></svg></div>
+            <h3>Automação com ESP32 e IoT</h3>
+            <p>Projeto de hardware e firmware para monitoramento e controle: sensores, relés, telemetria em tempo real e dashboards na nuvem.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><path d="M4 7h10M4 12h16M4 17h7"/><circle cx="18" cy="7" r="2"/><circle cx="15" cy="17" r="2"/></svg></div>
+            <h3>Integração de marketplaces</h3>
+            <p>Pedidos, estoque, preços, notas fiscais e rastreio sincronizados automaticamente entre Mercado Livre, Shopee, Amazon, Magalu e o seu ERP.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><path d="M8 6 2 12l6 6M16 6l6 6-6 6M14 4l-4 16"/></svg></div>
+            <h3>TOTVS Protheus · ADVPL/TLPP</h3>
+            <p>Customizações, pontos de entrada, rotinas, relatórios, Web Services REST e integrações seguras com o seu ambiente Protheus.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg></div>
+            <h3>Otimização de processos</h3>
+            <p>Mapeamos rotinas manuais e repetitivas e as transformamos em fluxos automáticos, com menos erros e mais produtividade.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="14" rx="2"/><path d="M8 21h8M12 18v3M7 9l3 3-3 3M12 15h5"/></svg></div>
+            <h3>Soluções personalizadas</h3>
+            <p>Sistemas web, APIs, bots e ferramentas internas desenvolvidos exatamente para a realidade da sua empresa.</p>
+          </article>
+          <article class="card reveal">
+            <div class="card__icon"><svg viewBox="0 0 24 24"><path d="M9 18h6M10 22h4M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></div>
+            <h3>Consultoria e P&amp;D</h3>
+            <p>Estudo de viabilidade, provas de conceito e prototipação rápida para validar ideias antes do investimento completo.</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- INTEGRAÇÕES -->
+    <section class="section section--alt" id="integracoes">
+      <div class="container split">
+        <div class="reveal">
+          <span class="eyebrow">Marketplaces + ERP</span>
+          <h2>Seu Protheus vendendo em todos os canais, sem digitação manual</h2>
+          <p>Construímos a ponte entre os marketplaces e o TOTVS Protheus usando APIs oficiais e rotinas em ADVPL/TLPP. Cada pedido entra no ERP pronto para faturar, e o estoque volta atualizado para todos os canais.</p>
+          <ul class="checks">
+            <li>Importação automática de pedidos e clientes</li>
+            <li>Sincronização de estoque e preços em tempo quase real</li>
+            <li>Emissão de NF-e e envio da nota ao marketplace</li>
+            <li>Atualização de status, etiquetas e rastreio</li>
+            <li>Logs, reprocessamento e alertas de falhas</li>
+          </ul>
+        </div>
+        <div class="flow reveal" aria-label="Fluxo de integração">
+          <div class="flow__col">
+            <span class="chip">Mercado Livre</span>
+            <span class="chip">Shopee</span>
+            <span class="chip">Amazon</span>
+            <span class="chip">Magalu</span>
+          </div>
+          <div class="flow__hub">
+            <img src="assets/img/logo-mark.png" alt="">
+            <span>Middleware<br>ArVirtual</span>
+          </div>
+          <div class="flow__col">
+            <span class="chip chip--gold">TOTVS Protheus</span>
+            <span class="chip">ADVPL / TLPP</span>
+            <span class="chip">REST / JSON</span>
+            <span class="chip">NF-e</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- IOT -->
+    <section class="section" id="iot">
+      <div class="container split split--rev">
+        <div class="reveal">
+          <span class="eyebrow">Hardware &amp; IoT</span>
+          <h2>Automação inteligente com ESP32</h2>
+          <p>Desenvolvemos placas e firmwares com ESP32 para coletar dados e agir no mundo físico. Os dados podem alimentar painéis em tempo real e até o seu ERP.</p>
+          <ul class="checks">
+            <li>Monitoramento de temperatura, energia, nível e presença</li>
+            <li>Acionamentos remotos via Wi‑Fi, Bluetooth e MQTT</li>
+            <li>Dashboards web e alertas por e-mail ou WhatsApp</li>
+            <li>Atualização de firmware remota (OTA)</li>
+            <li>Integração dos dados com sistemas de gestão</li>
+          </ul>
+        </div>
+        <div class="board reveal" aria-hidden="true">
+          <div class="board__chip">ESP32</div>
+          <div class="board__pins"></div>
+          <div class="board__row"><span>Temp.</span><b>24,6 °C</b></div>
+          <div class="board__row"><span>Umidade</span><b>58 %</b></div>
+          <div class="board__row"><span>Status</span><b class="ok">online</b></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- PROCESSO -->
+    <section class="section section--alt" id="processo">
+      <div class="container">
+        <header class="section__head reveal">
+          <span class="eyebrow">Como trabalhamos</span>
+          <h2>Um método claro, do diagnóstico ao suporte</h2>
+        </header>
+        <ol class="steps">
+          <li class="reveal"><span>01</span><h3>Diagnóstico</h3><p>Entendemos o processo, as dores e os sistemas envolvidos.</p></li>
+          <li class="reveal"><span>02</span><h3>Pesquisa e proposta</h3><p>Avaliamos tecnologias e apresentamos escopo, prazo e investimento.</p></li>
+          <li class="reveal"><span>03</span><h3>Desenvolvimento</h3><p>Entregas incrementais, com testes e validação junto à sua equipe.</p></li>
+          <li class="reveal"><span>04</span><h3>Implantação e suporte</h3><p>Colocamos em produção, treinamos e acompanhamos a evolução.</p></li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- TECNOLOGIAS -->
+    <section class="section section--tight">
+      <div class="container">
+        <p class="tech__title">Tecnologias com que trabalhamos</p>
+        <ul class="tech">
+          <li>ESP32</li><li>Arduino</li><li>MQTT</li><li>C / C++</li><li>TOTVS Protheus</li><li>ADVPL</li><li>TLPP</li><li>REST API</li><li>JSON</li><li>SQL Server</li><li>Python</li><li>JavaScript</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- CONTATO -->
+    <section class="section section--contact" id="contato">
+      <div class="container split">
+        <div class="reveal">
+          <span class="eyebrow">Contato</span>
+          <h2>Vamos conversar sobre o seu projeto?</h2>
+          <p>Conte o desafio da sua empresa. Respondemos rapidamente com um diagnóstico inicial, sem compromisso.</p>
+          <div class="person">
+            <strong>Kleber Metzger de Farias</strong>
+            <span>Consultor de Negócios · Desenvolvedor</span>
+          </div>
+          <ul class="contact">
+            <li><svg viewBox="0 0 24 24"><path d="M12 22s7-6.2 7-12a7 7 0 0 0-14 0c0 5.8 7 12 7 12z"/><circle cx="12" cy="10" r="2.5"/></svg><span data-cfg="ADDRESS">Rua Santos Dumont, 79 - Bairro Vila Ercília, São José do Rio Preto - SP</span></li>
+            <li><svg viewBox="0 0 24 24"><path d="M5 3h4l2 5-2.5 1.5a11 11 0 0 0 6 6L16 13l5 2v4a2 2 0 0 1-2 2A16 16 0 0 1 3 5a2 2 0 0 1 2-2z"/></svg><a data-cfg="CONTACT_PHONE" data-href="tel" href="tel:+5517981368201">(17) 98136-8201</a></li>
+            <li><svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg><a data-cfg="CONTACT_EMAIL" data-href="mailto" href="mailto:kleber@arvirtual.com.br">kleber@arvirtual.com.br</a></li>
+          </ul>
+          <a class="btn btn--whats" id="whatsBtn" href="https://wa.me/5517981368201" target="_blank" rel="noopener">Chamar no WhatsApp</a>
+        </div>
+        <form class="form reveal" id="contactForm" novalidate>
+          <label>Nome<input name="nome" required autocomplete="name"></label>
+          <label>E-mail<input name="email" type="email" required autocomplete="email"></label>
+          <label>Empresa<input name="empresa" autocomplete="organization"></label>
+          <label>Interesse
+            <select name="interesse">
+              <option>Integração marketplace + Protheus</option>
+              <option>Customização ADVPL/TLPP</option>
+              <option>Automação com ESP32 / IoT</option>
+              <option>Otimização de processos</option>
+              <option>Outro projeto</option>
+            </select>
+          </label>
+          <label class="full">Mensagem<textarea name="mensagem" rows="4" required></textarea></label>
+          <button class="btn full" type="submit">Enviar mensagem</button>
+          <p class="form__status full" id="formStatus" role="status"></p>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <footer class="footer">
+    <div class="container footer__inner">
+      <div class="brand brand--footer">
+        <img src="assets/img/logo-mark.png" alt="" width="54" height="32">
+        <span class="brand__text">ARVIRTUAL<small>Pesquisa &amp; Desenvolvimento</small></span>
+      </div>
+      <p>Soluções personalizadas · Otimização de processos · Integrações e customizações</p>
+      <p class="footer__copy">© <span id="year"></span> ArVirtual. Todos os direitos reservados.</p>
+    </div>
+  </footer>
+
+  <a class="whats-float" id="whatsFloat" href="https://wa.me/5517981368201" target="_blank" rel="noopener" aria-label="WhatsApp">
+    <svg viewBox="0 0 24 24"><path d="M12 2a10 10 0 0 0-8.6 15.1L2 22l5-1.3A10 10 0 1 0 12 2zm5.3 14.1c-.2.6-1.3 1.2-1.8 1.2-.5.1-1 .2-3.3-.7-2.8-1.1-4.5-3.9-4.7-4.1-.1-.2-1.1-1.5-1.1-2.8s.7-2 1-2.3c.2-.3.5-.3.7-.3h.5c.2 0 .4 0 .6.5l.8 2c.1.2.1.3 0 .5l-.4.6-.3.4c-.1.1-.3.3-.1.6.2.3.8 1.3 1.7 2.1 1.2 1 2.1 1.3 2.4 1.5.3.1.5.1.6-.1l.9-1c.2-.3.4-.2.7-.1l1.9.9c.3.1.5.2.5.3.1.2.1.6-.1 1.3z"/></svg>
+  </a>
+
+  <script src="assets/js/main.js"></script>
+</body>
+</html>
