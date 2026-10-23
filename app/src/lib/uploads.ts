@@ -17,3 +17,17 @@ export async function salvarImagem(file: File, origin: string): Promise<string> 
   await writeFile(`${UPLOAD_DIR}/${nome}`, Buffer.from(await file.arrayBuffer()));
   return `${process.env.APP_URL ?? origin}/uploads/${nome}`;
 }
+
+/** Vídeos de produto: MP4 até 30 MB (limite da Shopee; ela também pede de 10 a 60 segundos). */
+export const MAX_VIDEO = 30 * 1024 * 1024;
+
+export async function salvarVideo(file: File, origin: string): Promise<string> {
+  if (file.type !== "video/mp4" && !file.name.toLowerCase().endsWith(".mp4")) {
+    throw new Error(`${file.name}: envie o vídeo em MP4 (formato aceito pela Shopee).`);
+  }
+  if (file.size > MAX_VIDEO) throw new Error(`${file.name} passa de 30 MB (limite da Shopee).`);
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  const nome = `video-${Date.now().toString(36)}-${randomBytes(6).toString("hex")}.mp4`;
+  await writeFile(`${UPLOAD_DIR}/${nome}`, Buffer.from(await file.arrayBuffer()));
+  return `${process.env.APP_URL ?? origin}/uploads/${nome}`;
+}

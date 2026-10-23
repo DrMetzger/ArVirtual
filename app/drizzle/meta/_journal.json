@@ -36,6 +36,13 @@
       "when": 1792778637244,
       "tag": "0004_logo_danfe",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1792778771916,
+      "tag": "0005_videos_produto",
+      "breakpoints": true
     }
   ]
 }

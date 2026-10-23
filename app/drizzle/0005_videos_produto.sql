@@ -1,0 +1,1 @@
+ALTER TABLE "produtos" ADD COLUMN "videos" text[] DEFAULT '{}' NOT NULL;

@@ -9,6 +9,7 @@ import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
 import { formatBRL, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { NcmField } from "./ncm-field";
+import { VideosField } from "./videos-field";
 
 const ORIGENS = [
   "0 - Nacional",
@@ -126,6 +127,7 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
             </div>
           </div>
         </Card>
+        <VideosField iniciais={produto?.videos ?? []} />
       </div>
 
       <div className="grid content-start gap-6">

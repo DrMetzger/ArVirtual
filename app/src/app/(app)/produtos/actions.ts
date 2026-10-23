@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
-import { salvarImagem } from "@/lib/uploads";
+import { salvarImagem, salvarVideo } from "@/lib/uploads";
 import { onlyDigits, parseDecimal } from "@/lib/utils";
 
 export type FormState = { erro?: string; ok?: string } | null;
@@ -62,24 +62,29 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   });
   if (dup) return { erro: `SKU já usado por "${dup.nome}".` };
 
-  // Imagens: as já existentes (na ordem do formulário) + novos envios.
+  // Imagens e vídeos: os já existentes (na ordem do formulário) + novos envios.
   const imagens = form.getAll("imagensExistentes").map(String);
+  const videos = form.getAll("videosExistentes").map(String);
   try {
     const o = await origin();
     for (const f of form.getAll("novasImagens")) {
       if (f instanceof File && f.size > 0) imagens.push(await salvarImagem(f, o));
     }
+    for (const f of form.getAll("novosVideos")) {
+      if (f instanceof File && f.size > 0) videos.push(await salvarVideo(f, o));
+    }
   } catch (e) {
     return { erro: (e as Error).message };
   }
+  if (videos.length > 3) return { erro: "No máximo 3 vídeos por produto." };
 
   let produtoId = id;
   // NCM novo entra no cadastro e a IA completa a descrição e o IPI (em segundo plano, como no ERP Vanguard).
   void garantirNcm(valores.ncm);
   if (id) {
-    await db.update(produtos).set({ ...valores, imagens }).where(eq(produtos.id, id));
+    await db.update(produtos).set({ ...valores, imagens, videos }).where(eq(produtos.id, id));
   } else {
-    const [novo] = await db.insert(produtos).values({ ...valores, imagens }).returning({ id: produtos.id });
+    const [novo] = await db.insert(produtos).values({ ...valores, imagens, videos }).returning({ id: produtos.id });
     produtoId = novo!.id;
   }
   revalidatePath("/produtos");
@@ -146,7 +151,12 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
         status: "publicado",
         preco: dados.preco,
       });
-      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: true, mensagem: `Publicado (${r.idExterno})`, link: r.link });
+      resultados.push({
+        conta: `${a.nome} · ${conta.nome}`,
+        ok: true,
+        mensagem: `Publicado (${r.idExterno})${r.aviso ? `. ${r.aviso}` : ""}`,
+        link: r.link,
+      });
     } catch (e) {
       const msg = (e as Error).message;
       await db.insert(anuncios).values({

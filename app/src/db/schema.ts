@@ -191,6 +191,8 @@ export const produtos = pgTable(
     filamentoG: integer("filamento_g").notNull().default(0),
     tempoImpressaoMin: integer("tempo_impressao_min").notNull().default(0),
     imagens: text("imagens").array().notNull().default([]),
+    /** Vídeos MP4 (URLs públicas na pasta de uploads); a Shopee recebe o primeiro. */
+    videos: text("videos").array().notNull().default([]),
     ativo: boolean("ativo").notNull().default(true),
     ...timestamps,
   },
