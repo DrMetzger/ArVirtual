@@ -12,6 +12,7 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import { relations } from "drizzle-orm";
+import type { EntregaPedido, ItemPedido } from "@/lib/marketplaces/types";
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: "number" });
 const rate = (name: string) => numeric(name, { precision: 7, scale: 4, mode: "number" });
@@ -350,8 +351,13 @@ export const pedidosMarketplace = pgTable(
     idExterno: text("id_externo").notNull(),
     status: text("status").notNull(),
     total: money("total").notNull().default(0),
+    frete: money("frete").notNull().default(0),
     comprador: text("comprador").notNull().default(""),
     data: timestamp("data", { withTimezone: true }).notNull(),
+    itens: jsonb("itens").$type<ItemPedido[]>().notNull().default([]),
+    entrega: jsonb("entrega").$type<EntregaPedido | null>(),
+    /** Nota fiscal gerada a partir do pedido. */
+    notaId: uuid("nota_id").references(() => notas.id, { onDelete: "set null" }),
     dados: jsonb("dados"),
     ...timestamps,
   },
@@ -386,5 +392,6 @@ export type RegraFiscal = typeof regrasFiscais.$inferSelect;
 export type Empresa = typeof empresa.$inferSelect;
 export type ContaMarketplace = typeof contasMarketplace.$inferSelect;
 export type Nota = typeof notas.$inferSelect;
+export type PedidoMarketplace = typeof pedidosMarketplace.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
 export type Ncm = typeof ncms.$inferSelect;

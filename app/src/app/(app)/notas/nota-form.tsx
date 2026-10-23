@@ -14,20 +14,34 @@ type ClienteOpt = {
 };
 type ProdutoOpt = { id: string; sku: string; nome: string; preco: number; estoque: number };
 type Linha = { key: number; produtoId: string; quantidade: string; valorUnitario: string };
+type Iniciais = {
+  pedidoId: number;
+  clienteId: string;
+  enderecoId: string;
+  itens: { produtoId: string; quantidade: number; valorUnitario: number }[];
+};
+
+const decimal = (n: number) => String(n).replace(".", ",");
 
 export function NotaForm({
   clientes,
   produtos,
   formas,
+  iniciais,
 }: {
   clientes: ClienteOpt[];
   produtos: ProdutoOpt[];
   formas: readonly (readonly [string, string])[];
+  iniciais?: Iniciais;
 }) {
-  const [clienteId, setClienteId] = useState("");
+  const [clienteId, setClienteId] = useState(iniciais?.clienteId ?? "");
   const [formaPagamento, setFormaPagamento] = useState("99");
-  const [enderecoId, setEnderecoId] = useState("");
-  const [linhas, setLinhas] = useState<Linha[]>([{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }]);
+  const [enderecoId, setEnderecoId] = useState(iniciais?.enderecoId ?? "");
+  const [linhas, setLinhas] = useState<Linha[]>(() =>
+    iniciais?.itens.length
+      ? iniciais.itens.map((i, n) => ({ key: n + 1, produtoId: i.produtoId, quantidade: decimal(i.quantidade), valorUnitario: decimal(i.valorUnitario) }))
+      : [{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }],
+  );
   const [preview, setPreview] = useState<Preview | null>(null);
   const [erro, setErro] = useState("");
   const [calculando, startCalc] = useTransition();
@@ -227,7 +241,7 @@ export function NotaForm({
           disabled={salvando || !preview?.itens?.length || Boolean(preview.erros?.length)}
           onClick={() =>
             startSave(async () => {
-              const r = await criarNota({ ...entrada, formaPagamento });
+              const r = await criarNota({ ...entrada, formaPagamento, pedidoId: iniciais?.pedidoId });
               if (r?.erro) setErro(r.erro);
             })
           }

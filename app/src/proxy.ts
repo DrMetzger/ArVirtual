@@ -21,6 +21,7 @@ export async function proxy(req: NextRequest) {
 }
 
 export const config = {
-  // Fora: arquivos estáticos, imagens de produto (públicas p/ marketplaces) e a checagem de saúde.
-  matcher: ["/((?!_next/|api/health|uploads/|icon.png|apple-icon.png|logo).*)"],
+  // Fora: arquivos estáticos, imagens de produto (públicas p/ marketplaces), a checagem de saúde e as
+  // rotas internas (chamadas pelo próprio servidor, com chave própria).
+  matcher: ["/((?!_next/|api/health|api/interno/|uploads/|icon.png|apple-icon.png|logo).*)"],
 };

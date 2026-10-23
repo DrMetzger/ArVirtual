@@ -265,24 +265,58 @@ export const shopee: MarketplaceAdapter = {
       } while (cursor);
     }
 
-    type Detalhe = { order_sn: string; order_status: string; total_amount: number; buyer_username: string; create_time: number };
+    type Detalhe = {
+      order_sn: string;
+      order_status: string;
+      total_amount: number;
+      buyer_username: string;
+      create_time: number;
+      actual_shipping_fee?: number;
+      estimated_shipping_fee?: number;
+      buyer_cpf_id?: string;
+      item_list?: { item_id: number; item_name: string; item_sku?: string; model_sku?: string; model_quantity_purchased: number; model_discounted_price: number }[];
+      recipient_address?: { name?: string; phone?: string; full_address?: string; city?: string; state?: string; zipcode?: string };
+    };
     const out = [];
     for (let i = 0; i < sns.length; i += 50) {
       const r = await shopCall<ShopeeBase & { response: { order_list: Detalhe[] } }>(conta, "/api/v2/order/get_order_detail", {
         query: {
           order_sn_list: sns.slice(i, i + 50).join(","),
-          response_optional_fields: "total_amount,buyer_username,order_status",
+          response_optional_fields:
+            "total_amount,buyer_username,order_status,item_list,recipient_address,actual_shipping_fee,estimated_shipping_fee,buyer_cpf_id",
         },
       });
       out.push(
-        ...r.response.order_list.map((o) => ({
-          idExterno: o.order_sn,
-          status: o.order_status,
-          total: o.total_amount,
-          comprador: o.buyer_username ?? "",
-          data: new Date(o.create_time * 1000),
-          dados: o,
-        })),
+        ...r.response.order_list.map((o) => {
+          const end = o.recipient_address;
+          return {
+            idExterno: o.order_sn,
+            status: o.order_status,
+            total: o.total_amount,
+            frete: o.actual_shipping_fee ?? o.estimated_shipping_fee ?? 0,
+            comprador: end?.name || o.buyer_username || "",
+            data: new Date(o.create_time * 1000),
+            itens: (o.item_list ?? []).map((it) => ({
+              idAnuncio: String(it.item_id),
+              sku: it.model_sku || it.item_sku || "",
+              titulo: it.item_name,
+              quantidade: it.model_quantity_purchased,
+              valorUnitario: it.model_discounted_price,
+            })),
+            entrega: end
+              ? {
+                  nome: end.name ?? "",
+                  documento: o.buyer_cpf_id,
+                  telefone: end.phone,
+                  endereco: end.full_address ?? "",
+                  cidade: end.city ?? "",
+                  uf: end.state ?? "",
+                  cep: end.zipcode ?? "",
+                }
+              : null,
+            dados: o,
+          };
+        }),
       );
     }
     return out;

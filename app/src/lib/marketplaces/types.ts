@@ -24,12 +24,39 @@ export type DadosAnuncio = {
 
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
 
+export type ItemPedido = {
+  /** ID do anúncio/item no marketplace (liga ao cadastro pelo histórico de anúncios). */
+  idAnuncio: string;
+  sku: string;
+  titulo: string;
+  quantidade: number;
+  valorUnitario: number;
+};
+
+export type EntregaPedido = {
+  nome: string;
+  documento?: string;
+  telefone?: string;
+  /** Endereço como o marketplace mostra; as partes abaixo vêm quando a API as separa. */
+  endereco: string;
+  logradouro?: string;
+  numero?: string;
+  complemento?: string;
+  bairro?: string;
+  cidade: string;
+  uf: string;
+  cep: string;
+};
+
 export type PedidoExterno = {
   idExterno: string;
   status: string;
   total: number;
+  frete: number;
   comprador: string;
   data: Date;
+  itens: ItemPedido[];
+  entrega: EntregaPedido | null;
   dados: unknown;
 };
 

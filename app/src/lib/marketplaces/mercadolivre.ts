@@ -115,29 +115,85 @@ export const mercadoLivre: MarketplaceAdapter = {
   },
 
   async pedidos(conta, desde) {
-    type Resp = {
-      results: {
-        id: number;
-        status: string;
-        total_amount: number;
-        date_created: string;
-        buyer?: { nickname?: string };
-      }[];
+    type Pedido = {
+      id: number;
+      status: string;
+      total_amount: number;
+      paid_amount?: number;
+      date_created: string;
+      buyer?: { nickname?: string; first_name?: string; last_name?: string };
+      shipping?: { id?: number };
+      order_items?: { item: { id: string; title: string; seller_sku?: string | null }; quantity: number; unit_price: number }[];
     };
-    const q = new URLSearchParams({
-      seller: conta.idExterno,
-      "order.date_created.from": desde.toISOString().replace("Z", "-00:00"),
-      sort: "date_desc",
-      limit: "50",
-    });
-    const r = await api<Resp>(`/orders/search?${q}`, conta.accessToken);
-    return r.results.map((o) => ({
-      idExterno: String(o.id),
-      status: o.status,
-      total: o.total_amount,
-      comprador: o.buyer?.nickname ?? "",
-      data: new Date(o.date_created),
-      dados: o,
-    }));
+    type Envio = {
+      receiver_address?: {
+        receiver_name?: string;
+        receiver_phone?: string;
+        address_line?: string;
+        street_name?: string;
+        street_number?: string;
+        comment?: string;
+        neighborhood?: { name?: string };
+        zip_code?: string;
+        city?: { name?: string };
+        state?: { id?: string };
+      };
+      lead_time?: { cost?: number };
+    };
+    const out = [];
+    for (let offset = 0; offset < 1000; offset += 50) {
+      const q = new URLSearchParams({
+        seller: conta.idExterno,
+        "order.date_created.from": desde.toISOString().replace("Z", "-00:00"),
+        sort: "date_desc",
+        limit: "50",
+        offset: String(offset),
+      });
+      const r = await api<{ results: Pedido[]; paging?: { total?: number } }>(`/orders/search?${q}`, conta.accessToken);
+      for (const o of r.results) {
+        // Endereço e frete ficam no envio; sem ele o pedido entra do mesmo jeito.
+        const envio = o.shipping?.id ? await api<Envio>(`/shipments/${o.shipping.id}`, conta.accessToken).catch(() => null) : null;
+        const end = envio?.receiver_address;
+        const fiscal = await api<{ buyer?: { billing_info?: { identification?: { number?: string } } } }>(
+          `/orders/${o.id}/billing_info`,
+          conta.accessToken,
+          { headers: { "x-version": "2" } },
+        ).catch(() => null);
+        const documento = fiscal?.buyer?.billing_info?.identification?.number;
+        out.push({
+          idExterno: String(o.id),
+          status: o.status,
+          total: o.paid_amount ?? o.total_amount,
+          frete: envio?.lead_time?.cost ?? 0,
+          comprador: [o.buyer?.first_name, o.buyer?.last_name].filter(Boolean).join(" ") || o.buyer?.nickname || "",
+          data: new Date(o.date_created),
+          itens: (o.order_items ?? []).map((i) => ({
+            idAnuncio: i.item.id,
+            sku: i.item.seller_sku ?? "",
+            titulo: i.item.title,
+            quantidade: i.quantity,
+            valorUnitario: i.unit_price,
+          })),
+          entrega: end
+            ? {
+                nome: end.receiver_name ?? "",
+                documento,
+                telefone: end.receiver_phone,
+                endereco: end.address_line ?? "",
+                logradouro: end.street_name,
+                numero: end.street_number,
+                complemento: end.comment,
+                bairro: end.neighborhood?.name,
+                cidade: end.city?.name ?? "",
+                uf: (end.state?.id ?? "").replace(/^BR-/, ""),
+                cep: end.zip_code ?? "",
+              }
+            : null,
+          dados: { pedido: o, envio, fiscal },
+        });
+      }
+      if (r.results.length < 50) break;
+    }
+    return out;
   },
 };
