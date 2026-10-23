@@ -68,8 +68,13 @@ jobs:
           fi
           docker compose version >/dev/null
           if command -v ufw >/dev/null && ufw status | grep -q active; then ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 443/udp; fi
-          # O Caddy precisa das portas 80/443; avisa se outro serviço (nginx/apache) estiver nelas.
-          ocupadas=$(ss -ltnp 2>/dev/null | grep -E ':(80|443) ' | grep -v docker-proxy || true)
+          echo "== Containers na VM =="
+          docker ps --format '{{.Names}} | {{.Image}} | {{.Ports}}'
+          echo "== Portas 80/443 =="
+          ss -ltnp 2>/dev/null | grep -E ':(80|443) ' || true
+          # O Caddy precisa das portas 80/443; avisa se outro serviço (fora deste app) estiver nelas.
+          ocupadas=$( (ss -ltnp 2>/dev/null | grep -E ':(80|443) ' | grep -v docker-proxy; \
+            docker ps --format '{{.Names}} {{.Ports}}' | grep -E '0\.0\.0\.0:(80|443)->' | grep -v '^arvirtual-app-') || true)
           if [ -n "$ocupadas" ]; then echo "::error::As portas 80/443 da VM estão em uso por outro serviço:"; echo "$ocupadas"; exit 1; fi
           echo "VM pronta: $(docker --version)"
           REMOTO
