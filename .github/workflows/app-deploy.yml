@@ -1,0 +1,133 @@
+name: Deploy do aplicativo (VM)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - ".github/workflows/app-deploy.yml"
+  pull_request:
+    paths:
+      - "app/**"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-app
+  cancel-in-progress: false
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: app/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+
+  deploy:
+    needs: verificar
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    environment:
+      name: producao
+      url: https://${{ vars.APP_DOMAIN || 'app.arvirtual.com.br' }}
+    env:
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER }}
+      VM_PORT: ${{ secrets.VM_PORT || '22' }}
+      VM_DIR: ${{ vars.VM_APP_DIR || '/opt/arvirtual-app' }}
+      APP_DOMAIN: ${{ vars.APP_DOMAIN || 'app.arvirtual.com.br' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Conferir secrets obrigatórios
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+        run: |
+          faltando=""
+          for v in VM_HOST VM_USER VM_SSH_KEY POSTGRES_PASSWORD AUTH_SECRET ENCRYPTION_KEY ADMIN_EMAIL ADMIN_PASSWORD; do
+            [ -n "${!v}" ] || faltando="$faltando $v"
+          done
+          if [ -n "$faltando" ]; then echo "::error::Secrets faltando:$faltando"; exit 1; fi
+          [ ${#AUTH_SECRET} -ge 32 ] || { echo "::error::AUTH_SECRET precisa ter 32+ caracteres"; exit 1; }
+          [ ${#ENCRYPTION_KEY} -ge 32 ] || { echo "::error::ENCRYPTION_KEY precisa ter 32+ caracteres"; exit 1; }
+
+      - name: Gerar app/.env a partir dos secrets
+        env:
+          POSTGRES_PASSWORD: ${{ secrets.POSTGRES_PASSWORD }}
+          AUTH_SECRET: ${{ secrets.AUTH_SECRET }}
+          ENCRYPTION_KEY: ${{ secrets.ENCRYPTION_KEY }}
+          ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
+          ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
+          ADMIN_NAME: ${{ vars.ADMIN_NAME || 'Administrador' }}
+        run: |
+          python3 - <<'PY'
+          import os
+          from urllib.parse import quote
+          env = os.environ
+          valores = {
+              "POSTGRES_PASSWORD": env["POSTGRES_PASSWORD"],
+              "DATABASE_URL": f"postgres://arvirtual:{quote(env['POSTGRES_PASSWORD'], safe='')}@db:5432/arvirtual",
+              "AUTH_SECRET": env["AUTH_SECRET"],
+              "ENCRYPTION_KEY": env["ENCRYPTION_KEY"],
+              "APP_DOMAIN": env["APP_DOMAIN"],
+              "APP_URL": f"https://{env['APP_DOMAIN']}",
+              "ADMIN_NAME": env["ADMIN_NAME"],
+              "ADMIN_EMAIL": env["ADMIN_EMAIL"],
+              "ADMIN_PASSWORD": env["ADMIN_PASSWORD"],
+          }
+          with open("app/.env", "w") as f:
+              for k, v in valores.items():
+                  if "'" in v or "\n" in v:
+                      raise SystemExit(f"{k} não pode conter aspas simples nem quebra de linha")
+                  # Aspas simples: o Docker Compose não interpreta "$" dentro delas.
+                  f.write(f"{k}='{v}'\n")
+          PY
+          chmod 600 app/.env
+
+      - name: Configurar SSH
+        env:
+          VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+        run: |
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$VM_SSH_KEY" > ~/.ssh/id_deploy
+          chmod 600 ~/.ssh/id_deploy
+          ssh-keyscan -p "$VM_PORT" -H "$VM_HOST" >> ~/.ssh/known_hosts 2>/dev/null
+
+      - name: Enviar arquivos para a VM
+        run: |
+          rsync -az --delete \
+            --exclude node_modules --exclude .next --exclude uploads --exclude .env.local \
+            -e "ssh -i ~/.ssh/id_deploy -p $VM_PORT" \
+            app/ "$VM_USER@$VM_HOST:$VM_DIR/"
+
+      - name: Subir containers
+        run: |
+          ssh -i ~/.ssh/id_deploy -p "$VM_PORT" "$VM_USER@$VM_HOST" \
+            "cd '$VM_DIR' && docker compose up -d --build --remove-orphans && docker image prune -f"
+
+      - name: Checar saúde
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS "https://$APP_DOMAIN/api/health"; then echo; echo "No ar: https://$APP_DOMAIN"; exit 0; fi
+            sleep 10
+          done
+          echo "::warning::O app não respondeu em https://$APP_DOMAIN. Confira o DNS (registro app) e as portas 80/443 da VM."
+          ssh -i ~/.ssh/id_deploy -p "$VM_PORT" "$VM_USER@$VM_HOST" "cd '$VM_DIR' && docker compose ps && docker compose logs --tail 80 app caddy"
+          exit 1

@@ -3,6 +3,10 @@ name: Deploy do site (FTP)
 on:
   push:
     branches: [main]
+    # O aplicativo (pasta app/) tem deploy próprio na VM.
+    paths-ignore:
+      - "app/**"
+      - ".github/workflows/app-deploy.yml"
   workflow_dispatch:
 
 permissions:

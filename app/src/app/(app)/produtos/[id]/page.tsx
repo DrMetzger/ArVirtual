@@ -1,0 +1,113 @@
+import { desc, eq } from "drizzle-orm";
+import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
+import Link from "next/link";
+import { notFound } from "next/navigation";
+import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
+import { db } from "@/db";
+import { anuncios, contasMarketplace, produtos } from "@/db/schema";
+import { requireUser } from "@/lib/auth";
+import { geminiConfigurado } from "@/lib/gemini";
+import { MARKETPLACE_INFO } from "@/lib/marketplaces";
+import { getParametrosImpressao } from "@/lib/settings";
+import { formatBRL, formatDate } from "@/lib/utils";
+import { excluirProduto } from "../actions";
+import { Anunciar } from "../anunciar";
+import { ProdutoForm } from "../produto-form";
+
+export default async function ProdutoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ salvo?: string }>;
+}) {
+  await requireUser();
+  const { id } = await params;
+  const { salvo } = await searchParams;
+  if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
+  const produto = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
+  if (!produto) notFound();
+
+  const [contas, historico, parametros, ia] = await Promise.all([
+    db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
+    db.query.anuncios.findMany({
+      where: eq(anuncios.produtoId, id),
+      with: { conta: true },
+      orderBy: desc(anuncios.criadoEm),
+      limit: 20,
+    }),
+    getParametrosImpressao(),
+    geminiConfigurado(),
+  ]);
+
+  return (
+    <>
+      <Link href="/produtos" className="mb-4 inline-flex items-center gap-1 text-sm text-muted hover:text-gold">
+        <ArrowLeft className="size-4" /> Produtos
+      </Link>
+      <PageHeader
+        title={produto.nome}
+        description={`SKU ${produto.sku} · NCM ${produto.ncm}`}
+        actions={
+          <form action={excluirProduto.bind(null, id)}>
+            <button type="submit" className={buttonClass("outline", "md", "hover:border-red hover:text-red")}>
+              <Trash2 /> Excluir
+            </button>
+          </form>
+        }
+      />
+      <div className="grid gap-6">
+        {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
+        <ProdutoForm produto={produto} parametros={parametros} />
+        <div className="grid gap-6 xl:grid-cols-2">
+          <Anunciar
+            produtoId={id}
+            nome={produto.nome}
+            descricao={produto.descricao}
+            preco={produto.preco}
+            temImagem={produto.imagens.length > 0}
+            iaConfigurada={ia}
+            contas={contas.map((c) => ({
+              id: c.id,
+              nome: c.nome,
+              marketplace: c.marketplace,
+              marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome,
+              cor: MARKETPLACE_INFO[c.marketplace].cor,
+            }))}
+          />
+          <Card>
+            <CardHeader title="Histórico de anúncios" />
+            {historico.length === 0 ? (
+              <p className="p-5 text-sm text-muted">Este produto ainda não foi anunciado.</p>
+            ) : (
+              <div className="grid divide-y divide-border">
+                {historico.map((a) => (
+                  <div key={a.id} className="flex items-start gap-3 px-5 py-3 text-sm">
+                    <span className="mt-1.5 size-2.5 shrink-0 rounded-full" style={{ background: MARKETPLACE_INFO[a.marketplace].cor }} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-semibold">{MARKETPLACE_INFO[a.marketplace].nome}</span>
+                        <span className="text-muted">{a.conta.nome}</span>
+                        <Badge tone={a.status === "publicado" ? "green" : "red"}>{a.status}</Badge>
+                      </div>
+                      <p className="text-xs text-muted">
+                        {formatDate(a.criadoEm)} · {formatBRL(a.preco)}
+                        {a.idExterno ? ` · ${a.idExterno}` : ""}
+                      </p>
+                      {a.mensagem ? <p className="mt-1 break-words text-xs text-red">{a.mensagem}</p> : null}
+                    </div>
+                    {a.link ? (
+                      <a href={a.link} target="_blank" rel="noreferrer" className="text-muted hover:text-gold" title="Abrir anúncio">
+                        <ExternalLink className="size-4" />
+                      </a>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            )}
+          </Card>
+        </div>
+      </div>
+    </>
+  );
+}
