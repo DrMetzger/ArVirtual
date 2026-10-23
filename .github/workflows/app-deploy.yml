@@ -46,7 +46,6 @@ jobs:
       SSHPASS: ${{ secrets.VM_PSW }}
       VM_DIR: ${{ vars.VM_APP_DIR || '/opt/arvirtual-app' }}
       APP_DOMAIN: ${{ vars.APP_DOMAIN || 'app.arvirtual.com.br' }}
-      APP_PORT: ${{ vars.APP_PORT || '8080' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -98,13 +97,11 @@ jobs:
           admin_senha = valor("ADMIN_PASSWORD") or env["SSHPASS"]
           v = {
               "POSTGRES_PASSWORD": pg,
-              "DATABASE_URL": f"postgres://arvirtual:{quote(pg, safe='')}@db:5432/arvirtual",
+              "DATABASE_URL": f"postgres://arvirtual:{quote(pg, safe='')}@arvirtual-db:5432/arvirtual",
               "AUTH_SECRET": valor("AUTH_SECRET", novo),
               "ENCRYPTION_KEY": valor("ENCRYPTION_KEY", novo),
               "APP_DOMAIN": env["APP_DOMAIN"],
-              "APP_PORT": env["APP_PORT"],
-              # Acesso direto: domínio (registro A apontando para a VM) + porta do app.
-              "APP_URL": f"http://{env['APP_DOMAIN']}:{env['APP_PORT']}",
+              "APP_URL": f"https://{env['APP_DOMAIN']}",
               "ADMIN_NAME": env["ADMIN_NAME"],
               "ADMIN_EMAIL": valor("ADMIN_EMAIL") or "kleber@arvirtual.com.br",
               "ADMIN_PASSWORD": admin_senha,
@@ -126,10 +123,10 @@ jobs:
             app/ "$VM_USER@$VM_HOST:$VM_DIR/"
           $SSH "chmod 600 '$VM_DIR/.env'"
 
-      - name: Conferir se a porta do app está livre
+      - name: Conferir a rede do proxy
         run: |
-          $SSH "ss -ltnp | grep -E ':$APP_PORT\\b' | grep -v docker-proxy || true; docker ps --format '{{.Names}} {{.Ports}}' | grep -E ':$APP_PORT->' | grep -v '^arvirtual-app-' || true" > porta.txt
-          if [ -s porta.txt ]; then echo "::error::A porta $APP_PORT já está em uso na VM:"; cat porta.txt; echo "Defina outra na variable APP_PORT."; exit 1; fi
+          $SSH "docker network inspect farias-contabil_default >/dev/null" || {
+            echo "::error::Rede farias-contabil_default não encontrada: o Caddy da VM precisa estar rodando."; exit 1; }
 
       - name: Subir containers
         run: $SSH "cd '$VM_DIR' && docker compose up -d --build --remove-orphans"
@@ -144,10 +141,10 @@ jobs:
             sleep 10
           done
 
-      - name: Checar acesso pelo IP
+      - name: Checar https://app.arvirtual.com.br
         run: |
           for i in $(seq 1 12); do
-            curl -fsS -m 10 "http://$VM_HOST:$APP_PORT/api/health" && { echo; echo "App no ar: http://$APP_DOMAIN:$APP_PORT"; exit 0; }
-            sleep 5
+            curl -fsS -m 10 "https://$APP_DOMAIN/api/health" && { echo; echo "No ar: https://$APP_DOMAIN"; exit 0; }
+            sleep 10
           done
-          echo "::warning::O app roda na VM, mas a porta $APP_PORT não respondeu de fora. Libere a porta $APP_PORT/TCP no firewall do provedor da VM."
+          echo "::warning::O app roda na VM, mas https://$APP_DOMAIN ainda não respondeu (o Caddy da VM precisa ter o bloco app.arvirtual.com.br)."

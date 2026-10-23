@@ -1,4 +1,5 @@
-# Sobe banco e aplicativo. A VM é compartilhada: o app usa só a porta APP_PORT (padrão 8080).
+# Sobe banco e aplicativo. A VM é compartilhada com o sistema farias-contabil: o Caddy dele
+# (portas 80/443) encaminha app.arvirtual.com.br para este app pela rede Docker dele.
 # As variáveis vêm do arquivo .env gerado pelo GitHub Actions (veja .env.example).
 # Nome fixo: tudo deste app fica isolado no projeto "arvirtual-app" (containers, rede e volumes).
 name: arvirtual-app
@@ -13,6 +14,10 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?defina POSTGRES_PASSWORD}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    networks:
+      default:
+        # Nome exclusivo: o app também está na rede do outro sistema, que tem um serviço "db".
+        aliases: [arvirtual-db]
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U arvirtual -d arvirtual"]
       interval: 5s
@@ -25,11 +30,12 @@ services:
     env_file: .env
     environment:
       UPLOAD_DIR: /app/uploads
-    # Acesso direto pelo IP da VM (as portas 80/443 são do outro sistema).
-    ports:
-      - "${APP_PORT:-8080}:3000"
     volumes:
       - uploads:/app/uploads
+    networks:
+      default:
+      proxy:
+        aliases: [arvirtual-app]
     depends_on:
       db:
         condition: service_healthy
@@ -37,3 +43,9 @@ services:
 volumes:
   pgdata:
   uploads:
+
+networks:
+  # Rede do Caddy do farias-contabil, que publica https://app.arvirtual.com.br.
+  proxy:
+    external: true
+    name: ${PROXY_NETWORK:-farias-contabil_default}
