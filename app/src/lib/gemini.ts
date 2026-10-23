@@ -14,6 +14,15 @@ export async function geminiConfigurado() {
   return Boolean(s["gemini.apiKey"]);
 }
 
+// Gemini 3.x pensa em nível "medium" por padrão e demora demais para tarefas simples do sistema;
+// o 2.5 usa orçamento em tokens (no flash, 0 desliga).
+function pensamento(model: string) {
+  if (/gemini-2\.5-flash/.test(model)) return { thinkingBudget: 0 };
+  if (/gemini-2\.5/.test(model)) return { thinkingBudget: 128 };
+  if (/gemini-[3-9]/.test(model)) return { thinkingLevel: "low" };
+  return undefined;
+}
+
 export async function gerarComGemini(
   messages: ChatMessage[],
   opts: { system?: string; json?: boolean; temperature?: number } = {},
@@ -34,11 +43,15 @@ export async function gerarComGemini(
         generationConfig: {
           temperature: opts.temperature ?? 0.7,
           ...(opts.json ? { responseMimeType: "application/json" } : {}),
+          thinkingConfig: pensamento(model),
         },
       }),
-      signal: AbortSignal.timeout(60_000),
+      signal: AbortSignal.timeout(90_000),
     },
-  );
+  ).catch((e: Error) => {
+    if (e.name === "TimeoutError") throw new Error(`Gemini (${model}) não respondeu em 90 s. Tente de novo ou use um modelo flash.`);
+    throw new Error(`Gemini: falha de conexão (${e.message}).`);
+  });
   const data = (await res.json()) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
     error?: { message: string };

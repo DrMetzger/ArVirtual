@@ -33,6 +33,15 @@ function Feedback({ state }: { state: FormState }) {
   return null;
 }
 
+// Rótulos das opções dos campos de configuração.
+const ROTULOS: Record<string, string> = {
+  producao: "Produção",
+  homologacao: "Homologação (testes)",
+  sandbox: "Sandbox (testes)",
+  sim: "Sim",
+  nao: "Não",
+};
+
 // ---------- Empresa ----------
 export function EmpresaForm({ empresa }: { empresa: Empresa | null }) {
   const [state, onSubmit, pending] = useFormAction(salvarEmpresa, null);
@@ -208,7 +217,7 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
               <Select name={i.key} defaultValue={i.value || i.options[0]}>
                 {i.options.map((o) => (
                   <option key={o} value={o}>
-                    {o === "producao" ? "Produção" : o === "homologacao" ? "Homologação (testes)" : "Sandbox (testes)"}
+                    {ROTULOS[o] ?? o}
                   </option>
                 ))}
               </Select>
