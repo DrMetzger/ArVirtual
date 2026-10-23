@@ -43,6 +43,13 @@
       "when": 1792778771916,
       "tag": "0005_videos_produto",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1792781493501,
+      "tag": "0006_pedidos_detalhados",
+      "breakpoints": true
     }
   ]
 }

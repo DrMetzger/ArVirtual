@@ -46,23 +46,41 @@ export async function contaComToken(conta: ContaMarketplace): Promise<ContaComTo
   return { ...base, accessToken: t.accessToken };
 }
 
-/** Busca pedidos dos últimos `dias` em todas as contas conectadas e grava/atualiza no banco. */
-export async function sincronizarPedidos(dias = 30) {
+type ResultadoSync = { conta: string; marketplace: Marketplace; pedidos: number; erro?: string }[];
+let emAndamento: Promise<ResultadoSync> | null = null;
+
+/** Busca pedidos dos últimos `dias` em todas as contas conectadas e grava/atualiza no banco.
+ *  Uma sincronização por vez: a automática e o botão compartilham a mesma execução. */
+export function sincronizarPedidos(dias = 30) {
+  emAndamento ??= sincronizar(dias).finally(() => {
+    emAndamento = null;
+  });
+  return emAndamento;
+}
+
+async function sincronizar(dias: number): Promise<ResultadoSync> {
   const contas = await db.select().from(contasMarketplace);
   const desde = new Date(Date.now() - dias * 86400_000);
-  const resultado: { conta: string; marketplace: Marketplace; pedidos: number; erro?: string }[] = [];
+  const resultado: ResultadoSync = [];
 
   for (const conta of contas) {
     try {
       const pedidos = await adapter(conta.marketplace).pedidos(await contaComToken(conta), desde);
       for (const p of pedidos) {
+        const valores = {
+          status: p.status,
+          total: p.total,
+          frete: p.frete,
+          comprador: p.comprador,
+          data: p.data,
+          itens: p.itens,
+          entrega: p.entrega,
+          dados: p.dados as object,
+        };
         await db
           .insert(pedidosMarketplace)
-          .values({ contaId: conta.id, marketplace: conta.marketplace, ...p, dados: p.dados as object })
-          .onConflictDoUpdate({
-            target: [pedidosMarketplace.marketplace, pedidosMarketplace.idExterno],
-            set: { status: p.status, total: p.total, comprador: p.comprador },
-          });
+          .values({ contaId: conta.id, marketplace: conta.marketplace, idExterno: p.idExterno, ...valores })
+          .onConflictDoUpdate({ target: [pedidosMarketplace.marketplace, pedidosMarketplace.idExterno], set: { ...valores, atualizadoEm: new Date() } });
       }
       await db.update(contasMarketplace).set({ ultimaSincronizacao: new Date() }).where(eq(contasMarketplace.id, conta.id));
       resultado.push({ conta: conta.nome, marketplace: conta.marketplace, pedidos: pedidos.length });

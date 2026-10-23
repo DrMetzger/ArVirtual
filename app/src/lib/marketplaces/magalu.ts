@@ -124,14 +124,24 @@ export const magalu: MarketplaceAdapter = {
   },
 
   async pedidos(conta, desde) {
+    // Valores da Magalu vêm em inteiros com "normalizer" (100 = centavos).
+    type Valor = { value?: number; normalizer?: number } | number | undefined;
+    const valor = (v: Valor, normalizer = 100) => (typeof v === "number" ? v / normalizer : (v?.value ?? 0) / (v?.normalizer ?? normalizer));
     type Pedido = {
       id?: string;
       code?: string;
       status?: string;
       created_at?: string;
       purchased_at?: string;
-      customer?: { name?: string };
-      amounts?: { total?: number; normalizer?: number };
+      customer?: { name?: string; document_number?: string; phones?: { number?: string }[] };
+      amounts?: { total?: number; normalizer?: number; freight?: Valor };
+      deliveries?: {
+        shipping?: {
+          recipient?: { name?: string; document_number?: string };
+          address?: { street?: string; number?: string; complement?: string; district?: string; city?: string; state?: string; zipcode?: string };
+        };
+        items?: { info?: { sku?: string; id?: string; name?: string }; quantity?: number; unit_price?: Valor }[];
+      }[];
     };
     const out = [];
     for (let offset = 0; offset < 500; offset += 50) {
@@ -139,14 +149,44 @@ export const magalu: MarketplaceAdapter = {
       const r = await api<{ results?: Pedido[] }>(`/seller/v1/orders?${q}`, conta.accessToken);
       const lista = r.results ?? [];
       out.push(
-        ...lista.map((o) => ({
-          idExterno: String(o.code ?? o.id),
-          status: o.status ?? "",
-          total: (o.amounts?.total ?? 0) / (o.amounts?.normalizer ?? 100),
-          comprador: o.customer?.name ?? "",
-          data: new Date(o.purchased_at ?? o.created_at ?? Date.now()),
-          dados: o,
-        })),
+        ...lista.map((o) => {
+          const norm = o.amounts?.normalizer ?? 100;
+          const entrega = o.deliveries?.[0]?.shipping;
+          const end = entrega?.address;
+          return {
+            idExterno: String(o.code ?? o.id),
+            status: o.status ?? "",
+            total: (o.amounts?.total ?? 0) / norm,
+            frete: valor(o.amounts?.freight, norm),
+            comprador: o.customer?.name ?? "",
+            data: new Date(o.purchased_at ?? o.created_at ?? Date.now()),
+            itens: (o.deliveries ?? []).flatMap((d) =>
+              (d.items ?? []).map((i) => ({
+                idAnuncio: i.info?.id ?? i.info?.sku ?? "",
+                sku: i.info?.sku ?? "",
+                titulo: i.info?.name ?? "",
+                quantidade: i.quantity ?? 1,
+                valorUnitario: valor(i.unit_price, norm),
+              })),
+            ),
+            entrega: end
+              ? {
+                  nome: entrega?.recipient?.name ?? o.customer?.name ?? "",
+                  documento: entrega?.recipient?.document_number ?? o.customer?.document_number,
+                  telefone: o.customer?.phones?.[0]?.number,
+                  endereco: [end.street, end.number, end.complement, end.district].filter(Boolean).join(", "),
+                  logradouro: end.street,
+                  numero: end.number,
+                  complemento: end.complement,
+                  bairro: end.district,
+                  cidade: end.city ?? "",
+                  uf: end.state ?? "",
+                  cep: end.zipcode ?? "",
+                }
+              : null,
+            dados: o,
+          };
+        }),
       );
       if (lista.length < 50) break;
     }

@@ -7,6 +7,7 @@ import {
   Package,
   Scale,
   Settings,
+  ShoppingCart,
   Sparkles,
   Store,
   Users,
@@ -20,6 +21,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
   { href: "/clientes", label: "Clientes", icon: Users },
   { href: "/produtos", label: "Produtos", icon: Package },
   { href: "/notas", label: "Notas fiscais", icon: FileText },

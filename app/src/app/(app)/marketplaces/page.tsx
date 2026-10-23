@@ -36,7 +36,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
       .from(pedidosMarketplace)
       .innerJoin(contasMarketplace, eq(contasMarketplace.id, pedidosMarketplace.contaId))
       .orderBy(desc(pedidosMarketplace.data))
-      .limit(30),
+      .limit(10),
     Promise.all(MARKETPLACES.map(async (m) => [m, await ADAPTERS[m].configurado()] as const)),
   ]);
   const cfg = Object.fromEntries(configurados);
@@ -117,7 +117,15 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
         </div>
 
         <Card>
-          <CardHeader title="Pedidos recentes" description="Últimos pedidos importados das contas conectadas." />
+          <CardHeader
+            title="Pedidos recentes"
+            description="Últimos pedidos importados das contas conectadas."
+            action={
+              <Link href="/pedidos" className={buttonClass("outline", "sm")}>
+                Ver todos os pedidos
+              </Link>
+            }
+          />
           {pedidos.length === 0 ? (
             <EmptyState icon={<Store />} title="Nenhum pedido importado" description="Conecte uma conta e clique em Sincronizar pedidos." />
           ) : (
@@ -143,7 +151,11 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                         </span>
                         <p className="text-xs text-muted">{p.conta}</p>
                       </td>
-                      <td className="font-mono text-xs">{p.idExterno}</td>
+                      <td>
+                        <Link href={`/pedidos/${p.id}`} className="font-mono text-xs font-semibold hover:text-gold">
+                          {p.idExterno}
+                        </Link>
+                      </td>
                       <td>{p.comprador || "—"}</td>
                       <td className="text-muted">{formatDate(p.data)}</td>
                       <td>

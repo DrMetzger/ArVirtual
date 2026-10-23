@@ -4,7 +4,7 @@ import { and, eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { notas, regrasFiscais } from "@/db/schema";
+import { notas, pedidosMarketplace, regrasFiscais } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { calcularNota, EntradaNotaSchema, type EntradaNota } from "@/lib/fiscal/calculo";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
@@ -35,7 +35,7 @@ export async function previsualizarNota(entrada: EntradaNota): Promise<Preview> 
   }
 }
 
-export async function criarNota(entrada: EntradaNota & { formaPagamento: string }): Promise<{ erro?: string }> {
+export async function criarNota(entrada: EntradaNota & { formaPagamento: string; pedidoId?: number }): Promise<{ erro?: string }> {
   await requireUser();
   const parsed = EntradaNotaSchema.safeParse(entrada);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message };
@@ -59,10 +59,12 @@ export async function criarNota(entrada: EntradaNota & { formaPagamento: string 
       })
       .returning({ id: notas.id });
     id = nova!.id;
+    if (entrada.pedidoId) await db.update(pedidosMarketplace).set({ notaId: id }).where(eq(pedidosMarketplace.id, entrada.pedidoId));
   } catch (e) {
     return { erro: (e as Error).message };
   }
   revalidatePath("/notas");
+  revalidatePath("/pedidos");
   redirect(`/notas/${id}`);
 }
 
