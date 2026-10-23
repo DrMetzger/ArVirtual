@@ -1,12 +1,13 @@
 import type { Metadata } from "next";
 import Image from "next/image";
+import { Alert } from "@/components/ui";
 import { ThemeToggle } from "@/components/ui/client";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Entrar" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string }> }) {
-  const { de } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string; expirou?: string }> }) {
+  const { de, expirou } = await searchParams;
   return (
     <main className="relative grid min-h-dvh lg:grid-cols-2">
       <section className="relative hidden overflow-hidden bg-sidebar p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -51,6 +52,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
           <h2 className="text-2xl font-extrabold">Entrar</h2>
           <p className="mb-6 mt-1 text-sm text-muted">Use o e-mail e a senha cadastrados.</p>
+          {expirou ? (
+            <div className="mb-4">
+              <Alert tone="gold">A verificação expirou. Entre de novo para receber outro código.</Alert>
+            </div>
+          ) : null}
           <LoginForm redirectTo={de && de.startsWith("/") && !de.startsWith("//") ? de : "/"} />
         </div>
       </section>

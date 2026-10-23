@@ -1,5 +1,7 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
+import { mkdir, writeFile } from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -12,9 +14,11 @@ import { lerCertificado } from "@/lib/fiscal/certificado";
 import { statusSefaz } from "@/lib/nfe/emissor";
 import { certificateFromPfx } from "@/lib/nfe/sefaz";
 import { isValidCnpj } from "@/lib/documento";
+import { conferirCodigo, emailConfigurado, enviarCodigo } from "@/lib/dois-fatores";
 import { gerarComGemini } from "@/lib/gemini";
 import { enviarEmail } from "@/lib/mail";
-import { SETTINGS, setSetting, type SettingKey } from "@/lib/settings";
+import { getSetting, SETTINGS, setSetting, type SettingKey } from "@/lib/settings";
+import { UPLOAD_DIR } from "@/lib/uploads";
 import { onlyDigits } from "@/lib/utils";
 
 export type FormState = { erro?: string; ok?: string } | null;
@@ -41,15 +45,29 @@ const EmpresaSchema = z.object({
   email: str.default(""),
 });
 
+/** Logo do DANFE: PNG ou JPG até 1 MB. Devolve o nome do arquivo, "" para remover, undefined se nada mudou ou o erro. */
+async function logoEnviado(form: FormData): Promise<string | undefined | { erro: string }> {
+  if (form.get("removerLogo") === "on") return "";
+  const file = form.get("logo");
+  if (!(file instanceof File) || file.size === 0) return undefined;
+  const ext = ({ "image/png": "png", "image/jpeg": "jpg" } as Record<string, string>)[file.type];
+  if (!ext) return { erro: "O logo precisa ser PNG ou JPG (o DANFE não aceita outros formatos)." };
+  if (file.size > 1024 * 1024) return { erro: "O logo passa de 1 MB: reduza a imagem." };
+  await mkdir(UPLOAD_DIR, { recursive: true });
+  const nome = `logo-${Date.now().toString(36)}-${randomBytes(4).toString("hex")}.${ext}`;
+  await writeFile(`${UPLOAD_DIR}/${nome}`, Buffer.from(await file.arrayBuffer()));
+  return nome;
+}
+
 export async function salvarEmpresa(_: FormState, form: FormData): Promise<FormState> {
   try {
     await requireAdmin();
     const parsed = EmpresaSchema.safeParse(Object.fromEntries(form));
     if (!parsed.success) return { erro: parsed.error.issues[0]?.message };
-    await db
-      .insert(empresa)
-      .values({ id: 1, ...parsed.data })
-      .onConflictDoUpdate({ target: empresa.id, set: parsed.data });
+    const logo = await logoEnviado(form);
+    if (typeof logo === "object") return logo;
+    const dados = { ...parsed.data, ...(logo !== undefined ? { logoArquivo: logo } : {}) };
+    await db.insert(empresa).values({ id: 1, ...dados }).onConflictDoUpdate({ target: empresa.id, set: dados });
     revalidatePath("/", "layout");
     return { ok: "Dados da empresa salvos." };
   } catch (e) {
@@ -63,6 +81,9 @@ export async function salvarIntegracoes(_: FormState, form: FormData): Promise<F
     await requireAdmin();
     const grupo = String(form.get("grupo"));
     const chaves = (Object.keys(SETTINGS) as SettingKey[]).filter((k) => SETTINGS[k].group === grupo);
+    if (form.get("seguranca.exigir2fa") === "sim" && !(await emailConfigurado())) {
+      return { erro: "Cadastre uma conta de e-mail padrão (aba E-mails) antes de exigir a verificação em duas etapas." };
+    }
     for (const k of chaves) {
       const valor = String(form.get(k) ?? "").trim();
       const limpar = form.get(`${k}__limpar`) === "on";
@@ -128,10 +149,20 @@ export async function salvarContaEmail(_: FormState, form: FormData): Promise<Fo
   }
 }
 
-export async function excluirContaEmail(id: number) {
-  await requireAdmin();
-  await db.delete(contasEmail).where(eq(contasEmail.id, id));
-  revalidatePath("/configuracoes");
+export async function excluirContaEmail(id: number): Promise<FormState> {
+  try {
+    await requireAdmin();
+    const restantes = await db.$count(contasEmail, ne(contasEmail.id, id));
+    const em2fa = (await getSetting("seguranca.exigir2fa")) === "sim" || (await db.$count(usuarios, eq(usuarios.doisFatores, true))) > 0;
+    if (restantes === 0 && em2fa) {
+      return { erro: "Esta é a única conta de e-mail e a verificação em duas etapas está em uso: cadastre outra antes de excluir." };
+    }
+    await db.delete(contasEmail).where(eq(contasEmail.id, id));
+    revalidatePath("/configuracoes");
+    return { ok: "Conta de e-mail excluída." };
+  } catch (e) {
+    return falha(e);
+  }
 }
 
 export async function testarContaEmail(id: number): Promise<FormState> {
@@ -278,4 +309,44 @@ export async function removerCertificado() {
   await requireAdmin();
   await db.delete(certificadoDigital).where(eq(certificadoDigital.id, 1));
   revalidatePath("/", "layout");
+}
+
+// ---------- Verificação em duas etapas ----------
+export async function iniciarAtivacao2fa(): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    if (!(await emailConfigurado())) return { erro: "Peça ao administrador para cadastrar uma conta de e-mail (aba E-mails) primeiro." };
+    const user = await db.query.usuarios.findFirst({ where: eq(usuarios.id, me.sub) });
+    if (!user) throw new Error("Usuário não encontrado.");
+    await enviarCodigo(user, "ativar");
+    return { ok: `Enviamos um código para ${user.email}. Digite-o abaixo para ativar.` };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
+export async function confirmarAtivacao2fa(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const r = await conferirCodigo(me.sub, "ativar", String(form.get("codigo") ?? ""));
+    if (!r.ok) return { erro: r.erro };
+    await db.update(usuarios).set({ doisFatores: true }).where(eq(usuarios.id, me.sub));
+    revalidatePath("/configuracoes");
+    return { ok: "Verificação em duas etapas ativada: a partir de agora, o login pede o código enviado por e-mail." };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
+export async function desativar2fa(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    const me = await requireUser();
+    const user = await db.query.usuarios.findFirst({ where: eq(usuarios.id, me.sub) });
+    if (!user || !(await bcrypt.compare(String(form.get("senha") ?? ""), user.senhaHash))) return { erro: "Senha incorreta." };
+    await db.update(usuarios).set({ doisFatores: false }).where(eq(usuarios.id, me.sub));
+    revalidatePath("/configuracoes");
+    return { ok: "Verificação em duas etapas desativada." };
+  } catch (e) {
+    return falha(e);
+  }
 }

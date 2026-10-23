@@ -15,7 +15,7 @@ dourado e o vermelho do logo).
 | **Notas fiscais** | Emissão **direto na SEFAZ** com o certificado A1 (mesmo emissor do ERP Vanguard, sem intermediário e sem mensalidade): monta o XML 4.00, assina, valida no XSD oficial, transmite, consulta pela chave antes de reenviar, cancela, carta de correção, DANFE em PDF, envio por e-mail com XML e DANFE, e histórico de cada ida à SEFAZ. |
 | **Marketplaces** | Conexão OAuth com cada loja, publicação de anúncios a partir do catálogo e importação de pedidos para o dashboard. |
 | **Assistente IA** | Chat com o Gemini e geração de título/descrição de anúncio na página do produto. |
-| **Configurações** | Dados da empresa (emitente), certificado digital A1 e emissão (ambiente, série, numeração), chaves de API, contas de e-mail SMTP e usuários. Senhas e tokens ficam criptografados (AES-256-GCM). |
+| **Configurações** | Dados da empresa (emitente) e logo do DANFE, certificado digital A1 e emissão (ambiente, série, numeração), chaves de API, contas de e-mail SMTP, usuários e verificação em duas etapas. Senhas e tokens ficam criptografados (AES-256-GCM). |
 
 ## Tecnologias
 
@@ -62,6 +62,16 @@ sistema tem o bloco `app.arvirtual.com.br { reverse_proxy arvirtual-app:3000 }`.
 `arvirtual-db` e não fica na rede do outro sistema.
 
 DNS: registro **A**, nome `app`, destino = IP da VM.
+
+## Verificação em duas etapas (2FA)
+
+Depois da senha, o login pede um código de 6 dígitos enviado por e-mail (vale 10 minutos, até 5 tentativas,
+reenvio a cada 1 minuto). Cada usuário ativa em **Configurações › Usuários** confirmando um código; o administrador
+pode exigir de todos em **Configurações › Integrações › Segurança**. Precisa de uma conta de e-mail padrão (aba E-mails).
+O navegador pode ser marcado como confiável por 30 dias.
+
+Emergência (SMTP fora do ar): coloque `AUTH_2FA_DESATIVADO='1'` no `/opt/arvirtual-app/.env` da VM e reinicie o app
+(`docker compose up -d`); tire depois de resolver.
 
 ## Integrações (cadastradas em Configurações › Integrações)
 

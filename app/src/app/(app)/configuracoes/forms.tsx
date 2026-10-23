@@ -9,9 +9,12 @@ import type { Empresa } from "@/db/schema";
 import { formatCep, formatDocumento, formatTelefone, onlyDigits } from "@/lib/utils";
 import {
   alterarSenha,
+  confirmarAtivacao2fa,
   criarUsuario,
+  desativar2fa,
   excluirContaEmail,
   excluirUsuario,
+  iniciarAtivacao2fa,
   removerCertificado,
   salvarCertificado,
   salvarContaEmail,
@@ -46,6 +49,7 @@ export function EmpresaForm({ empresa }: { empresa: Empresa | null }) {
   );
   const [busca, startBusca] = useTransition();
   const [erroBusca, setErroBusca] = useState("");
+  const [previewLogo, setPreviewLogo] = useState<string | null>(null);
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
@@ -112,6 +116,35 @@ export function EmpresaForm({ empresa }: { empresa: Empresa | null }) {
           <Field label="E-mail" className="sm:col-span-2">
             <Input name="email" type="email" value={dados.email} onChange={(e) => setDados({ ...dados, email: e.target.value })} />
           </Field>
+        </div>
+      </Card>
+      <Card>
+        <CardHeader title="Logo para o DANFE" description="Sai no quadro do emitente da nota impressa. PNG ou JPG até 1 MB; prefira fundo branco." />
+        <div className="flex flex-wrap items-center gap-5 p-5">
+          <div className="grid h-24 w-40 place-items-center overflow-hidden rounded-xl border border-dashed border-border bg-white">
+            {previewLogo || empresa?.logoArquivo ? (
+              <img src={previewLogo ?? `/uploads/${empresa!.logoArquivo}`} alt="Logo da empresa" className="max-h-20 max-w-36 object-contain" />
+            ) : (
+              <span className="text-xs text-muted">Sem logo</span>
+            )}
+          </div>
+          <div className="grid gap-2">
+            <Input
+              name="logo"
+              type="file"
+              accept="image/png,image/jpeg"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                setPreviewLogo(f ? URL.createObjectURL(f) : null);
+              }}
+              className="py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm"
+            />
+            {empresa?.logoArquivo ? (
+              <label className="flex items-center gap-2 text-sm text-muted">
+                <input type="checkbox" name="removerLogo" className="accent-[var(--red)]" /> Remover o logo atual
+              </label>
+            ) : null}
+          </div>
         </div>
       </Card>
       <Card>
@@ -316,7 +349,7 @@ export function ContasEmail({ contas }: { contas: Conta[] }) {
                 size="icon"
                 className="hover:text-red"
                 title="Excluir"
-                onClick={() => confirm(`Excluir a conta "${c.nome}"?`) && start(() => excluirContaEmail(c.id))}
+                onClick={() => confirm(`Excluir a conta "${c.nome}"?`) && start(async () => setMsg(await excluirContaEmail(c.id)))}
               >
                 <Trash2 />
               </Button>
@@ -330,14 +363,69 @@ export function ContasEmail({ contas }: { contas: Conta[] }) {
 }
 
 // ---------- Usuários ----------
+function DoisFatores({ ativo, exigido }: { ativo: boolean; exigido: boolean }) {
+  const [inicio, setInicio] = useState<FormState>(null);
+  const [enviando, start] = useTransition();
+  const [confState, confirmar, confirmando] = useFormAction(confirmarAtivacao2fa, null);
+  const [desState, desativar, desativando] = useFormAction(desativar2fa, null);
+  const protegido = ativo || exigido;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Verificação em duas etapas"
+        description="Depois da senha, o login pede um código enviado para o seu e-mail."
+        action={<Badge tone={protegido ? "green" : "neutral"}>{protegido ? "Ativa" : "Desativada"}</Badge>}
+      />
+      <div className="grid gap-3 p-5 text-sm">
+        {exigido && !ativo ? <Alert tone="blue">O administrador exige a verificação em duas etapas de todos os usuários.</Alert> : null}
+        {ativo ? (
+          <form onSubmit={desativar} className="grid gap-3">
+            <Field label="Senha atual (para desativar)">
+              <Input name="senha" type="password" autoComplete="current-password" required />
+            </Field>
+            <Feedback state={desState} />
+            <SubmitButton pending={desativando} variant="outline" pendingText="Desativando...">
+              Desativar verificação
+            </SubmitButton>
+          </form>
+        ) : inicio?.ok ? (
+          <form onSubmit={confirmar} className="grid gap-3">
+            <Alert tone="green">{inicio.ok}</Alert>
+            <Field label="Código recebido">
+              <Input name="codigo" inputMode="numeric" autoComplete="one-time-code" maxLength={6} required placeholder="000000" className="font-mono tracking-[0.4em]" />
+            </Field>
+            <Feedback state={confState} />
+            <SubmitButton pending={confirmando} pendingText="Conferindo...">
+              <ShieldCheck /> Confirmar e ativar
+            </SubmitButton>
+          </form>
+        ) : (
+          <>
+            <p className="text-muted">Recomendado para todos, principalmente administradores.</p>
+            <Feedback state={inicio} />
+            <Button disabled={enviando} onClick={() => start(async () => setInicio(await iniciarAtivacao2fa()))}>
+              {enviando ? <Loader2 className="animate-spin" /> : <ShieldCheck />} Ativar com código por e-mail
+            </Button>
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 export function Usuarios({
   usuarios,
   meuId,
   admin,
+  meu2fa,
+  exigido2fa,
 }: {
-  usuarios: { id: string; nome: string; email: string; papel: "admin" | "usuario" }[];
+  usuarios: { id: string; nome: string; email: string; papel: "admin" | "usuario"; doisFatores: boolean }[];
   meuId: string;
   admin: boolean;
+  meu2fa: boolean;
+  exigido2fa: boolean;
 }) {
   const [state, action] = useActionState(criarUsuario, null);
   const [senhaState, senhaAction] = useActionState(alterarSenha, null);
@@ -355,6 +443,7 @@ export function Usuarios({
                 </p>
                 <p className="text-xs text-muted">{u.email}</p>
               </div>
+              {u.doisFatores || exigido2fa ? <Badge tone="green">2FA</Badge> : null}
               <Badge tone={u.papel === "admin" ? "gold" : "neutral"}>{u.papel}</Badge>
               {admin && u.id !== meuId ? (
                 <Button
@@ -396,6 +485,8 @@ export function Usuarios({
           </form>
         ) : null}
       </Card>
+      <div className="grid content-start gap-6">
+      <DoisFatores ativo={meu2fa} exigido={exigido2fa} />
       <Card>
         <CardHeader title="Minha senha" />
         <form action={senhaAction} className="grid gap-3 p-5">
@@ -409,6 +500,7 @@ export function Usuarios({
           <SubmitButton pendingText="Alterando...">Alterar senha</SubmitButton>
         </form>
       </Card>
+      </div>
     </div>
   );
 }

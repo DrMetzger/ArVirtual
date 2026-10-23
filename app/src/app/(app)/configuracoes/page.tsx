@@ -7,7 +7,7 @@ import { db } from "@/db";
 import { contasEmail, usuarios } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
-import { getSettingsForDisplay } from "@/lib/settings";
+import { getSetting, getSettingsForDisplay } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { CertificadoA1, ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
@@ -33,6 +33,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const AJUDA: Record<string, React.ReactNode> = {
     "IA (Google Gemini)": "Gere a chave em aistudio.google.com › Get API key.",
     Fiscal: "Parâmetros do cálculo de impostos (a matriz fica em Matriz fiscal).",
+    Segurança: "Com \"sim\", todos recebem um código por e-mail ao entrar. Precisa de uma conta de e-mail padrão (aba E-mails).",
     "Consulta CPF (Serpro)": "Opcional e pago: loja.serpro.gov.br › Consulta CPF. Sem ele, o CPF é só validado.",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
@@ -97,14 +98,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       ) : null}
 
       {aba === "usuarios" ? (
-        <Usuarios
-          meuId={me.sub}
-          admin={admin}
-          usuarios={await db
-            .select({ id: usuarios.id, nome: usuarios.nome, email: usuarios.email, papel: usuarios.papel })
-            .from(usuarios)
-            .orderBy(asc(usuarios.nome))}
-        />
+        <UsuariosAba meuId={me.sub} admin={admin} />
       ) : null}
     </>
   );
@@ -135,6 +129,25 @@ async function certificadoAba() {
             }
           : null
       }
+    />
+  );
+}
+
+async function UsuariosAba({ meuId, admin }: { meuId: string; admin: boolean }) {
+  const [lista, exigido] = await Promise.all([
+    db
+      .select({ id: usuarios.id, nome: usuarios.nome, email: usuarios.email, papel: usuarios.papel, doisFatores: usuarios.doisFatores })
+      .from(usuarios)
+      .orderBy(asc(usuarios.nome)),
+    getSetting("seguranca.exigir2fa"),
+  ]);
+  return (
+    <Usuarios
+      meuId={meuId}
+      admin={admin}
+      usuarios={lista}
+      meu2fa={lista.find((u) => u.id === meuId)?.doisFatores ?? false}
+      exigido2fa={exigido === "sim"}
     />
   );
 }

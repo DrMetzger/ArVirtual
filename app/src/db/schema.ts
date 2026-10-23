@@ -30,8 +30,28 @@ export const usuarios = pgTable("usuarios", {
   email: text("email").notNull().unique(),
   senhaHash: text("senha_hash").notNull(),
   papel: text("papel", { enum: ["admin", "usuario"] }).notNull().default("usuario"),
+  /** Verificação em duas etapas por e-mail ligada pelo próprio usuário. */
+  doisFatores: boolean("dois_fatores").notNull().default(false),
   ...timestamps,
 });
+
+/** Códigos de verificação enviados por e-mail (login em duas etapas e ativação). Guarda só o hash. */
+export const codigosVerificacao = pgTable(
+  "codigos_verificacao",
+  {
+    id: serial("id").primaryKey(),
+    usuarioId: uuid("usuario_id")
+      .notNull()
+      .references(() => usuarios.id, { onDelete: "cascade" }),
+    finalidade: text("finalidade", { enum: ["login", "ativar"] }).notNull(),
+    codigoHash: text("codigo_hash").notNull(),
+    expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
+    tentativas: integer("tentativas").notNull().default(0),
+    usadoEm: timestamp("usado_em", { withTimezone: true }),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("codigos_verificacao_usuario_idx").on(t.usuarioId)],
+);
 
 // ---------- Configurações ----------
 /** Dados do emitente (linha única, id = 1). */
@@ -58,6 +78,8 @@ export const empresa = pgTable("empresa", {
   ambienteNfe: text("ambiente_nfe", { enum: ["homologacao", "producao"] }).notNull().default("homologacao"),
   serieNfe: integer("serie_nfe").notNull().default(1),
   proximoNumeroNfe: integer("proximo_numero_nfe").notNull().default(1),
+  /** Logo impresso no DANFE (arquivo PNG/JPG na pasta de uploads). */
+  logoArquivo: text("logo_arquivo").notNull().default(""),
   /** % de crédito de ICMS do Simples (CSOSN 101/201), se houver. */
   aliquotaCreditoSn: numeric("aliquota_credito_sn", { precision: 5, scale: 2, mode: "number" }),
   ...timestamps,
