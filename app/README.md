@@ -77,7 +77,7 @@ Emergência (SMTP fora do ar): coloque `AUTH_2FA_DESATIVADO='1'` no `/opt/arvirt
 
 | Integração | Onde obter | Observação |
 |---|---|---|
-| Google Gemini | aistudio.google.com › Get API key | Modelo padrão `gemini-2.5-flash`, configurável. |
+| Google Gemini | aistudio.google.com › Get API key | Modelo padrão `gemini-3.6-flash` (gratuito), configurável. A chave pode vir da tela ou do segredo `APP_GEMINI` do GitHub (vai para o `.env` da VM no deploy). Se o modelo escolhido estiver sobrecarregado ou sem cota, o sistema usa `gemini-3.6-flash`, `gemini-3.5-flash` e `gemini-3.1-flash-lite` como reserva. |
 | Serpro Consulta CPF | loja.serpro.gov.br | Opcional e pago. Sem ele, o CPF só é validado. |
 | Mercado Livre | developers.mercadolivre.com.br › Criar aplicação | Redirect URI: `https://app.arvirtual.com.br/api/marketplaces/mercadolivre/callback` |
 | Shopee | open.shopee.com › App (Seller in-house) | Redirect: `https://app.arvirtual.com.br/api/marketplaces/shopee/callback` |

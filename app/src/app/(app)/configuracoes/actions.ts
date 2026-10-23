@@ -11,12 +11,9 @@ import { certificadoDigital, contasEmail, empresa, notas, usuarios } from "@/db/
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
 import { lerCertificado } from "@/lib/fiscal/certificado";
-import { statusSefaz } from "@/lib/nfe/emissor";
 import { certificateFromPfx } from "@/lib/nfe/sefaz";
 import { isValidCnpj } from "@/lib/documento";
 import { conferirCodigo, emailConfigurado, enviarCodigo } from "@/lib/dois-fatores";
-import { gerarComGemini } from "@/lib/gemini";
-import { enviarEmail } from "@/lib/mail";
 import { getSetting, SETTINGS, setSetting, type SettingKey } from "@/lib/settings";
 import { UPLOAD_DIR } from "@/lib/uploads";
 import { onlyDigits } from "@/lib/utils";
@@ -98,16 +95,6 @@ export async function salvarIntegracoes(_: FormState, form: FormData): Promise<F
   }
 }
 
-export async function testarGemini(): Promise<FormState> {
-  try {
-    await requireUser();
-    const r = await gerarComGemini([{ role: "user", text: "Responda apenas: OK, conectado." }], { temperature: 0 });
-    return { ok: `Gemini respondeu: ${r.trim().slice(0, 80)}` };
-  } catch (e) {
-    return falha(e);
-  }
-}
-
 // ---------- E-mails ----------
 const EmailSchema = z.object({
   nome: str.min(1, "Dê um nome para a conta"),
@@ -160,23 +147,6 @@ export async function excluirContaEmail(id: number): Promise<FormState> {
     await db.delete(contasEmail).where(eq(contasEmail.id, id));
     revalidatePath("/configuracoes");
     return { ok: "Conta de e-mail excluída." };
-  } catch (e) {
-    return falha(e);
-  }
-}
-
-export async function testarContaEmail(id: number): Promise<FormState> {
-  try {
-    const session = await requireUser();
-    const user = await db.query.usuarios.findFirst({ where: eq(usuarios.id, session.sub) });
-    if (!user) throw new Error("Usuário não encontrado.");
-    await enviarEmail({
-      contaId: id,
-      para: user.email,
-      assunto: "Teste de e-mail · ArVirtual",
-      html: "<p>Tudo certo! Esta conta de e-mail está configurada no sistema ArVirtual.</p>",
-    });
-    return { ok: `E-mail de teste enviado para ${user.email}.` };
   } catch (e) {
     return falha(e);
   }
@@ -289,17 +259,6 @@ export async function salvarEmissao(_: FormState, form: FormData): Promise<FormS
     return {
       ok: d.ambienteNfe === "producao" ? "Emissão em PRODUÇÃO: as notas têm valor fiscal." : "Emissão em homologação (testes, sem valor fiscal).",
     };
-  } catch (e) {
-    return falha(e);
-  }
-}
-
-export async function testarSefaz(): Promise<FormState> {
-  try {
-    await requireAdmin();
-    const r = await statusSefaz();
-    const msg = `SEFAZ ${r.uf} (${r.ambiente === "producao" ? "produção" : "homologação"}): ${r.mensagem}`;
-    return r.online ? { ok: msg } : { erro: msg };
   } catch (e) {
     return falha(e);
   }

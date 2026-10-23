@@ -11,7 +11,7 @@ Em temas fiscais, deixe claro quando algo precisa ser confirmado com o contador.
 
 export async function geminiConfigurado() {
   const s = await getSettings(["gemini.apiKey"]);
-  return Boolean(s["gemini.apiKey"]);
+  return Boolean(s["gemini.apiKey"] || process.env.GEMINI_API_KEY);
 }
 
 // Gemini 3.x pensa em nível "medium" por padrão e demora demais para tarefas simples do sistema;
@@ -23,15 +23,15 @@ function pensamento(model: string) {
   return undefined;
 }
 
-export async function gerarComGemini(
-  messages: ChatMessage[],
-  opts: { system?: string; json?: boolean; temperature?: number } = {},
-): Promise<string> {
-  const s = await getSettings(["gemini.apiKey", "gemini.model"]);
-  const apiKey = s["gemini.apiKey"];
-  if (!apiKey) throw new Error("Cadastre a chave da API Gemini em Configurações › Integrações.");
-  const model = s["gemini.model"] || "gemini-2.5-flash";
+// Padrão e reservas: modelos que respondem no plano gratuito. Se o modelo escolhido estiver
+// sobrecarregado (503), sem cota (429) ou demorar demais, o próximo da lista responde.
+export const MODELO_PADRAO = "gemini-3.6-flash";
+const RESERVAS = [MODELO_PADRAO, "gemini-3.5-flash", "gemini-3.1-flash-lite"];
+const TEMPO_LIMITE_MS = 30_000;
 
+class Indisponivel extends Error {}
+
+async function chamar(model: string, apiKey: string, messages: ChatMessage[], opts: { system?: string; json?: boolean; temperature?: number }) {
   const res = await fetch(
     `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
     {
@@ -46,20 +46,50 @@ export async function gerarComGemini(
           thinkingConfig: pensamento(model),
         },
       }),
-      signal: AbortSignal.timeout(90_000),
+      signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
     },
   ).catch((e: Error) => {
-    if (e.name === "TimeoutError") throw new Error(`Gemini (${model}) não respondeu em 90 s. Tente de novo ou use um modelo flash.`);
+    if (e.name === "TimeoutError") throw new Indisponivel(`${model} não respondeu em ${TEMPO_LIMITE_MS / 1000} s`);
     throw new Error(`Gemini: falha de conexão (${e.message}).`);
   });
-  const data = (await res.json()) as {
+  const data = (await res.json().catch(() => ({}))) as {
     candidates?: { content?: { parts?: { text?: string }[] } }[];
     error?: { message: string };
   };
-  if (!res.ok) throw new Error(`Gemini: ${data.error?.message ?? res.statusText}`);
+  if ([404, 429, 500, 503].includes(res.status)) throw new Indisponivel(`${model}: ${data.error?.message ?? res.statusText}`);
+  if (!res.ok) throw new Error(`Gemini (${model}): ${data.error?.message ?? res.statusText}`);
   const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
-  if (!text) throw new Error("Gemini não retornou conteúdo.");
+  if (!text) throw new Indisponivel(`${model} não retornou conteúdo`);
   return text;
+}
+
+/** Gera texto e informa qual modelo respondeu (o configurado ou uma reserva). */
+export async function gerarComGeminiDetalhado(
+  messages: ChatMessage[],
+  opts: { system?: string; json?: boolean; temperature?: number } = {},
+): Promise<{ texto: string; modelo: string }> {
+  const s = await getSettings(["gemini.apiKey", "gemini.model"]);
+  // A chave da tela tem prioridade; GEMINI_API_KEY vem do segredo APP_GEMINI do GitHub.
+  const apiKey = s["gemini.apiKey"] || process.env.GEMINI_API_KEY;
+  if (!apiKey) throw new Error("Cadastre a chave da API Gemini em Configurações › Integrações.");
+  const modelos = [...new Set([s["gemini.model"] || MODELO_PADRAO, ...RESERVAS])];
+  const falhas: string[] = [];
+  for (const modelo of modelos) {
+    try {
+      return { texto: await chamar(modelo, apiKey, messages, opts), modelo };
+    } catch (e) {
+      if (!(e instanceof Indisponivel)) throw e;
+      falhas.push(e.message);
+    }
+  }
+  throw new Error(`Gemini indisponível no momento. ${falhas.join(" · ")}`);
+}
+
+export async function gerarComGemini(
+  messages: ChatMessage[],
+  opts: { system?: string; json?: boolean; temperature?: number } = {},
+): Promise<string> {
+  return (await gerarComGeminiDetalhado(messages, opts)).texto;
 }
 
 export type SugestaoAnuncio = { titulo: string; descricao: string; palavrasChave: string[] };

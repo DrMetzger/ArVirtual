@@ -21,9 +21,6 @@ import {
   salvarEmissao,
   salvarEmpresa,
   salvarIntegracoes,
-  testarSefaz,
-  testarContaEmail,
-  testarGemini,
   type FormState,
 } from "./actions";
 
@@ -31,6 +28,31 @@ function Feedback({ state }: { state: FormState }) {
   if (state?.erro) return <Alert>{state.erro}</Alert>;
   if (state?.ok) return <Alert tone="green">{state.ok}</Alert>;
   return null;
+}
+
+// Testes de integração via rota (as server actions rodam em fila e travariam os outros botões).
+// Sem useTransition de propósito: o React agrupa transições assíncronas simultâneas e o resultado do
+// "Salvar" de outro cartão só apareceria quando o teste terminasse.
+function useTeste(): [boolean, (alvo: string, mostrar: (r: FormState) => void) => Promise<void>] {
+  const [testando, setTestando] = useState(false);
+  const rodar = async (alvo: string, mostrar: (r: FormState) => void) => {
+    setTestando(true);
+    try {
+      mostrar(await testar(alvo));
+    } finally {
+      setTestando(false);
+    }
+  };
+  return [testando, rodar];
+}
+
+async function testar(alvo: string): Promise<FormState> {
+  try {
+    const r = await fetch(`/api/testes/${alvo}`, { method: "POST" });
+    return (await r.json()) as FormState;
+  } catch {
+    return { erro: "Falha de conexão com o servidor." };
+  }
 }
 
 // Rótulos das opções dos campos de configuração.
@@ -184,7 +206,7 @@ type SettingItem = {
 export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: SettingItem[]; ajuda?: React.ReactNode }) {
   const [state, onSubmit, pending] = useFormAction(salvarIntegracoes, null);
   const [teste, setTeste] = useState<FormState>(null);
-  const [testando, startTeste] = useTransition();
+  const [testando, rodarTeste] = useTeste();
   const temSegredo = itens.some((i) => i.secret);
   const configurado = itens.filter((i) => i.secret).every((i) => i.isSet) && itens.some((i) => i.isSet);
   const badge = configurado ? "Configurado" : temSegredo ? "Pendente" : "Usando padrões";
@@ -237,7 +259,7 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
           <Feedback state={teste} />
           <div className="flex justify-end gap-2">
             {grupo.startsWith("IA") ? (
-              <Button type="button" variant="outline" disabled={testando} onClick={() => startTeste(async () => setTeste(await testarGemini()))}>
+              <Button type="button" variant="outline" disabled={testando} onClick={() => rodarTeste("gemini", setTeste)}>
                 {testando ? <Loader2 className="animate-spin" /> : <Sparkles />} Testar
               </Button>
             ) : null}
@@ -317,6 +339,7 @@ export function ContasEmail({ contas }: { contas: Conta[] }) {
   const [editando, setEditando] = useState<number | "nova" | null>(null);
   const [msg, setMsg] = useState<FormState>(null);
   const [pending, start] = useTransition();
+  const [testando, rodarTeste] = useTeste();
   return (
     <Card>
       <CardHeader
@@ -347,7 +370,7 @@ export function ContasEmail({ contas }: { contas: Conta[] }) {
                   {c.remetenteNome} &lt;{c.remetenteEmail}&gt; · {c.host}:{c.porta}
                 </p>
               </div>
-              <Button variant="outline" size="sm" disabled={pending} onClick={() => start(async () => setMsg(await testarContaEmail(c.id)))}>
+              <Button variant="outline" size="sm" disabled={pending || testando} onClick={() => rodarTeste(`email?conta=${c.id}`, setMsg)}>
                 <Send /> Testar
               </Button>
               <Button variant="ghost" size="icon" onClick={() => setEditando(c.id)} title="Editar">
@@ -521,7 +544,7 @@ type Emissao = { ambienteNfe: "homologacao" | "producao"; serieNfe: number; prox
 function EmissaoNfe({ emissao }: { emissao: Emissao }) {
   const [state, onSubmit, pending] = useFormAction(salvarEmissao, null);
   const [teste, setTeste] = useState<FormState>(null);
-  const [testando, start] = useTransition();
+  const [testando, rodarTeste] = useTeste();
   const [ambiente, setAmbiente] = useState(emissao.ambienteNfe);
   return (
     <Card className="lg:col-span-2">
@@ -551,7 +574,7 @@ function EmissaoNfe({ emissao }: { emissao: Emissao }) {
           <Feedback state={state} />
           <Feedback state={teste} />
           <div className="flex flex-wrap justify-end gap-2">
-            <Button type="button" variant="outline" disabled={testando} onClick={() => start(async () => setTeste(await testarSefaz()))}>
+            <Button type="button" variant="outline" disabled={testando} onClick={() => rodarTeste("sefaz", setTeste)}>
               {testando ? <Loader2 className="animate-spin" /> : <Send />} Testar comunicação com a SEFAZ
             </Button>
             <SubmitButton pending={pending} pendingText="Salvando...">

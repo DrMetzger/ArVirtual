@@ -8,7 +8,7 @@ import { PARAMETROS_PADRAO, type ParametrosImpressao } from "./impressao";
 /** Todas as chaves configuráveis pela tela de Configurações › Integrações. */
 export const SETTINGS = {
   "gemini.apiKey": { label: "Chave da API Gemini", secret: true, group: "IA (Google Gemini)" },
-  "gemini.model": { label: "Modelo Gemini", secret: false, group: "IA (Google Gemini)", placeholder: "gemini-2.5-flash" },
+  "gemini.model": { label: "Modelo Gemini", secret: false, group: "IA (Google Gemini)", placeholder: "gemini-3.6-flash" },
 
   "seguranca.exigir2fa": { label: "Exigir verificação em duas etapas (código por e-mail) de todos os usuários", secret: false, group: "Segurança", options: ["nao", "sim"] },
 
