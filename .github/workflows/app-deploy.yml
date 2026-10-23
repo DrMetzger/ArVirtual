@@ -103,8 +103,8 @@ jobs:
               "ENCRYPTION_KEY": valor("ENCRYPTION_KEY", novo),
               "APP_DOMAIN": env["APP_DOMAIN"],
               "APP_PORT": env["APP_PORT"],
-              # Endereço de acesso direto: IP da VM + porta do app.
-              "APP_URL": f"http://{env['VM_HOST']}:{env['APP_PORT']}",
+              # Acesso direto: domínio (registro A apontando para a VM) + porta do app.
+              "APP_URL": f"http://{env['APP_DOMAIN']}:{env['APP_PORT']}",
               "ADMIN_NAME": env["ADMIN_NAME"],
               "ADMIN_EMAIL": valor("ADMIN_EMAIL") or "kleber@arvirtual.com.br",
               "ADMIN_PASSWORD": admin_senha,
@@ -147,7 +147,7 @@ jobs:
       - name: Checar acesso pelo IP
         run: |
           for i in $(seq 1 12); do
-            curl -fsS -m 10 "http://$VM_HOST:$APP_PORT/api/health" && { echo; echo "App no ar: http://<IP da VM>:$APP_PORT"; exit 0; }
+            curl -fsS -m 10 "http://$VM_HOST:$APP_PORT/api/health" && { echo; echo "App no ar: http://$APP_DOMAIN:$APP_PORT"; exit 0; }
             sleep 5
           done
           echo "::warning::O app roda na VM, mas a porta $APP_PORT não respondeu de fora. Libere a porta $APP_PORT/TCP no firewall do provedor da VM."

@@ -57,7 +57,8 @@ O `.env` da VM é reaproveitado a cada deploy, então as chaves geradas nunca mu
 ### Acesso
 
 A VM é compartilhada com outro sistema, que usa as portas 80/443. Este app fica na porta **8080**
-(variable `APP_PORT` para trocar) e é acessado direto: `http://IP-DA-VM:8080`. O deploy só mexe no projeto
+(variable `APP_PORT` para trocar) e é acessado direto: **http://app.arvirtual.com.br:8080**
+(DNS: registro **A**, nome `app`, destino = IP da VM). O deploy só mexe no projeto
 Docker `arvirtual-app` e na pasta `/opt/arvirtual-app`.
 
 ## Integrações (cadastradas em Configurações › Integrações)
