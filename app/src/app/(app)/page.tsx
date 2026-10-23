@@ -1,11 +1,12 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { ArrowRight, CheckCircle2, Circle, FileText, Package, ShoppingBag, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
-import { Badge, buttonClass, Card, CardHeader } from "@/components/ui";
+import { Alert, Badge, buttonClass, Card, CardHeader } from "@/components/ui";
 import { VendasChart, type PontoVendas } from "@/components/vendas-chart";
 import { db } from "@/db";
 import { clientes, contasMarketplace, MARKETPLACES, notas, pedidosMarketplace, produtos, regrasFiscais } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
@@ -73,6 +74,7 @@ export default async function Dashboard() {
       db.$count(contasMarketplace),
       getSettings(["gemini.apiKey", "focusnfe.token"]),
       db.$count(produtos),
+      db.query.certificadoDigital.findFirst({ columns: { validoAte: true } }),
     ]),
   ]);
 
@@ -88,13 +90,15 @@ export default async function Dashboard() {
   const vendas = porMarketplace.reduce((s, r) => s + r.total, 0);
   const qtdPedidos = porMarketplace.reduce((s, r) => s + r.pedidos, 0);
   const [qtdClientes, qtdProdutos] = totais;
-  const [emp, qtdRegras, qtdContas, chaves, qtdProdTotal] = setup;
+  const [emp, qtdRegras, qtdContas, chaves, qtdProdTotal, cert] = setup;
+  const diasCert = cert ? diasParaVencer(cert.validoAte) : null;
 
   const passos = [
     { ok: Boolean(emp?.cnpj), label: "Dados da empresa", href: "/configuracoes?aba=empresa" },
     { ok: qtdRegras > 0, label: "Matriz fiscal", href: "/fiscal" },
     { ok: qtdProdTotal > 0, label: "Primeiro produto", href: "/produtos/novo" },
     { ok: Boolean(chaves["focusnfe.token"]), label: "Emissão de NF-e (Focus)", href: "/configuracoes?aba=integracoes" },
+    { ok: diasCert !== null && diasCert >= 0, label: "Certificado A1", href: "/configuracoes?aba=certificado" },
     { ok: qtdContas > 0, label: "Conectar marketplaces", href: "/marketplaces" },
     { ok: Boolean(chaves["gemini.apiKey"]), label: "IA Gemini", href: "/configuracoes?aba=integracoes" },
   ];
@@ -113,6 +117,17 @@ export default async function Dashboard() {
         </Link>
       </div>
 
+      {diasCert !== null && diasCert <= 30 ? (
+        <div className="mb-6">
+          <Alert tone={diasCert < 0 ? "red" : "gold"}>
+            {diasCert < 0 ? "O certificado digital A1 está vencido: as notas não serão emitidas." : `O certificado digital A1 vence em ${diasCert} dias.`}{" "}
+            <Link href="/configuracoes?aba=certificado" className="font-semibold underline">
+              Trocar certificado
+            </Link>
+          </Alert>
+        </div>
+      ) : null}
+
       {pendentes > 0 ? (
         <Card className="mb-6 p-5">
           <div className="mb-3 flex items-center justify-between">
@@ -121,7 +136,7 @@ export default async function Dashboard() {
               {passos.length - pendentes} de {passos.length} concluídos
             </span>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
             {passos.map((p) => (
               <Link
                 key={p.label}

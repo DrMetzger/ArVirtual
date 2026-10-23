@@ -150,6 +150,12 @@ export async function emitirNota(id: string) {
   await requireUser();
   const nota = await db.query.notas.findFirst({ where: eq(notas.id, id) });
   if (!nota || !["rascunho", "erro"].includes(nota.status)) return;
+  const cert = await db.query.certificadoDigital.findFirst({ columns: { validoAte: true } });
+  if (cert && cert.validoAte.getTime() < Date.now()) {
+    await db.update(notas).set({ status: "erro", mensagem: "Certificado digital A1 vencido. Troque em Configurações › Certificado A1." }).where(eq(notas.id, id));
+    revalidatePath(`/notas/${id}`);
+    return;
+  }
   try {
     const { emp, cliente, endereco, calc } = await calcular({
       clienteId: nota.clienteId,

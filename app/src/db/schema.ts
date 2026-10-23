@@ -79,6 +79,21 @@ export const contasEmail = pgTable("contas_email", {
   ...timestamps,
 });
 
+/** Certificado digital A1 do emitente (linha única, id = 1). Arquivo e senha criptografados. */
+export const certificadoDigital = pgTable("certificado_digital", {
+  id: integer("id").primaryKey().default(1),
+  arquivoEnc: text("arquivo_enc").notNull(),
+  senhaEnc: text("senha_enc").notNull(),
+  nomeArquivo: text("nome_arquivo").notNull().default(""),
+  titular: text("titular").notNull().default(""),
+  cnpj: text("cnpj").notNull().default(""),
+  validoDe: timestamp("valido_de", { withTimezone: true }).notNull(),
+  validoAte: timestamp("valido_ate", { withTimezone: true }).notNull(),
+  enviadoFocusEm: timestamp("enviado_focus_em", { withTimezone: true }),
+  mensagemFocus: text("mensagem_focus").notNull().default(""),
+  ...timestamps,
+});
+
 // ---------- Clientes ----------
 export const clientes = pgTable(
   "clientes",
@@ -293,3 +308,4 @@ export type RegraFiscal = typeof regrasFiscais.$inferSelect;
 export type Empresa = typeof empresa.$inferSelect;
 export type ContaMarketplace = typeof contasMarketplace.$inferSelect;
 export type Nota = typeof notas.$inferSelect;
+export type CertificadoDigital = typeof certificadoDigital.$inferSelect;

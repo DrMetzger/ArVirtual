@@ -5,9 +5,10 @@ import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { contasEmail, empresa, usuarios } from "@/db/schema";
+import { certificadoDigital, contasEmail, empresa, usuarios } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { encrypt } from "@/lib/crypto";
+import { decrypt, encrypt } from "@/lib/crypto";
+import { enviarCertificadoFocus, lerCertificado } from "@/lib/fiscal/certificado";
 import { isValidCnpj } from "@/lib/documento";
 import { gerarComGemini } from "@/lib/gemini";
 import { enviarEmail } from "@/lib/mail";
@@ -191,4 +192,73 @@ export async function alterarSenha(_: FormState, form: FormData): Promise<FormSt
   } catch (e) {
     return falha(e);
   }
+}
+
+// ---------- Certificado digital A1 ----------
+async function enviarParaFocus(arquivo: Buffer, senha: string) {
+  const emp = await db.query.empresa.findFirst();
+  try {
+    if (!emp?.cnpj) throw new Error("Cadastre o CNPJ da empresa na aba Empresa.");
+    const msg = await enviarCertificadoFocus(arquivo, senha, emp.cnpj);
+    await db.update(certificadoDigital).set({ enviadoFocusEm: new Date(), mensagemFocus: msg }).where(eq(certificadoDigital.id, 1));
+    return { ok: true, msg };
+  } catch (e) {
+    const msg = (e as Error).message;
+    await db.update(certificadoDigital).set({ mensagemFocus: msg }).where(eq(certificadoDigital.id, 1));
+    return { ok: false, msg };
+  }
+}
+
+export async function salvarCertificado(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    await requireAdmin();
+    const file = form.get("arquivo");
+    const senha = String(form.get("senha") ?? "");
+    if (!(file instanceof File) || file.size === 0) return { erro: "Selecione o arquivo do certificado (.pfx ou .p12)." };
+    if (file.size > 100 * 1024) return { erro: "Arquivo grande demais para um certificado A1." };
+    if (!senha) return { erro: "Informe a senha do certificado." };
+
+    const arquivo = Buffer.from(await file.arrayBuffer());
+    const info = lerCertificado(arquivo, senha);
+    if (info.validoAte.getTime() < Date.now()) return { erro: `Certificado vencido em ${info.validoAte.toLocaleDateString("pt-BR")}.` };
+
+    const valores = {
+      arquivoEnc: encrypt(arquivo.toString("base64")),
+      senhaEnc: encrypt(senha),
+      nomeArquivo: file.name,
+      ...info,
+      enviadoFocusEm: null,
+      mensagemFocus: "",
+    };
+    await db.insert(certificadoDigital).values({ id: 1, ...valores }).onConflictDoUpdate({ target: certificadoDigital.id, set: valores });
+
+    const emp = await db.query.empresa.findFirst();
+    const aviso = emp?.cnpj && info.cnpj && emp.cnpj !== info.cnpj ? ` Atenção: o CNPJ do certificado (${info.cnpj}) é diferente do CNPJ da empresa (${emp.cnpj}).` : "";
+    const focus = await enviarParaFocus(arquivo, senha);
+    revalidatePath("/", "layout");
+    return focus.ok
+      ? { ok: `Certificado salvo e enviado à Focus NFe. ${focus.msg}${aviso}` }
+      : { ok: `Certificado salvo.${aviso}`, erro: `Não foi enviado à Focus: ${focus.msg}` };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
+export async function reenviarCertificadoFocus(): Promise<FormState> {
+  try {
+    await requireAdmin();
+    const cert = await db.query.certificadoDigital.findFirst();
+    if (!cert) return { erro: "Nenhum certificado cadastrado." };
+    const r = await enviarParaFocus(Buffer.from(decrypt(cert.arquivoEnc), "base64"), decrypt(cert.senhaEnc));
+    revalidatePath("/configuracoes");
+    return r.ok ? { ok: r.msg } : { erro: r.msg };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
+export async function removerCertificado() {
+  await requireAdmin();
+  await db.delete(certificadoDigital).where(eq(certificadoDigital.id, 1));
+  revalidatePath("/", "layout");
 }
