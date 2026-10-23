@@ -12,6 +12,8 @@ RUN npm run build && npm prune --omit=dev
 
 # ---------- execução ----------
 FROM node:22-alpine
+# Identifica as imagens deste app (limpeza no deploy sem tocar nas do outro sistema).
+LABEL app=arvirtual-app
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 UPLOAD_DIR=/app/uploads
 # xmllint: validação da NF-e no XSD oficial (esquemas em node_modules/@brasil-fiscal/nfe/schemas)

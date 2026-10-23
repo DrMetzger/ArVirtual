@@ -130,8 +130,16 @@ jobs:
           $SSH "docker network inspect farias-contabil_default >/dev/null" || {
             echo "::error::Rede farias-contabil_default não encontrada: o Caddy da VM precisa estar rodando."; exit 1; }
 
+      # A imagem é montada aqui no GitHub e só carregada na VM: o build do Next.js pesa (CPU e disco)
+      # e a VM é compartilhada com o outro sistema.
+      - name: Montar a imagem
+        run: docker build -t arvirtual-app:latest app
+
+      - name: Enviar a imagem para a VM
+        run: docker save arvirtual-app:latest | gzip -1 | $SSH "gunzip | docker load"
+
       - name: Subir containers
-        run: $SSH "cd '$VM_DIR' && docker compose up -d --build --remove-orphans"
+        run: $SSH "cd '$VM_DIR' && docker compose up -d --no-build --remove-orphans && docker image prune -f --filter label=app=arvirtual-app"
 
       - name: Checar o app na VM
         run: |

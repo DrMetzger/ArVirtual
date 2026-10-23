@@ -25,6 +25,8 @@ services:
       retries: 20
 
   app:
+    # No deploy a imagem chega pronta (montada no GitHub Actions); o build local continua funcionando.
+    image: arvirtual-app:latest
     build: .
     restart: unless-stopped
     env_file: .env
