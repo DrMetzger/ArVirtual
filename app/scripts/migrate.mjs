@@ -17,7 +17,7 @@ const senha = process.env.ADMIN_PASSWORD;
 const [{ total }] = await sql`select count(*)::int as total from usuarios`;
 if (total === 0) {
   if (!email || !senha) throw new Error("Primeiro acesso: defina ADMIN_EMAIL e ADMIN_PASSWORD.");
-  if (senha.length < 10) throw new Error("ADMIN_PASSWORD precisa ter ao menos 10 caracteres.");
+  if (senha.length < 6) throw new Error("ADMIN_PASSWORD precisa ter ao menos 6 caracteres.");
   await sql`insert into usuarios (nome, email, senha_hash, papel)
             values (${process.env.ADMIN_NAME || "Administrador"}, ${email}, ${await bcrypt.hash(senha, 12)}, 'admin')`;
   console.log(`Administrador criado: ${email}`);

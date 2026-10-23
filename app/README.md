@@ -36,69 +36,31 @@ Depois de mudar `src/db/schema.ts`, gere a migração com `npm run db:generate` 
 
 ## Deploy na VM
 
-O workflow `.github/workflows/app-deploy.yml` roda a cada push na `main` que mexa em `app/`:
-verifica tipos e build, envia os arquivos para a VM por SSH e sobe `db`, `app` e `caddy` com Docker Compose.
+O workflow `.github/workflows/app-deploy.yml` roda a cada push na `main` que mexa em `app/`. Ele verifica tipos e build,
+entra na VM por SSH com usuário e senha, instala o Docker se faltar, envia os arquivos e sobe `db`, `app` e `caddy`
+(HTTPS automático).
 
-### 1. Preparar a VM (uma vez)
+### Secrets (Settings › Secrets and variables › Actions)
 
-Ubuntu/Debian com acesso root:
+| Nome | Obrigatório | Valor |
+|---|---|---|
+| `VM_HOST` | sim | IP da VM |
+| `VM_USER` | não (padrão `root`) | usuário SSH |
+| `VM_PSW` | sim | senha SSH desse usuário |
+| `VM_PORT` | não (padrão 22) | porta SSH |
+| `ADMIN_EMAIL` | não (padrão `kleber@arvirtual.com.br`) | login do primeiro administrador |
+| `ADMIN_PASSWORD` | não | senha do primeiro administrador; sem ele, vale a mesma senha do `VM_PSW` (troque em Configurações › Usuários) |
+| `POSTGRES_PASSWORD`, `AUTH_SECRET`, `ENCRYPTION_KEY` | não | gerados automaticamente no primeiro deploy e guardados em `/opt/arvirtual-app/.env` na VM |
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/DrMetzger/ArVirtual/main/app/deploy/preparar-vm.sh | sudo bash -s -- deploy
-```
+O `.env` da VM é reaproveitado a cada deploy, então as chaves geradas nunca mudam sozinhas.
+**Não apague esse arquivo**: sem o `ENCRYPTION_KEY` original, as chaves de API salvas no sistema ficam ilegíveis.
 
-Instala Docker e rsync, cria o usuário `deploy`, a pasta `/opt/arvirtual-app` e libera as portas 22, 80 e 443.
-Depois gere um par de chaves e autorize a pública na VM:
+### DNS
 
-```bash
-ssh-keygen -t ed25519 -f arvirtual_deploy -N ""      # no seu computador
-ssh-copy-id -i arvirtual_deploy.pub deploy@IP_DA_VM   # ou cole em /home/deploy/.ssh/authorized_keys
-```
+No painel do domínio `arvirtual.com.br`, crie **tipo A, nome `app`, valor = IP da VM**. Um CNAME só serve se a VM tiver
+um nome de host em vez de IP. O último passo do workflow avisa se o DNS ainda não aponta para a VM.
 
-### 2. DNS
-
-Crie o registro do subdomínio `app` apontando para a VM:
-
-| Situação | Tipo | Nome | Valor |
-|---|---|---|---|
-| A VM tem IP fixo (o mais comum) | **A** | `app` | IP público da VM |
-| O provedor dá um nome de host (ex.: `xxx.cloudapp.azure.com`) | **CNAME** | `app` | esse nome de host |
-
-Um CNAME não pode apontar para um IP: com IP fixo, use registro A. Se o DNS estiver no Cloudflare, deixe como
-"DNS only" (nuvem cinza) até o primeiro certificado ser emitido.
-
-### 3. Secrets e Variables no GitHub
-
-**Settings › Secrets and variables › Actions**
-
-Secrets:
-
-| Nome | Valor |
-|---|---|
-| `VM_HOST` | IP ou nome da VM |
-| `VM_USER` | `deploy` |
-| `VM_SSH_KEY` | conteúdo da chave **privada** (`arvirtual_deploy`) |
-| `VM_PORT` | porta SSH (opcional, padrão 22) |
-| `POSTGRES_PASSWORD` | senha forte do banco |
-| `AUTH_SECRET` | `openssl rand -base64 48` |
-| `ENCRYPTION_KEY` | `openssl rand -base64 48` (**nunca troque depois de usar**) |
-| `ADMIN_EMAIL` | e-mail do primeiro administrador |
-| `ADMIN_PASSWORD` | senha inicial (10+ caracteres); troque depois em Configurações |
-
-Variables (opcionais):
-
-| Nome | Padrão |
-|---|---|
-| `APP_DOMAIN` | `app.arvirtual.com.br` |
-| `ADMIN_NAME` | `Administrador` |
-| `VM_APP_DIR` | `/opt/arvirtual-app` |
-
-Os valores não podem conter aspas simples (`'`).
-
-### 4. Publicar
-
-Faça merge na `main` ou rode **Actions › Deploy do aplicativo (VM) › Run workflow**. O banco e as imagens enviadas
-ficam em volumes Docker e sobrevivem aos deploys.
+A VM precisa das portas 80 e 443 livres (o Caddy usa as duas para o HTTPS); o workflow avisa se outro serviço estiver nelas.
 
 ## Integrações (cadastradas em Configurações › Integrações)
 
