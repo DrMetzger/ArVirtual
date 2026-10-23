@@ -56,26 +56,18 @@ jobs:
           sudo apt-get install -y -qq sshpass >/dev/null
           echo "SSH=sshpass -e ssh -p $VM_PORT -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $VM_USER@$VM_HOST" >> "$GITHUB_ENV"
 
-      - name: Preparar a VM (Docker, rsync, firewall)
+      # A VM é compartilhada com outro sistema: este deploy só mexe no projeto Docker
+      # "arvirtual-app" e na pasta $VM_DIR. Não altera firewall, portas nem outros containers.
+      - name: Preparar a VM (Docker e rsync, se faltarem)
         run: |
           $SSH "bash -s" <<'REMOTO'
           set -e
-          export DEBIAN_FRONTEND=noninteractive
           if ! command -v docker >/dev/null || ! command -v rsync >/dev/null; then
-            (apt-get update -qq && apt-get install -y -qq rsync curl ca-certificates) >/dev/null 2>&1 || (yum install -y rsync curl || dnf install -y rsync curl)
+            export DEBIAN_FRONTEND=noninteractive
+            (apt-get update -qq && apt-get install -y -qq rsync curl ca-certificates) >/dev/null 2>&1
             command -v docker >/dev/null || curl -fsSL https://get.docker.com | sh
-            systemctl enable --now docker || true
           fi
           docker compose version >/dev/null
-          if command -v ufw >/dev/null && ufw status | grep -q active; then ufw allow 80/tcp; ufw allow 443/tcp; ufw allow 443/udp; fi
-          echo "== Containers na VM =="
-          docker ps --format '{{.Names}} | {{.Image}} | {{.Ports}}'
-          echo "== Portas 80/443 =="
-          ss -ltnp 2>/dev/null | grep -E ':(80|443) ' || true
-          # O Caddy precisa das portas 80/443; avisa se outro serviço (fora deste app) estiver nelas.
-          ocupadas=$( (ss -ltnp 2>/dev/null | grep -E ':(80|443) ' | grep -v docker-proxy; \
-            docker ps --format '{{.Names}} {{.Ports}}' | grep -E '0\.0\.0\.0:(80|443)->' | grep -v '^arvirtual-app-') || true)
-          if [ -n "$ocupadas" ]; then echo "::error::As portas 80/443 da VM estão em uso por outro serviço:"; echo "$ocupadas"; exit 1; fi
           echo "VM pronta: $(docker --version)"
           REMOTO
 
@@ -87,6 +79,7 @@ jobs:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           ADMIN_NAME: ${{ vars.ADMIN_NAME || 'Kleber Metzger de Farias' }}
+          CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
         run: |
           $SSH "cat '$VM_DIR/.env' 2>/dev/null || true" > atual.env
           python3 - <<'PY'
@@ -114,6 +107,9 @@ jobs:
               "ADMIN_EMAIL": valor("ADMIN_EMAIL") or "kleber@arvirtual.com.br",
               "ADMIN_PASSWORD": admin_senha,
           }
+          if env.get("CF_TUNNEL_TOKEN"):
+              v["CF_TUNNEL_TOKEN"] = env["CF_TUNNEL_TOKEN"]
+              v["COMPOSE_PROFILES"] = "tunnel"  # liga o serviço cloudflared
           with open("app/.env", "w") as f:
               for k, val in v.items():
                   if "'" in val or "\n" in val:
@@ -132,7 +128,7 @@ jobs:
           $SSH "chmod 600 '$VM_DIR/.env'"
 
       - name: Subir containers
-        run: $SSH "cd '$VM_DIR' && docker compose up -d --build --remove-orphans && docker image prune -f >/dev/null"
+        run: $SSH "cd '$VM_DIR' && docker compose up -d --build --remove-orphans"
 
       - name: Checar o app na VM
         run: |
@@ -144,17 +140,17 @@ jobs:
             sleep 10
           done
 
-      - name: Checar DNS e HTTPS
+      - name: Checar o endereço público
+        env:
+          CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
         run: |
-          ip_dns=$(getent ahostsv4 "$APP_DOMAIN" | awk 'NR==1{print $1}')
-          ip_vm=$(getent ahostsv4 "$VM_HOST" | awk 'NR==1{print $1}')
-          if [ "$ip_dns" != "$ip_vm" ]; then
-            echo "::warning::$APP_DOMAIN aponta para '${ip_dns:-nada}', mas a VM é $ip_vm. Crie no DNS: tipo A, nome app, valor $ip_vm."
+          if [ -z "$CF_TUNNEL_TOKEN" ]; then
+            echo "::warning::App rodando na VM, mas ainda sem endereço público. Cadastre o secret CF_TUNNEL_TOKEN (Cloudflare Tunnel) para publicar https://$APP_DOMAIN."
             exit 0
           fi
           for i in $(seq 1 18); do
             curl -fsS "https://$APP_DOMAIN/api/health" && { echo; echo "No ar: https://$APP_DOMAIN"; exit 0; }
             sleep 10
           done
-          echo "::warning::DNS ok, mas o HTTPS ainda não respondeu (certificado sendo emitido?)."
-          $SSH "cd '$VM_DIR' && docker compose logs --tail 40 caddy"
+          echo "::warning::O túnel subiu, mas https://$APP_DOMAIN ainda não respondeu. Confira no painel da Cloudflare se o Public Hostname aponta para http://app:3000."
+          $SSH "cd '$VM_DIR' && docker compose logs --tail 40 cloudflared"
