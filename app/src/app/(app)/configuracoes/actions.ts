@@ -1,14 +1,16 @@
 "use server";
 
 import bcrypt from "bcryptjs";
-import { and, eq, ne } from "drizzle-orm";
+import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { certificadoDigital, contasEmail, empresa, usuarios } from "@/db/schema";
+import { certificadoDigital, contasEmail, empresa, notas, usuarios } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { decrypt, encrypt } from "@/lib/crypto";
-import { enviarCertificadoFocus, lerCertificado } from "@/lib/fiscal/certificado";
+import { encrypt } from "@/lib/crypto";
+import { lerCertificado } from "@/lib/fiscal/certificado";
+import { statusSefaz } from "@/lib/nfe/emissor";
+import { certificateFromPfx } from "@/lib/nfe/sefaz";
 import { isValidCnpj } from "@/lib/documento";
 import { gerarComGemini } from "@/lib/gemini";
 import { enviarEmail } from "@/lib/mail";
@@ -194,21 +196,7 @@ export async function alterarSenha(_: FormState, form: FormData): Promise<FormSt
   }
 }
 
-// ---------- Certificado digital A1 ----------
-async function enviarParaFocus(arquivo: Buffer, senha: string) {
-  const emp = await db.query.empresa.findFirst();
-  try {
-    if (!emp?.cnpj) throw new Error("Cadastre o CNPJ da empresa na aba Empresa.");
-    const msg = await enviarCertificadoFocus(arquivo, senha, emp.cnpj);
-    await db.update(certificadoDigital).set({ enviadoFocusEm: new Date(), mensagemFocus: msg }).where(eq(certificadoDigital.id, 1));
-    return { ok: true, msg };
-  } catch (e) {
-    const msg = (e as Error).message;
-    await db.update(certificadoDigital).set({ mensagemFocus: msg }).where(eq(certificadoDigital.id, 1));
-    return { ok: false, msg };
-  }
-}
-
+// ---------- Certificado digital A1 e emissão ----------
 export async function salvarCertificado(_: FormState, form: FormData): Promise<FormState> {
   try {
     await requireAdmin();
@@ -221,37 +209,66 @@ export async function salvarCertificado(_: FormState, form: FormData): Promise<F
     const arquivo = Buffer.from(await file.arrayBuffer());
     const info = lerCertificado(arquivo, senha);
     if (info.validoAte.getTime() < Date.now()) return { erro: `Certificado vencido em ${info.validoAte.toLocaleDateString("pt-BR")}.` };
+    // Confere se abre para assinar (mesmo caminho da emissão, aceita os A1 antigos em RC2/3DES).
+    certificateFromPfx(arquivo.toString("base64"), senha);
 
-    const valores = {
-      arquivoEnc: encrypt(arquivo.toString("base64")),
-      senhaEnc: encrypt(senha),
-      nomeArquivo: file.name,
-      ...info,
-      enviadoFocusEm: null,
-      mensagemFocus: "",
-    };
+    const valores = { arquivoEnc: encrypt(arquivo.toString("base64")), senhaEnc: encrypt(senha), nomeArquivo: file.name, ...info };
     await db.insert(certificadoDigital).values({ id: 1, ...valores }).onConflictDoUpdate({ target: certificadoDigital.id, set: valores });
 
     const emp = await db.query.empresa.findFirst();
-    const aviso = emp?.cnpj && info.cnpj && emp.cnpj !== info.cnpj ? ` Atenção: o CNPJ do certificado (${info.cnpj}) é diferente do CNPJ da empresa (${emp.cnpj}).` : "";
-    const focus = await enviarParaFocus(arquivo, senha);
+    // A SEFAZ exige a mesma raiz (8 primeiros dígitos) do CNPJ do emitente (rejeição 213).
+    const aviso =
+      emp?.cnpj && info.cnpj && emp.cnpj.slice(0, 8) !== info.cnpj.slice(0, 8)
+        ? ` Atenção: o CNPJ do certificado (${info.cnpj}) não é da empresa (${emp.cnpj}).`
+        : "";
     revalidatePath("/", "layout");
-    return focus.ok
-      ? { ok: `Certificado salvo e enviado à Focus NFe. ${focus.msg}${aviso}` }
-      : { ok: `Certificado salvo.${aviso}`, erro: `Não foi enviado à Focus: ${focus.msg}` };
+    return { ok: `Certificado salvo e pronto para assinar as notas.${aviso}` };
   } catch (e) {
     return falha(e);
   }
 }
 
-export async function reenviarCertificadoFocus(): Promise<FormState> {
+const EmissaoSchema = z.object({
+  ambienteNfe: z.enum(["homologacao", "producao"]),
+  serieNfe: z.coerce.number().int().min(0).max(999),
+  proximoNumeroNfe: z.coerce.number().int().min(1).max(999_999_999),
+  aliquotaCreditoSn: z.string().trim(),
+});
+
+export async function salvarEmissao(_: FormState, form: FormData): Promise<FormState> {
   try {
     await requireAdmin();
-    const cert = await db.query.certificadoDigital.findFirst();
-    if (!cert) return { erro: "Nenhum certificado cadastrado." };
-    const r = await enviarParaFocus(Buffer.from(decrypt(cert.arquivoEnc), "base64"), decrypt(cert.senhaEnc));
+    const parsed = EmissaoSchema.safeParse(Object.fromEntries(form));
+    if (!parsed.success) return { erro: parsed.error.issues[0]?.message };
+    const { aliquotaCreditoSn, ...d } = parsed.data;
+    // Não deixa voltar a numeração para um número já usado na série.
+    const [usado] = await db
+      .select({ max: sql<number | null>`max(${notas.numero})` })
+      .from(notas)
+      .where(and(eq(notas.serie, d.serieNfe), isNotNull(notas.numero)));
+    if (usado?.max && d.proximoNumeroNfe <= usado.max) {
+      return { erro: `A série ${d.serieNfe} já usou até o número ${usado.max}: o próximo precisa ser maior.` };
+    }
+    const credito = aliquotaCreditoSn ? Number(aliquotaCreditoSn.replace(",", ".")) : null;
+    await db
+      .insert(empresa)
+      .values({ id: 1, ...d, aliquotaCreditoSn: credito })
+      .onConflictDoUpdate({ target: empresa.id, set: { ...d, aliquotaCreditoSn: credito } });
     revalidatePath("/configuracoes");
-    return r.ok ? { ok: r.msg } : { erro: r.msg };
+    return {
+      ok: d.ambienteNfe === "producao" ? "Emissão em PRODUÇÃO: as notas têm valor fiscal." : "Emissão em homologação (testes, sem valor fiscal).",
+    };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
+export async function testarSefaz(): Promise<FormState> {
+  try {
+    await requireAdmin();
+    const r = await statusSefaz();
+    const msg = `SEFAZ ${r.uf} (${r.ambiente === "producao" ? "produção" : "homologação"}): ${r.mensagem}`;
+    return r.online ? { ok: msg } : { erro: msg };
   } catch (e) {
     return falha(e);
   }

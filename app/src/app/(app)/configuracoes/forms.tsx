@@ -12,12 +12,13 @@ import {
   criarUsuario,
   excluirContaEmail,
   excluirUsuario,
-  reenviarCertificadoFocus,
   removerCertificado,
   salvarCertificado,
   salvarContaEmail,
+  salvarEmissao,
   salvarEmpresa,
   salvarIntegracoes,
+  testarSefaz,
   testarContaEmail,
   testarGemini,
   type FormState,
@@ -49,7 +50,7 @@ export function EmpresaForm({ empresa }: { empresa: Empresa | null }) {
   return (
     <form onSubmit={onSubmit} className="grid gap-6">
       <Card>
-        <CardHeader title="Emitente" description="Dados que saem na NF-e. O CNPJ precisa ser o mesmo cadastrado na Focus NFe." />
+        <CardHeader title="Emitente" description="Dados que saem na NF-e. O CNPJ precisa ser o mesmo do certificado A1." />
         <div className="grid gap-4 p-5 sm:grid-cols-6">
           <Field label="CNPJ" className="sm:col-span-2" error={erroBusca}>
             <div className="flex gap-2">
@@ -412,21 +413,58 @@ export function Usuarios({
   );
 }
 
-// ---------- Certificado digital A1 ----------
-type CertInfo = {
-  titular: string;
-  cnpj: string;
-  nomeArquivo: string;
-  validoDe: string;
-  validoAte: string;
-  dias: number;
-  enviadoFocusEm: string | null;
-  mensagemFocus: string;
-};
+// ---------- Certificado digital A1 e emissão ----------
+type CertInfo = { titular: string; cnpj: string; nomeArquivo: string; validoDe: string; validoAte: string; dias: number };
+type Emissao = { ambienteNfe: "homologacao" | "producao"; serieNfe: number; proximoNumeroNfe: number; aliquotaCreditoSn: number | null; regime: number };
 
-export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cnpjEmpresa: string }) {
+function EmissaoNfe({ emissao }: { emissao: Emissao }) {
+  const [state, onSubmit, pending] = useFormAction(salvarEmissao, null);
+  const [teste, setTeste] = useState<FormState>(null);
+  const [testando, start] = useTransition();
+  const [ambiente, setAmbiente] = useState(emissao.ambienteNfe);
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader
+        title="Emissão da NF-e"
+        description="Direto na SEFAZ, assinada com o certificado A1 (sem intermediário e sem mensalidade)."
+        action={<Badge tone={ambiente === "producao" ? "green" : "gold"}>{ambiente === "producao" ? "Produção" : "Homologação"}</Badge>}
+      />
+      <form onSubmit={onSubmit} className="grid gap-4 p-5 sm:grid-cols-4">
+        <Field label="Ambiente" hint="Comece em homologação (notas de teste, sem valor fiscal)">
+          <Select name="ambienteNfe" value={ambiente} onChange={(e) => setAmbiente(e.target.value as Emissao["ambienteNfe"])}>
+            <option value="homologacao">Homologação (testes)</option>
+            <option value="producao">Produção (valor fiscal)</option>
+          </Select>
+        </Field>
+        <Field label="Série">
+          <Input name="serieNfe" type="number" min={0} max={999} defaultValue={emissao.serieNfe} />
+        </Field>
+        <Field label="Próximo número" hint="Só avança; números pulados devem ser inutilizados">
+          <Input name="proximoNumeroNfe" type="number" min={1} defaultValue={emissao.proximoNumeroNfe} />
+        </Field>
+        <Field label="Crédito ICMS Simples (%)" hint="Só para CSOSN 101/201">
+          <Input name="aliquotaCreditoSn" inputMode="decimal" defaultValue={emissao.aliquotaCreditoSn ?? ""} disabled={emissao.regime === 3} />
+        </Field>
+        <div className="grid gap-3 sm:col-span-4">
+          {ambiente === "producao" ? <Alert tone="gold">Em produção as notas têm valor fiscal e são enviadas de verdade para a SEFAZ.</Alert> : null}
+          <Feedback state={state} />
+          <Feedback state={teste} />
+          <div className="flex flex-wrap justify-end gap-2">
+            <Button type="button" variant="outline" disabled={testando} onClick={() => start(async () => setTeste(await testarSefaz()))}>
+              {testando ? <Loader2 className="animate-spin" /> : <Send />} Testar comunicação com a SEFAZ
+            </Button>
+            <SubmitButton pending={pending} pendingText="Salvando...">
+              Salvar emissão
+            </SubmitButton>
+          </div>
+        </div>
+      </form>
+    </Card>
+  );
+}
+
+export function CertificadoA1({ cert, cnpjEmpresa, emissao }: { cert: CertInfo | null; cnpjEmpresa: string; emissao: Emissao }) {
   const [state, onSubmit, pending] = useFormAction(salvarCertificado, null);
-  const [reenvio, setReenvio] = useState<FormState>(null);
   const [ocupado, start] = useTransition();
   const tom = !cert ? "neutral" : cert.dias < 0 ? "red" : cert.dias <= 30 ? "gold" : "green";
 
@@ -435,7 +473,7 @@ export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cn
       <Card>
         <CardHeader
           title="Certificado digital A1"
-          description="Usado para assinar as NF-e. Fica criptografado no sistema e é enviado à Focus NFe."
+          description="Assina as NF-e. Arquivo e senha ficam criptografados e nunca voltam para a tela."
           action={
             <Badge tone={tom}>
               {!cert ? "Não cadastrado" : cert.dias < 0 ? "Vencido" : cert.dias <= 30 ? `Vence em ${cert.dias} dias` : "Válido"}
@@ -454,8 +492,8 @@ export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cn
                 <p className="text-xs text-muted">{cert.nomeArquivo}</p>
               </div>
             </div>
-            {cnpjEmpresa && cert.cnpj && cnpjEmpresa !== cert.cnpj ? (
-              <Alert>O CNPJ do certificado é diferente do CNPJ da empresa ({formatDocumento(cnpjEmpresa)}). A SEFAZ vai rejeitar as notas.</Alert>
+            {cnpjEmpresa && cert.cnpj && cnpjEmpresa.slice(0, 8) !== cert.cnpj.slice(0, 8) ? (
+              <Alert>O CNPJ do certificado não é o da empresa ({formatDocumento(cnpjEmpresa)}). A SEFAZ vai rejeitar as notas (213).</Alert>
             ) : null}
             <div className="grid grid-cols-2 gap-3">
               <div className="rounded-xl bg-surface-2 p-3">
@@ -467,15 +505,7 @@ export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cn
                 <p className={`font-semibold ${cert.dias <= 30 ? "text-red" : ""}`}>{cert.validoAte}</p>
               </div>
             </div>
-            <div className="rounded-xl border border-border p-3">
-              <p className="text-xs uppercase tracking-wide text-muted">Focus NFe</p>
-              <p className={cert.enviadoFocusEm ? "text-green" : "text-red"}>
-                {cert.enviadoFocusEm ? `Enviado em ${cert.enviadoFocusEm}. ` : "Ainda não enviado. "}
-                {cert.mensagemFocus}
-              </p>
-            </div>
-            <Feedback state={reenvio} />
-            <div className="flex flex-wrap justify-end gap-2">
+            <div className="flex justify-end">
               <Button
                 variant="ghost"
                 className="hover:text-red"
@@ -483,9 +513,6 @@ export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cn
                 onClick={() => confirm("Remover o certificado do sistema?") && start(() => removerCertificado())}
               >
                 <Trash2 /> Remover
-              </Button>
-              <Button variant="outline" disabled={ocupado} onClick={() => start(async () => setReenvio(await reenviarCertificadoFocus()))}>
-                {ocupado ? <Loader2 className="animate-spin" /> : <Send />} Reenviar à Focus
               </Button>
             </div>
           </div>
@@ -498,18 +525,25 @@ export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cn
         <CardHeader title={cert ? "Trocar certificado" : "Enviar certificado"} description="Arquivo .pfx ou .p12 (modelo A1) e a senha dele." />
         <form onSubmit={onSubmit} className="grid gap-4 p-5">
           <Field label="Arquivo do certificado">
-            <Input name="arquivo" type="file" accept=".pfx,.p12,application/x-pkcs12" required className="py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm" />
+            <Input
+              name="arquivo"
+              type="file"
+              accept=".pfx,.p12,application/x-pkcs12"
+              required
+              className="py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm"
+            />
           </Field>
           <Field label="Senha do certificado">
             <Input name="senha" type="password" autoComplete="off" required />
           </Field>
-          {state?.ok ? <Alert tone="green">{state.ok}</Alert> : null}
-          {state?.erro ? <Alert>{state.erro}</Alert> : null}
+          <Feedback state={state} />
           <SubmitButton pending={pending} pendingText="Validando...">
             <ShieldCheck /> Salvar certificado
           </SubmitButton>
         </form>
       </Card>
+
+      <EmissaoNfe emissao={emissao} />
     </div>
   );
 }

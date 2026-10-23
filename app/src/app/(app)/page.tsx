@@ -72,7 +72,7 @@ export default async function Dashboard() {
       db.query.empresa.findFirst({ columns: { cnpj: true } }),
       db.$count(regrasFiscais),
       db.$count(contasMarketplace),
-      getSettings(["gemini.apiKey", "focusnfe.token"]),
+      getSettings(["gemini.apiKey"]),
       db.$count(produtos),
       db.query.certificadoDigital.findFirst({ columns: { validoAte: true } }),
     ]),
@@ -97,7 +97,6 @@ export default async function Dashboard() {
     { ok: Boolean(emp?.cnpj), label: "Dados da empresa", href: "/configuracoes?aba=empresa" },
     { ok: qtdRegras > 0, label: "Matriz fiscal", href: "/fiscal" },
     { ok: qtdProdTotal > 0, label: "Primeiro produto", href: "/produtos/novo" },
-    { ok: Boolean(chaves["focusnfe.token"]), label: "Emissão de NF-e (Focus)", href: "/configuracoes?aba=integracoes" },
     { ok: diasCert !== null && diasCert >= 0, label: "Certificado A1", href: "/configuracoes?aba=certificado" },
     { ok: qtdContas > 0, label: "Conectar marketplaces", href: "/marketplaces" },
     { ok: Boolean(chaves["gemini.apiKey"]), label: "IA Gemini", href: "/configuracoes?aba=integracoes" },
@@ -136,7 +135,7 @@ export default async function Dashboard() {
               {passos.length - pendentes} de {passos.length} concluídos
             </span>
           </div>
-          <div className="grid gap-2 sm:grid-cols-4 lg:grid-cols-7">
+          <div className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6">
             {passos.map((p) => (
               <Link
                 key={p.label}

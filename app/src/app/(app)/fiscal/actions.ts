@@ -5,9 +5,10 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { regrasFiscais } from "@/db/schema";
+import { ncms, regrasFiscais } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { REGRAS_PADRAO_SIMPLES } from "@/lib/fiscal/matriz";
+import { completarNcm } from "@/lib/fiscal/ncm";
 import { onlyDigits, parseDecimal } from "@/lib/utils";
 
 export type FormState = { erro?: string } | null;
@@ -64,5 +65,30 @@ export async function excluirRegra(id: number) {
 export async function criarRegrasPadrao() {
   await requireUser();
   await db.insert(regrasFiscais).values(REGRAS_PADRAO_SIMPLES);
+  revalidatePath("/fiscal");
+}
+
+export async function descreverNcmIA(codigo: string) {
+  await requireUser();
+  const r = await completarNcm(codigo);
+  revalidatePath("/fiscal");
+  if (!r.ok) redirect(`/fiscal?ncmErro=${encodeURIComponent(`${codigo}: ${r.motivo}`)}`);
+}
+
+export async function salvarNcm(codigo: string, form: FormData) {
+  await requireUser();
+  const num = (k: string) => {
+    const v = String(form.get(k) ?? "").trim();
+    return v ? parseDecimal(v) : null;
+  };
+  const descricao = String(form.get("descricao") ?? "").trim();
+  await db
+    .update(ncms)
+    .set({
+      ...(descricao ? { descricao, pendente: false, fonte: "manual" as const } : {}),
+      aliquotaIpi: num("aliquotaIpi"),
+      aliquotaAproximada: num("aliquotaAproximada"),
+    })
+    .where(eq(ncms.codigo, codigo));
   revalidatePath("/fiscal");
 }

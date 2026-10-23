@@ -4,6 +4,7 @@ import { PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { clientes, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { FORMAS_PAGAMENTO } from "@/lib/nfe/emissor";
 import { NotaForm } from "../nota-form";
 
 export const metadata: Metadata = { title: "Nova nota fiscal" };
@@ -25,8 +26,8 @@ export default async function NovaNotaPage() {
   ]);
   return (
     <>
-      <PageHeader title="Nova nota fiscal" description="Monte a nota, confira os impostos calculados pela matriz fiscal e salve como rascunho para emitir." />
-      <NotaForm clientes={listaClientes} produtos={listaProdutos} />
+      <PageHeader title="Nova nota fiscal" description="Monte a nota, confira os impostos e salve como rascunho; a emissão vai direto para a SEFAZ." />
+      <NotaForm clientes={listaClientes} produtos={listaProdutos} formas={FORMAS_PAGAMENTO} />
     </>
   );
 }

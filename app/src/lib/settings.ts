@@ -10,9 +10,8 @@ export const SETTINGS = {
   "gemini.apiKey": { label: "Chave da API Gemini", secret: true, group: "IA (Google Gemini)" },
   "gemini.model": { label: "Modelo Gemini", secret: false, group: "IA (Google Gemini)", placeholder: "gemini-2.5-flash" },
 
-  "focusnfe.token": { label: "Token Focus NFe", secret: true, group: "Emissão de NF-e (Focus NFe)" },
-  "focusnfe.ambiente": { label: "Ambiente", secret: false, group: "Emissão de NF-e (Focus NFe)", options: ["homologacao", "producao"] },
-  "nfe.serie": { label: "Série da NF-e", secret: false, group: "Emissão de NF-e (Focus NFe)", placeholder: "1" },
+  "fiscal.difalSimples": { label: "Calcular DIFAL no Simples (venda interestadual a consumidor)", secret: false, group: "Fiscal", options: ["nao", "sim"] },
+  "fiscal.aproximadoPadrao": { label: "% aproximado de tributos (Lei 12.741) quando o NCM não tiver", secret: false, group: "Fiscal", placeholder: "0" },
 
   "serpro.consumerKey": { label: "Consumer Key", secret: true, group: "Consulta CPF (Serpro)" },
   "serpro.consumerSecret": { label: "Consumer Secret", secret: true, group: "Consulta CPF (Serpro)" },

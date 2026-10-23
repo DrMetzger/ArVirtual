@@ -3,9 +3,10 @@ import type { Nota } from "@/db/schema";
 
 const MAP: Record<Nota["status"], { label: string; tone: "neutral" | "blue" | "green" | "red" | "gold" }> = {
   rascunho: { label: "Rascunho", tone: "neutral" },
-  processando: { label: "Processando", tone: "gold" },
   autorizada: { label: "Autorizada", tone: "green" },
-  erro: { label: "Rejeitada", tone: "red" },
+  rejeitada: { label: "Rejeitada", tone: "red" },
+  denegada: { label: "Denegada", tone: "red" },
+  erro: { label: "Pendente na SEFAZ", tone: "gold" },
   cancelada: { label: "Cancelada", tone: "red" },
 };
 

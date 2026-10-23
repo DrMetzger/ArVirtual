@@ -8,6 +8,7 @@ import type { Produto } from "@/db/schema";
 import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
 import { formatBRL, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
+import { NcmField } from "./ncm-field";
 
 const ORIGENS = [
   "0 - Nacional",
@@ -65,15 +66,13 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
         </Card>
 
         <Card>
-          <CardHeader title="Fiscal" description="Esses campos definem a regra da matriz fiscal aplicada na nota." />
+          <CardHeader title="Fiscal" description="O NCM define a regra da matriz fiscal, o IPI e os tributos aproximados da nota." />
           <div className="grid gap-4 p-5 sm:grid-cols-6">
-            <Field label="NCM" className="sm:col-span-2" hint="Ex.: 3926.40.00 (artigos de plástico)">
-              <Input name="ncm" defaultValue={produto?.ncm} required inputMode="numeric" placeholder="39264000" />
-            </Field>
-            <Field label="CEST" className="sm:col-span-2" hint="Só se houver substituição tributária">
+            <NcmField defaultValue={produto?.ncm} />
+            <Field label="CEST" className="sm:col-span-3" hint="Só se houver substituição tributária">
               <Input name="cest" defaultValue={produto?.cest} inputMode="numeric" />
             </Field>
-            <Field label="Origem" className="sm:col-span-2">
+            <Field label="Origem" className="sm:col-span-3">
               <Select name="origem" defaultValue={produto?.origem ?? 0}>
                 {ORIGENS.map((o, i) => (
                   <option key={o} value={i}>

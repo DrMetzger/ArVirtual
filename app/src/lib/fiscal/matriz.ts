@@ -1,4 +1,5 @@
 import type { RegraFiscal } from "@/db/schema";
+import type { ItemTaxes } from "@/lib/nfe/tipos";
 import { round2 } from "@/lib/utils";
 
 export type ItemEntrada = {
@@ -19,29 +20,39 @@ export type ItemCalculado = ItemEntrada & {
   regraId: number;
   regraNome: string;
   cfop: string;
-  /** CSOSN no Simples Nacional, CST nos demais regimes. */
-  situacaoIcms: string;
-  aliqIcms: number;
-  valorIcms: number;
-  cstPis: string;
-  aliqPis: number;
-  valorPis: number;
-  cstCofins: string;
-  aliqCofins: number;
-  valorCofins: number;
-  cstIpi: string;
-  aliqIpi: number;
-  valorIpi: number;
+  /** Impostos no formato do motor do ERP Vanguard (é o que vai para o XML). */
+  taxes: ItemTaxes;
 };
 
 export type Contexto = {
   ufEmitente: string;
-  /** CRT: 1/2/4 = Simples/MEI, 3 = Regime Normal. */
+  /** CRT: 1 Simples, 2 Simples (excesso), 3 Regime Normal, 4 MEI. */
   regime: number;
   ufDestino: string;
-  /** indIEDest: 1 contribuinte; 2 e 9 tratados como não contribuinte. */
+  /** indIEDest: 1 contribuinte; 2 isento; 9 não contribuinte. */
   indicadorIe: number;
+  /** ICMS interno e FCP por UF. */
+  ufs: Map<string, { interna: number; fcp: number }>;
+  /** IPI e % aproximado de tributos do cadastro de NCM. */
+  ncmIpi: Map<string, number>;
+  ncmAproximado: Map<string, number>;
+  /** % de crédito de ICMS do Simples (CSOSN 101/201). */
+  creditoSn: number | null;
+  /** % aproximado de tributos quando o NCM não tem (Lei 12.741). */
+  aproximadoPadrao: number;
+  /** DIFAL em venda interestadual a não contribuinte: regime normal sempre; Simples só se ligado. */
+  difalSimples: boolean;
 };
+
+const SUL_SUDESTE = ["SP", "RJ", "MG", "PR", "SC", "RS"];
+const IMPORTADO = [1, 2, 3, 8];
+const CST_ST = ["10", "30", "70", "201", "202", "203"];
+
+/** Alíquota interestadual: 4% importado; 7% de Sul/Sudeste para N/NE/CO e ES; 12% nos demais. */
+export function aliquotaInterestadual(ufOrigem: string, ufDestino: string, origem: number) {
+  if (IMPORTADO.includes(origem)) return 4;
+  return SUL_SUDESTE.includes(ufOrigem) && !SUL_SUDESTE.includes(ufDestino) ? 7 : 12;
+}
 
 export function isSimples(regime: number) {
   return regime !== 3;
@@ -65,55 +76,115 @@ export function encontrarRegra(regras: RegraFiscal[], ncm: string, ctx: Contexto
   return candidatas[0] ?? null;
 }
 
+// Cálculo por item no estilo do motor do ERP Vanguard (taxes/tax-engine.ts), com CFOP/CST/alíquotas da matriz fiscal.
+// Ainda sem ICMS-ST (MVA) e sem IBS/CBS: CST de substituição gera aviso.
 export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: Contexto) {
   const interna = ctx.ufEmitente === ctx.ufDestino;
   const simples = isSimples(ctx.regime);
+  const ufOrigem = ctx.ufs.get(ctx.ufEmitente) ?? { interna: 18, fcp: 0 };
+  const ufDestino = ctx.ufs.get(ctx.ufDestino) ?? { interna: 18, fcp: 0 };
   const erros: string[] = [];
+  const avisos: string[] = [];
 
   const calculados: ItemCalculado[] = [];
-  for (const item of itens) {
+  itens.forEach((item, n) => {
     const regra = encontrarRegra(regras, item.ncm, ctx);
     if (!regra) {
       erros.push(`Nenhuma regra fiscal atende o item "${item.nome}" (NCM ${item.ncm}, UF ${ctx.ufDestino}).`);
-      continue;
+      return;
     }
-    const base = round2(item.quantidade * item.valorUnitario);
-    const situacaoIcms = simples ? regra.csosn : regra.cstIcms;
-    if (!situacaoIcms) {
-      erros.push(`A regra "${regra.nome}" não tem ${simples ? "CSOSN" : "CST de ICMS"} para o regime da empresa.`);
+    const valor = round2(item.quantidade * item.valorUnitario);
+    const regras_: string[] = [regra.nome];
+
+    // IPI (só quando a regra tem CST de IPI; alíquota da regra ou da TIPI do NCM)
+    let ipi: ItemTaxes["ipi"] = null;
+    if (regra.cstIpi) {
+      const aliq = regra.aliqIpi || ctx.ncmIpi.get(item.ncm) || 0;
+      ipi = { cst: regra.cstIpi, base: valor, rate: aliq, value: ["50", "99"].includes(regra.cstIpi) ? round2((valor * aliq) / 100) : 0 };
     }
-    // No Simples, o ICMS só é destacado com CSOSN 101/201/900; nos demais vai no DAS.
-    const destacaIcms = !simples || ["101", "201", "900"].includes(regra.csosn);
+
+    // ICMS próprio
+    const cst = (simples ? regra.csosn : regra.cstIcms) || (simples ? "102" : "00");
+    const inter = aliquotaInterestadual(ctx.ufEmitente, ctx.ufDestino, item.origem);
+    const aliq = regra.aliqIcms || (interna ? ufOrigem.interna : inter);
+    const tributado = simples ? cst === "900" : ["00", "10", "20", "70", "90"].includes(cst);
+    const icms: ItemTaxes["icms"] = {
+      cst,
+      base: tributado ? valor : 0,
+      rate: tributado ? aliq : 0,
+      value: tributado ? round2((valor * aliq) / 100) : 0,
+      reduction: 0,
+    };
+    if (simples && ["101", "201"].includes(cst)) {
+      icms.snCreditRate = ctx.creditoSn ?? 0;
+      icms.snCredit = round2((valor * (ctx.creditoSn ?? 0)) / 100);
+    }
+    if (CST_ST.includes(cst)) avisos.push(`Item ${n + 1}: CST/CSOSN ${cst} é de substituição tributária, que ainda não é calculada.`);
+
+    // FCP da operação interna (ICMS tributado)
+    const fcp: ItemTaxes["fcp"] =
+      interna && tributado && ufOrigem.fcp > 0 ? { base: icms.base, rate: ufOrigem.fcp, value: round2((icms.base * ufOrigem.fcp) / 100) } : null;
+
+    // DIFAL: venda interestadual a não contribuinte (EC 87/2015)
+    let difal: ItemTaxes["difal"] = null;
+    if (!interna && ctx.indicadorIe === 9 && ctx.regime !== 4 && (!simples || ctx.difalSimples)) {
+      difal = {
+        base: valor,
+        destRate: ufDestino.interna,
+        interRate: inter,
+        value: Math.max(0, round2((valor * (ufDestino.interna - inter)) / 100)),
+        fcpRate: ufDestino.fcp,
+        fcpValue: round2((valor * ufDestino.fcp) / 100),
+      };
+    }
+
+    // PIS e COFINS: só CST 01/02 têm base e valor (Simples/MEI recolhem no DAS)
+    const pisCofins = (c: string, a: number) => {
+      const trib = ["01", "02"].includes(c);
+      return { cst: c, base: trib ? valor : 0, rate: trib ? a : 0, value: trib ? round2((valor * a) / 100) : 0 };
+    };
+    const pis = pisCofins(regra.cstPis, regra.aliqPis);
+    const cofins = pisCofins(regra.cstCofins, regra.aliqCofins);
+
+    // Regras do MEI (NT 2024.001)
+    if (ctx.regime === 4) {
+      if (!["102", "300", "400", "900"].includes(cst)) avisos.push(`Item ${n + 1}: MEI só pode usar CSOSN 102, 300, 400 ou 900.`);
+      const cfop = interna ? regra.cfopInterno : regra.cfopInterestadual;
+      if (cst === "102" && !["5102", "6102"].includes(cfop)) avisos.push(`Item ${n + 1}: MEI com CSOSN 102 só pode usar CFOP 5102 ou 6102.`);
+    }
+
+    const aproximado = ctx.ncmAproximado.get(item.ncm) ?? ctx.aproximadoPadrao;
     calculados.push({
       ...item,
-      valorBruto: base,
+      valorBruto: valor,
       regraId: regra.id,
       regraNome: regra.nome,
       cfop: interna ? regra.cfopInterno : regra.cfopInterestadual,
-      situacaoIcms,
-      aliqIcms: destacaIcms ? regra.aliqIcms : 0,
-      valorIcms: destacaIcms ? round2((base * regra.aliqIcms) / 100) : 0,
-      cstPis: regra.cstPis,
-      aliqPis: regra.aliqPis,
-      valorPis: round2((base * regra.aliqPis) / 100),
-      cstCofins: regra.cstCofins,
-      aliqCofins: regra.aliqCofins,
-      valorCofins: round2((base * regra.aliqCofins) / 100),
-      cstIpi: regra.cstIpi,
-      aliqIpi: regra.aliqIpi,
-      valorIpi: round2((base * regra.aliqIpi) / 100),
+      taxes: {
+        icms,
+        st: null,
+        ipi,
+        fcp,
+        difal,
+        pis,
+        cofins,
+        freight: 0,
+        discount: 0,
+        approx: { rate: aproximado, value: round2((valor * aproximado) / 100) },
+        ibsCbs: null,
+        total: round2(valor + (ipi?.value ?? 0)),
+        rules: regras_,
+      },
     });
-  }
+  });
 
+  const soma = (f: (t: ItemTaxes) => number) => round2(calculados.reduce((s, i) => s + f(i.taxes), 0));
   const totalProdutos = round2(calculados.reduce((s, i) => s + i.valorBruto, 0));
-  const totalIpi = round2(calculados.reduce((s, i) => s + i.valorIpi, 0));
-  const totalImpostos = round2(
-    calculados.reduce((s, i) => s + i.valorIcms + i.valorPis + i.valorCofins + i.valorIpi, 0),
-  );
-  // IPI soma ao total da nota; ICMS/PIS/COFINS já estão "por dentro" do preço.
-  const totalNota = round2(totalProdutos + totalIpi);
+  const totalImpostos = soma((t) => t.icms.value + (t.fcp?.value ?? 0) + (t.ipi?.value ?? 0) + t.pis.value + t.cofins.value + (t.difal?.value ?? 0) + (t.difal?.fcpValue ?? 0));
+  // vNF = produtos + IPI (ICMS, PIS e COFINS ficam "por dentro"; DIFAL é recolhido à parte)
+  const totalNota = round2(totalProdutos + soma((t) => t.ipi?.value ?? 0));
 
-  return { itens: calculados, erros, interna, totalProdutos, totalImpostos, totalNota };
+  return { itens: calculados, erros, avisos, interna, totalProdutos, totalImpostos, totalNota };
 }
 
 /** Regras iniciais para quem está no Simples Nacional vendendo produto fabricado (impressão 3D). */

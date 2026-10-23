@@ -8,7 +8,7 @@ import { contasEmail, usuarios } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
 import { getSettingsForDisplay } from "@/lib/settings";
-import { cn, formatDate } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { CertificadoA1, ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
 
@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: "Configurações" };
 
 const ABAS = [
   { id: "empresa", label: "Empresa" },
-  { id: "certificado", label: "Certificado A1" },
+  { id: "certificado", label: "Certificado A1 e NF-e" },
   { id: "integracoes", label: "Integrações e APIs" },
   { id: "emails", label: "E-mails" },
   { id: "usuarios", label: "Usuários" },
@@ -32,7 +32,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
   const AJUDA: Record<string, React.ReactNode> = {
     "IA (Google Gemini)": "Gere a chave em aistudio.google.com › Get API key.",
-    "Emissão de NF-e (Focus NFe)": "Token em app.focusnfe.com.br. Use homologacao para testes e producao para valer.",
+    Fiscal: "Parâmetros do cálculo de impostos (a matriz fica em Matriz fiscal).",
     "Consulta CPF (Serpro)": "Opcional e pago: loja.serpro.gov.br › Consulta CPF. Sem ele, o CPF é só validado.",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
@@ -116,6 +116,13 @@ async function certificadoAba() {
   return (
     <CertificadoA1
       cnpjEmpresa={emp?.cnpj ?? ""}
+      emissao={{
+        ambienteNfe: emp?.ambienteNfe ?? "homologacao",
+        serieNfe: emp?.serieNfe ?? 1,
+        proximoNumeroNfe: emp?.proximoNumeroNfe ?? 1,
+        aliquotaCreditoSn: emp?.aliquotaCreditoSn ?? null,
+        regime: emp?.regime ?? 1,
+      }}
       cert={
         cert
           ? {
@@ -125,8 +132,6 @@ async function certificadoAba() {
               validoDe: data(cert.validoDe),
               validoAte: data(cert.validoAte),
               dias: diasParaVencer(cert.validoAte),
-              enviadoFocusEm: cert.enviadoFocusEm ? formatDate(cert.enviadoFocusEm) : null,
-              mensagemFocus: cert.mensagemFocus,
             }
           : null
       }
