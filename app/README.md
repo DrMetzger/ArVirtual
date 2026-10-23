@@ -20,7 +20,7 @@ dourado e o vermelho do logo).
 ## Tecnologias
 
 Next.js 16 (App Router, Server Actions) · React 19 · TypeScript · Tailwind CSS 4 · PostgreSQL 16 + Drizzle ORM ·
-Docker Compose · Cloudflare Tunnel (HTTPS).
+Docker Compose.
 
 ## Rodar localmente
 
@@ -37,8 +37,7 @@ Depois de mudar `src/db/schema.ts`, gere a migração com `npm run db:generate` 
 ## Deploy na VM
 
 O workflow `.github/workflows/app-deploy.yml` roda a cada push na `main` que mexa em `app/`. Ele verifica tipos e build,
-entra na VM por SSH com usuário e senha, instala o Docker se faltar, envia os arquivos e sobe `db`, `app` e, com o
-token configurado, o `cloudflared` (HTTPS pela Cloudflare).
+entra na VM por SSH com usuário e senha, instala o Docker se faltar, envia os arquivos e sobe `db` e `app`.
 
 ### Secrets (Settings › Secrets and variables › Actions)
 
@@ -50,24 +49,16 @@ token configurado, o `cloudflared` (HTTPS pela Cloudflare).
 | `VM_PORT` | não (padrão 22) | porta SSH |
 | `ADMIN_EMAIL` | não (padrão `kleber@arvirtual.com.br`) | login do primeiro administrador |
 | `ADMIN_PASSWORD` | não | senha do primeiro administrador; sem ele, vale a mesma senha do `VM_PSW` (troque em Configurações › Usuários) |
-| `CF_TUNNEL_TOKEN` | para ficar público | token do Cloudflare Tunnel (veja abaixo) |
 | `POSTGRES_PASSWORD`, `AUTH_SECRET`, `ENCRYPTION_KEY` | não | gerados automaticamente no primeiro deploy e guardados em `/opt/arvirtual-app/.env` na VM |
 
 O `.env` da VM é reaproveitado a cada deploy, então as chaves geradas nunca mudam sozinhas.
 **Não apague esse arquivo**: sem o `ENCRYPTION_KEY` original, as chaves de API salvas no sistema ficam ilegíveis.
 
-### Endereço público (Cloudflare Tunnel)
+### Acesso
 
-A VM é compartilhada com outro sistema, que já usa as portas 80/443. Por isso este app **não publica nenhuma porta**: ele
-sai pela internet via Cloudflare Tunnel, e o deploy só mexe no projeto Docker `arvirtual-app` e na pasta `/opt/arvirtual-app`.
-
-1. O domínio `arvirtual.com.br` precisa estar na Cloudflare (plano grátis). Ao adicionar, a Cloudflare importa os registros
-   atuais (o site continua no mesmo lugar); depois troque os nameservers no registro do domínio.
-2. Cloudflare › **Zero Trust › Networks › Tunnels › Create a tunnel** (tipo Cloudflared), nome `arvirtual-app`.
-3. Copie o **token** (o texto longo depois de `--token`) e cadastre no GitHub como secret `CF_TUNNEL_TOKEN`.
-4. Em **Public Hostname**: subdomínio `app`, domínio `arvirtual.com.br`, serviço `HTTP` e URL `app:3000`.
-   A Cloudflare cria o DNS de `app.arvirtual.com.br` sozinha.
-5. Rode o workflow de novo (Actions › Deploy do aplicativo (VM) › Run workflow).
+A VM é compartilhada com outro sistema, que usa as portas 80/443. Este app fica na porta **8080**
+(variable `APP_PORT` para trocar) e é acessado direto: `http://IP-DA-VM:8080`. O deploy só mexe no projeto
+Docker `arvirtual-app` e na pasta `/opt/arvirtual-app`.
 
 ## Integrações (cadastradas em Configurações › Integrações)
 
