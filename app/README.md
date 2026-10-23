@@ -54,12 +54,14 @@ entra na VM por SSH com usuário e senha, instala o Docker se faltar, envia os a
 O `.env` da VM é reaproveitado a cada deploy, então as chaves geradas nunca mudam sozinhas.
 **Não apague esse arquivo**: sem o `ENCRYPTION_KEY` original, as chaves de API salvas no sistema ficam ilegíveis.
 
-### Acesso
+### Acesso: https://app.arvirtual.com.br
 
-A VM é compartilhada com outro sistema, que usa as portas 80/443. Este app fica na porta **8080**
-(variable `APP_PORT` para trocar) e é acessado direto: **http://app.arvirtual.com.br:8080**
-(DNS: registro **A**, nome `app`, destino = IP da VM). O deploy só mexe no projeto
-Docker `arvirtual-app` e na pasta `/opt/arvirtual-app`.
+A VM é compartilhada com o sistema `farias-contabil`, cujo Caddy atende as portas 80/443 e emite o HTTPS. Este app não
+publica porta: ele entra na rede Docker `farias-contabil_default` com o nome `arvirtual-app`, e o Caddyfile do outro
+sistema tem o bloco `app.arvirtual.com.br { reverse_proxy arvirtual-app:3000 }`. O banco deste app usa o nome exclusivo
+`arvirtual-db` e não fica na rede do outro sistema.
+
+DNS: registro **A**, nome `app`, destino = IP da VM.
 
 ## Integrações (cadastradas em Configurações › Integrações)
 
