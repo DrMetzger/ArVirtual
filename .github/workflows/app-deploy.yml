@@ -46,6 +46,7 @@ jobs:
       SSHPASS: ${{ secrets.VM_PSW }}
       VM_DIR: ${{ vars.VM_APP_DIR || '/opt/arvirtual-app' }}
       APP_DOMAIN: ${{ vars.APP_DOMAIN || 'app.arvirtual.com.br' }}
+      APP_PORT: ${{ vars.APP_PORT || '8080' }}
     steps:
       - uses: actions/checkout@v4
 
@@ -79,7 +80,6 @@ jobs:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           ADMIN_NAME: ${{ vars.ADMIN_NAME || 'Kleber Metzger de Farias' }}
-          CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
         run: |
           $SSH "cat '$VM_DIR/.env' 2>/dev/null || true" > atual.env
           python3 - <<'PY'
@@ -102,14 +102,13 @@ jobs:
               "AUTH_SECRET": valor("AUTH_SECRET", novo),
               "ENCRYPTION_KEY": valor("ENCRYPTION_KEY", novo),
               "APP_DOMAIN": env["APP_DOMAIN"],
-              "APP_URL": f"https://{env['APP_DOMAIN']}",
+              "APP_PORT": env["APP_PORT"],
+              # Endereço de acesso direto: IP da VM + porta do app.
+              "APP_URL": f"http://{env['VM_HOST']}:{env['APP_PORT']}",
               "ADMIN_NAME": env["ADMIN_NAME"],
               "ADMIN_EMAIL": valor("ADMIN_EMAIL") or "kleber@arvirtual.com.br",
               "ADMIN_PASSWORD": admin_senha,
           }
-          if env.get("CF_TUNNEL_TOKEN"):
-              v["CF_TUNNEL_TOKEN"] = env["CF_TUNNEL_TOKEN"]
-              v["COMPOSE_PROFILES"] = "tunnel"  # liga o serviço cloudflared
           with open("app/.env", "w") as f:
               for k, val in v.items():
                   if "'" in val or "\n" in val:
@@ -127,6 +126,11 @@ jobs:
             app/ "$VM_USER@$VM_HOST:$VM_DIR/"
           $SSH "chmod 600 '$VM_DIR/.env'"
 
+      - name: Conferir se a porta do app está livre
+        run: |
+          $SSH "ss -ltnp | grep -E ':$APP_PORT\\b' | grep -v docker-proxy || true; docker ps --format '{{.Names}} {{.Ports}}' | grep -E ':$APP_PORT->' | grep -v '^arvirtual-app-' || true" > porta.txt
+          if [ -s porta.txt ]; then echo "::error::A porta $APP_PORT já está em uso na VM:"; cat porta.txt; echo "Defina outra na variable APP_PORT."; exit 1; fi
+
       - name: Subir containers
         run: $SSH "cd '$VM_DIR' && docker compose up -d --build --remove-orphans"
 
@@ -140,17 +144,10 @@ jobs:
             sleep 10
           done
 
-      - name: Checar o endereço público
-        env:
-          CF_TUNNEL_TOKEN: ${{ secrets.CF_TUNNEL_TOKEN }}
+      - name: Checar acesso pelo IP
         run: |
-          if [ -z "$CF_TUNNEL_TOKEN" ]; then
-            echo "::warning::App rodando na VM, mas ainda sem endereço público. Cadastre o secret CF_TUNNEL_TOKEN (Cloudflare Tunnel) para publicar https://$APP_DOMAIN."
-            exit 0
-          fi
-          for i in $(seq 1 18); do
-            curl -fsS "https://$APP_DOMAIN/api/health" && { echo; echo "No ar: https://$APP_DOMAIN"; exit 0; }
-            sleep 10
+          for i in $(seq 1 12); do
+            curl -fsS -m 10 "http://$VM_HOST:$APP_PORT/api/health" && { echo; echo "App no ar: http://<IP da VM>:$APP_PORT"; exit 0; }
+            sleep 5
           done
-          echo "::warning::O túnel subiu, mas https://$APP_DOMAIN ainda não respondeu. Confira no painel da Cloudflare se o Public Hostname aponta para http://app:3000."
-          $SSH "cd '$VM_DIR' && docker compose logs --tail 40 cloudflared"
+          echo "::warning::O app roda na VM, mas a porta $APP_PORT não respondeu de fora. Libere a porta $APP_PORT/TCP no firewall do provedor da VM."

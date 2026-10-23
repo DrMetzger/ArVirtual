@@ -1,4 +1,4 @@
-# Sobe banco e aplicativo, sem publicar portas na VM (ela é compartilhada com outro sistema).
+# Sobe banco e aplicativo. A VM é compartilhada: o app usa só a porta APP_PORT (padrão 8080).
 # As variáveis vêm do arquivo .env gerado pelo GitHub Actions (veja .env.example).
 # Nome fixo: tudo deste app fica isolado no projeto "arvirtual-app" (containers, rede e volumes).
 name: arvirtual-app
@@ -25,23 +25,14 @@ services:
     env_file: .env
     environment:
       UPLOAD_DIR: /app/uploads
+    # Acesso direto pelo IP da VM (as portas 80/443 são do outro sistema).
+    ports:
+      - "${APP_PORT:-8080}:3000"
     volumes:
       - uploads:/app/uploads
     depends_on:
       db:
         condition: service_healthy
-
-  # Publica https://app.arvirtual.com.br pela Cloudflare (conexão de saída):
-  # não usa nenhuma porta da VM. Só sobe quando CF_TUNNEL_TOKEN está definido.
-  cloudflared:
-    image: cloudflare/cloudflared:latest
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run
-    environment:
-      TUNNEL_TOKEN: ${CF_TUNNEL_TOKEN:-}
-    profiles: ["tunnel"]
-    depends_on:
-      - app
 
 volumes:
   pgdata:
