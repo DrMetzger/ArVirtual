@@ -3,8 +3,8 @@ const nextConfig = {
   poweredByHeader: false,
   serverExternalPackages: ["postgres", "nodemailer", "@brasil-fiscal/nfe", "node-forge", "js-brasil", "pdfkit"],
   experimental: {
-    // Upload de imagens de produto (até 5 MB cada).
-    serverActions: { bodySizeLimit: "25mb" },
+    // Upload de imagens (até 5 MB cada) e vídeos (até 30 MB cada) de produto.
+    serverActions: { bodySizeLimit: "150mb" },
   },
 };
 

@@ -1,5 +1,5 @@
 import "server-only";
-import { createHmac } from "node:crypto";
+import { createHash, createHmac } from "node:crypto";
 import { getSettings } from "@/lib/settings";
 import { lerResposta, MarketplaceError, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
 
@@ -78,6 +78,49 @@ async function enviarImagem(conta: ContaComToken, url: string) {
     { method: "POST", form },
   );
   return r.response.image_info.image_id;
+}
+
+const md5 = (b: Buffer) => createHash("md5").update(b).digest("hex");
+const PARTE_VIDEO = 4 * 1024 * 1024;
+
+/** Sobe o vídeo pela API de mídia (init → partes de 4 MB → complete) e espera a Shopee processar. */
+async function enviarVideo(conta: ContaComToken, url: string): Promise<string> {
+  const res = await fetch(url, { signal: AbortSignal.timeout(60_000) });
+  if (!res.ok) throw new MarketplaceError(`Não foi possível baixar o vídeo ${url}`);
+  const video = Buffer.from(await res.arrayBuffer());
+  const inicio = Date.now();
+
+  const init = await shopCall<ShopeeBase & { response: { video_upload_id: string } }>(conta, "/api/v2/media_space/init_video_upload", {
+    method: "POST",
+    body: { file_md5: md5(video), file_size: video.length },
+  });
+  const id = init.response.video_upload_id;
+  const partes: number[] = [];
+  for (let seq = 0, pos = 0; pos < video.length; seq++, pos += PARTE_VIDEO) {
+    const parte = video.subarray(pos, pos + PARTE_VIDEO);
+    const form = new FormData();
+    form.append("video_upload_id", id);
+    form.append("part_seq", String(seq));
+    form.append("content_md5", md5(parte));
+    form.append("part_content", new Blob([new Uint8Array(parte)]), "video.mp4");
+    await shopCall(conta, "/api/v2/media_space/upload_video_part", { method: "POST", form });
+    partes.push(seq);
+  }
+  await shopCall(conta, "/api/v2/media_space/complete_video_upload", {
+    method: "POST",
+    body: { video_upload_id: id, part_seq_list: partes, report_data: { upload_cost: Date.now() - inicio } },
+  });
+
+  // A Shopee converte o vídeo antes de liberar para o anúncio.
+  for (let i = 0; i < 20; i++) {
+    const r = await shopCall<ShopeeBase & { response: { status: string; message?: string } }>(conta, "/api/v2/media_space/get_video_upload_result", {
+      query: { video_upload_id: id },
+    });
+    if (r.response.status === "SUCCEEDED") return id;
+    if (r.response.status === "FAILED") throw new MarketplaceError(`Shopee recusou o vídeo: ${r.response.message || "falha na conversão"}`);
+    await new Promise((ok) => setTimeout(ok, 3000));
+  }
+  throw new MarketplaceError("A Shopee ainda está processando o vídeo; publique de novo em alguns minutos.");
 }
 
 export const shopee: MarketplaceAdapter = {
@@ -160,6 +203,17 @@ export const shopee: MarketplaceAdapter = {
     const imageIds: string[] = [];
     for (const url of produto.imagens.slice(0, 9)) imageIds.push(await enviarImagem(conta, url));
 
+    // Vídeo é opcional: se falhar, o anúncio sai sem ele e a tela avisa.
+    let videoId: string | null = null;
+    let aviso: string | undefined;
+    if (produto.videos[0]) {
+      try {
+        videoId = await enviarVideo(conta, produto.videos[0]);
+      } catch (e) {
+        aviso = `Anúncio publicado sem vídeo: ${(e as Error).message}`;
+      }
+    }
+
     const r = await shopCall<ShopeeBase & { response: { item_id: number } }>(conta, "/api/v2/product/add_item", {
       method: "POST",
       body: {
@@ -179,10 +233,11 @@ export const shopee: MarketplaceAdapter = {
         item_sku: produto.sku,
         condition: "NEW",
         brand: { brand_id: 0, original_brand_name: "NoBrand" },
+        ...(videoId ? { video_upload_id: [videoId] } : {}),
       },
     });
     const itemId = String(r.response.item_id);
-    return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}` };
+    return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
   },
 
   async pedidos(conta, desde) {

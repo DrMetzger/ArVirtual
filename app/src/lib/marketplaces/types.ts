@@ -22,7 +22,7 @@ export type DadosAnuncio = {
   categoria?: string;
 };
 
-export type ResultadoAnuncio = { idExterno: string; link: string };
+export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
 
 export type PedidoExterno = {
   idExterno: string;
