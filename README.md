@@ -1,6 +1,15 @@
 # ArVirtual: Pesquisa & Desenvolvimento
 
-Site institucional da ArVirtual: automação com ESP32/IoT, otimização de processos e integrações de marketplaces com TOTVS Protheus (ADVPL/TLPP).
+Este repositório tem duas partes independentes:
+
+| Pasta | O que é | Publicação |
+|---|---|---|
+| raiz (`index.html`, `assets/`) | Site institucional www.arvirtual.com.br | FTP (`deploy.yml`) |
+| [`app/`](app/README.md) | Aplicativo de gestão app.arvirtual.com.br | VM com Docker (`app-deploy.yml`) |
+
+## Site institucional
+
+Automação com ESP32/IoT, otimização de processos e integrações de marketplaces com TOTVS Protheus (ADVPL/TLPP).
 
 Site estático (HTML + CSS + JS, sem build), com tema claro e tema escuro em azul e dourado (botão no topo).
 
