@@ -1,6 +1,6 @@
 "use client";
 
-import { Loader2, Mail, Pencil, Plus, Search, Send, Sparkles, Trash2, UserPlus } from "lucide-react";
+import { Loader2, Mail, Pencil, Plus, Search, Send, ShieldCheck, Sparkles, Trash2, UserPlus } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
 import { AddressFields, emptyAddress, type AddressValues } from "@/components/address-fields";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select } from "@/components/ui";
@@ -12,6 +12,9 @@ import {
   criarUsuario,
   excluirContaEmail,
   excluirUsuario,
+  reenviarCertificadoFocus,
+  removerCertificado,
+  salvarCertificado,
   salvarContaEmail,
   salvarEmpresa,
   salvarIntegracoes,
@@ -403,6 +406,108 @@ export function Usuarios({
           </Field>
           <Feedback state={senhaState} />
           <SubmitButton pendingText="Alterando...">Alterar senha</SubmitButton>
+        </form>
+      </Card>
+    </div>
+  );
+}
+
+// ---------- Certificado digital A1 ----------
+type CertInfo = {
+  titular: string;
+  cnpj: string;
+  nomeArquivo: string;
+  validoDe: string;
+  validoAte: string;
+  dias: number;
+  enviadoFocusEm: string | null;
+  mensagemFocus: string;
+};
+
+export function CertificadoA1({ cert, cnpjEmpresa }: { cert: CertInfo | null; cnpjEmpresa: string }) {
+  const [state, onSubmit, pending] = useFormAction(salvarCertificado, null);
+  const [reenvio, setReenvio] = useState<FormState>(null);
+  const [ocupado, start] = useTransition();
+  const tom = !cert ? "neutral" : cert.dias < 0 ? "red" : cert.dias <= 30 ? "gold" : "green";
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <Card>
+        <CardHeader
+          title="Certificado digital A1"
+          description="Usado para assinar as NF-e. Fica criptografado no sistema e é enviado à Focus NFe."
+          action={
+            <Badge tone={tom}>
+              {!cert ? "Não cadastrado" : cert.dias < 0 ? "Vencido" : cert.dias <= 30 ? `Vence em ${cert.dias} dias` : "Válido"}
+            </Badge>
+          }
+        />
+        {cert ? (
+          <div className="grid gap-4 p-5 text-sm">
+            <div className="flex items-start gap-3">
+              <div className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-2 text-gold">
+                <ShieldCheck className="size-6" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-semibold">{cert.titular || "Titular não identificado"}</p>
+                <p className="text-muted">CNPJ {cert.cnpj ? formatDocumento(cert.cnpj) : "—"}</p>
+                <p className="text-xs text-muted">{cert.nomeArquivo}</p>
+              </div>
+            </div>
+            {cnpjEmpresa && cert.cnpj && cnpjEmpresa !== cert.cnpj ? (
+              <Alert>O CNPJ do certificado é diferente do CNPJ da empresa ({formatDocumento(cnpjEmpresa)}). A SEFAZ vai rejeitar as notas.</Alert>
+            ) : null}
+            <div className="grid grid-cols-2 gap-3">
+              <div className="rounded-xl bg-surface-2 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted">Válido desde</p>
+                <p className="font-semibold">{cert.validoDe}</p>
+              </div>
+              <div className="rounded-xl bg-surface-2 p-3">
+                <p className="text-xs uppercase tracking-wide text-muted">Válido até</p>
+                <p className={`font-semibold ${cert.dias <= 30 ? "text-red" : ""}`}>{cert.validoAte}</p>
+              </div>
+            </div>
+            <div className="rounded-xl border border-border p-3">
+              <p className="text-xs uppercase tracking-wide text-muted">Focus NFe</p>
+              <p className={cert.enviadoFocusEm ? "text-green" : "text-red"}>
+                {cert.enviadoFocusEm ? `Enviado em ${cert.enviadoFocusEm}. ` : "Ainda não enviado. "}
+                {cert.mensagemFocus}
+              </p>
+            </div>
+            <Feedback state={reenvio} />
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                variant="ghost"
+                className="hover:text-red"
+                disabled={ocupado}
+                onClick={() => confirm("Remover o certificado do sistema?") && start(() => removerCertificado())}
+              >
+                <Trash2 /> Remover
+              </Button>
+              <Button variant="outline" disabled={ocupado} onClick={() => start(async () => setReenvio(await reenviarCertificadoFocus()))}>
+                {ocupado ? <Loader2 className="animate-spin" /> : <Send />} Reenviar à Focus
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <p className="p-5 text-sm text-muted">Nenhum certificado cadastrado. Envie o arquivo .pfx ao lado.</p>
+        )}
+      </Card>
+
+      <Card>
+        <CardHeader title={cert ? "Trocar certificado" : "Enviar certificado"} description="Arquivo .pfx ou .p12 (modelo A1) e a senha dele." />
+        <form onSubmit={onSubmit} className="grid gap-4 p-5">
+          <Field label="Arquivo do certificado">
+            <Input name="arquivo" type="file" accept=".pfx,.p12,application/x-pkcs12" required className="py-2 file:mr-3 file:rounded-lg file:border-0 file:bg-surface-2 file:px-3 file:py-1 file:text-sm" />
+          </Field>
+          <Field label="Senha do certificado">
+            <Input name="senha" type="password" autoComplete="off" required />
+          </Field>
+          {state?.ok ? <Alert tone="green">{state.ok}</Alert> : null}
+          {state?.erro ? <Alert>{state.erro}</Alert> : null}
+          <SubmitButton pending={pending} pendingText="Validando...">
+            <ShieldCheck /> Salvar certificado
+          </SubmitButton>
         </form>
       </Card>
     </div>

@@ -8,13 +8,15 @@ import { contasEmail, usuarios } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
 import { getSettingsForDisplay } from "@/lib/settings";
-import { cn } from "@/lib/utils";
-import { ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
+import { cn, formatDate } from "@/lib/utils";
+import { diasParaVencer } from "@/lib/fiscal/certificado";
+import { CertificadoA1, ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
 
 export const metadata: Metadata = { title: "Configurações" };
 
 const ABAS = [
   { id: "empresa", label: "Empresa" },
+  { id: "certificado", label: "Certificado A1" },
   { id: "integracoes", label: "Integrações e APIs" },
   { id: "emails", label: "E-mails" },
   { id: "usuarios", label: "Usuários" },
@@ -60,6 +62,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
       {aba === "empresa" ? <EmpresaForm empresa={(await db.query.empresa.findFirst()) ?? null} /> : null}
 
+      {aba === "certificado" ? await certificadoAba() : null}
+
       {aba === "integracoes" ? (
         <div className="grid gap-6 xl:grid-cols-2">
           {Object.entries(
@@ -103,5 +107,29 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         />
       ) : null}
     </>
+  );
+}
+
+async function certificadoAba() {
+  const [cert, emp] = await Promise.all([db.query.certificadoDigital.findFirst(), db.query.empresa.findFirst()]);
+  const data = (d: Date) => new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo" }).format(d);
+  return (
+    <CertificadoA1
+      cnpjEmpresa={emp?.cnpj ?? ""}
+      cert={
+        cert
+          ? {
+              titular: cert.titular,
+              cnpj: cert.cnpj,
+              nomeArquivo: cert.nomeArquivo,
+              validoDe: data(cert.validoDe),
+              validoAte: data(cert.validoAte),
+              dias: diasParaVencer(cert.validoAte),
+              enviadoFocusEm: cert.enviadoFocusEm ? formatDate(cert.enviadoFocusEm) : null,
+              mensagemFocus: cert.mensagemFocus,
+            }
+          : null
+      }
+    />
   );
 }

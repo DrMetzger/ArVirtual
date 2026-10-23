@@ -15,7 +15,7 @@ dourado e o vermelho do logo).
 | **Notas fiscais** | Monta a nota, mostra os impostos de cada item e emite pela **Focus NFe** (homologação ou produção). DANFE, XML, cancelamento e envio por e-mail ao cliente. |
 | **Marketplaces** | Conexão OAuth com cada loja, publicação de anúncios a partir do catálogo e importação de pedidos para o dashboard. |
 | **Assistente IA** | Chat com o Gemini e geração de título/descrição de anúncio na página do produto. |
-| **Configurações** | Dados da empresa (emitente), chaves de API, contas de e-mail SMTP e usuários. Senhas e tokens ficam criptografados (AES-256-GCM). |
+| **Configurações** | Dados da empresa (emitente), certificado digital A1, chaves de API, contas de e-mail SMTP e usuários. Senhas e tokens ficam criptografados (AES-256-GCM). |
 
 ## Tecnologias
 
@@ -68,7 +68,7 @@ DNS: registro **A**, nome `app`, destino = IP da VM.
 | Integração | Onde obter | Observação |
 |---|---|---|
 | Google Gemini | aistudio.google.com › Get API key | Modelo padrão `gemini-2.5-flash`, configurável. |
-| Focus NFe | app.focusnfe.com.br | Precisa do certificado A1 da empresa cadastrado na Focus. Comece em homologação. |
+| Focus NFe | app.focusnfe.com.br | O certificado A1 é enviado em Configurações › Certificado A1 (valida senha, CNPJ e validade e repassa à Focus pela API de Empresas; se o token não tiver acesso a essa API, envie pelo painel da Focus). Comece em homologação. |
 | Serpro Consulta CPF | loja.serpro.gov.br | Opcional e pago. Sem ele, o CPF só é validado. |
 | Mercado Livre | developers.mercadolivre.com.br › Criar aplicação | Redirect URI: `https://app.arvirtual.com.br/api/marketplaces/mercadolivre/callback` |
 | Shopee | open.shopee.com › App (Seller in-house) | Redirect: `https://app.arvirtual.com.br/api/marketplaces/shopee/callback` |
