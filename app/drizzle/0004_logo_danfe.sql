@@ -1,0 +1,1 @@
+ALTER TABLE "empresa" ADD COLUMN "logo_arquivo" text DEFAULT '' NOT NULL;

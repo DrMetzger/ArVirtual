@@ -1,5 +1,4 @@
 import "server-only";
-import { GerarDanfeUseCase } from "@brasil-fiscal/nfe";
 import { count, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { clientes, empresa, enderecos, eventosNfe, notas, type Nota } from "@/db/schema";
@@ -7,6 +6,7 @@ import { calcularNota } from "@/lib/fiscal/calculo";
 import { carregarCertificado } from "@/lib/fiscal/certificado";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
 import { formatBRL, round2 } from "@/lib/utils";
+import { gerarDanfe } from "./danfe";
 import {
   AuditTransport,
   authorize,
@@ -389,6 +389,5 @@ export async function arquivoXml(id: string) {
 
 export async function danfePdf(id: string) {
   const f = await arquivoXml(id);
-  const pdf = await new GerarDanfeUseCase().execute(f.xml);
-  return { pdf: Buffer.from(pdf as Uint8Array), nome: f.nome.replace(/\.xml$/, ".pdf") };
+  return { pdf: await gerarDanfe(f.xml), nome: f.nome.replace(/\.xml$/, ".pdf") };
 }

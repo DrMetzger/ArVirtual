@@ -5,7 +5,8 @@ import { SESSION_COOKIE, verifySession } from "@/lib/session";
 // A autorização de verdade acontece em requireUser() nas páginas, ações e rotas.
 export async function proxy(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
-  const isLogin = req.nextUrl.pathname === "/login";
+  // /login e /login/verificar (código da verificação em duas etapas) são públicas.
+  const isLogin = req.nextUrl.pathname === "/login" || req.nextUrl.pathname.startsWith("/login/");
 
   if (!session && !isLogin) {
     if (req.nextUrl.pathname.startsWith("/api/")) {

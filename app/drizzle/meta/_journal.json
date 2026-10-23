@@ -22,6 +22,20 @@
       "when": 1792775724772,
       "tag": "0002_emissao_sefaz",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1792778286351,
+      "tag": "0003_dois_fatores",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792778637244,
+      "tag": "0004_logo_danfe",
+      "breakpoints": true
     }
   ]
 }
