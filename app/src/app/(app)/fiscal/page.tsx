@@ -1,13 +1,13 @@
-import { desc } from "drizzle-orm";
-import { Pencil, Plus, Scale, Trash2, Wand2 } from "lucide-react";
+import { asc, desc } from "drizzle-orm";
+import { Pencil, Plus, Scale, Sparkles, Trash2, Wand2 } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
-import { Alert, Badge, buttonClass, Card, EmptyState, PageHeader } from "@/components/ui";
+import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { regrasFiscais } from "@/db/schema";
+import { ncms, regrasFiscais } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { isSimples } from "@/lib/fiscal/matriz";
-import { criarRegrasPadrao, excluirRegra } from "./actions";
+import { criarRegrasPadrao, descreverNcmIA, excluirRegra, salvarNcm } from "./actions";
 import { RegraForm } from "./regra-form";
 
 export const metadata: Metadata = { title: "Matriz fiscal" };
@@ -15,12 +15,13 @@ export const metadata: Metadata = { title: "Matriz fiscal" };
 const DEST = { qualquer: "Qualquer", contribuinte: "Contribuinte", nao_contribuinte: "Não contribuinte" } as const;
 const REGIMES: Record<number, string> = { 1: "Simples Nacional", 2: "Simples (excesso de sublimite)", 3: "Regime Normal", 4: "MEI" };
 
-export default async function FiscalPage({ searchParams }: { searchParams: Promise<{ regra?: string }> }) {
+export default async function FiscalPage({ searchParams }: { searchParams: Promise<{ regra?: string; ncmErro?: string }> }) {
   await requireUser();
-  const { regra: regraParam } = await searchParams;
-  const [regras, emp] = await Promise.all([
+  const { regra: regraParam, ncmErro } = await searchParams;
+  const [regras, emp, listaNcm] = await Promise.all([
     db.select().from(regrasFiscais).orderBy(desc(regrasFiscais.prioridade), regrasFiscais.nome),
     db.query.empresa.findFirst(),
+    db.select().from(ncms).orderBy(desc(ncms.pendente), asc(ncms.codigo)),
   ]);
   const editando = regraParam === "nova" ? "nova" : regras.find((r) => String(r.id) === regraParam);
   const regime = emp?.regime ?? 1;
@@ -114,6 +115,59 @@ export default async function FiscalPage({ searchParams }: { searchParams: Promi
                             </button>
                           </form>
                         </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+        <Card>
+          <CardHeader
+            title="NCMs"
+            description="Criados automaticamente ao salvar produtos; a IA completa a descrição oficial e o IPI da TIPI."
+          />
+          {ncmErro ? (
+            <div className="px-5 pt-4">
+              <Alert>{ncmErro}</Alert>
+            </div>
+          ) : null}
+          {listaNcm.length === 0 ? (
+            <p className="p-5 text-sm text-muted">Nenhum NCM ainda: eles aparecem quando você cadastra produtos.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table-base">
+                <thead>
+                  <tr>
+                    <th>NCM</th>
+                    <th>Descrição</th>
+                    <th>IPI %</th>
+                    <th>Tributos aprox. %</th>
+                    <th />
+                  </tr>
+                </thead>
+                <tbody>
+                  {listaNcm.map((n) => (
+                    <tr key={n.codigo}>
+                      <td className="font-mono text-xs">{n.codigo}</td>
+                      <td colSpan={3}>
+                        <form action={salvarNcm.bind(null, n.codigo)} className="grid gap-2 sm:grid-cols-[1fr_90px_110px_auto] sm:items-center">
+                          <Input name="descricao" defaultValue={n.pendente ? "" : n.descricao} placeholder={n.descricao} className="h-9" />
+                          <Input name="aliquotaIpi" inputMode="decimal" defaultValue={n.aliquotaIpi ?? ""} className="h-9" />
+                          <Input name="aliquotaAproximada" inputMode="decimal" defaultValue={n.aliquotaAproximada ?? ""} className="h-9" />
+                          <button type="submit" className={buttonClass("ghost", "sm")}>
+                            Salvar
+                          </button>
+                        </form>
+                      </td>
+                      <td className="whitespace-nowrap text-right">
+                        {n.pendente ? <Badge tone="gold">pendente</Badge> : <Badge>{n.fonte === "ia" ? "IA" : n.fonte}</Badge>}
+                        <form action={descreverNcmIA.bind(null, n.codigo)} className="ml-1 inline">
+                          <button type="submit" className={buttonClass("ghost", "icon")} title="Buscar descrição com IA">
+                            <Sparkles className="text-gold" />
+                          </button>
+                        </form>
                       </td>
                     </tr>
                   ))}

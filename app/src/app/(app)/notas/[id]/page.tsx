@@ -1,16 +1,24 @@
-import { eq } from "drizzle-orm";
-import { ArrowLeft, Ban, Download, Mail, RefreshCw, Send, Trash2 } from "lucide-react";
+import { desc, eq } from "drizzle-orm";
+import { ArrowLeft, Ban, Download, FileText, Mail, PenLine, Send, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, Input, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { notas } from "@/db/schema";
+import { eventosNfe, notas } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
+import { FORMAS_PAGAMENTO } from "@/lib/nfe/emissor";
 import { formatBRL, formatCep, formatDate, formatDocumento } from "@/lib/utils";
-import { atualizarStatus, cancelarNota, emitirNota, enviarNotaPorEmail, excluirRascunho } from "../actions";
+import { cancelarNota, corrigirNota, emitirNota, enviarNotaPorEmail, excluirRascunho } from "../actions";
 import { StatusNota } from "../status";
+
+const TIPO_EVENTO: Record<string, string> = {
+  transmissao: "Transmissão",
+  consulta: "Consulta",
+  cancelamento: "Cancelamento",
+  cce: "Carta de correção",
+};
 
 export default async function NotaPage({
   params,
@@ -25,7 +33,22 @@ export default async function NotaPage({
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const nota = await db.query.notas.findFirst({ where: eq(notas.id, id), with: { cliente: true, endereco: true } });
   if (!nota) notFound();
+  const eventos = await db
+    .select({
+      id: eventosNfe.id,
+      tipo: eventosNfe.tipo,
+      codigo: eventosNfe.codigo,
+      mensagem: eventosNfe.mensagem,
+      protocolo: eventosNfe.protocolo,
+      sucesso: eventosNfe.sucesso,
+      criadoEm: eventosNfe.criadoEm,
+    })
+    .from(eventosNfe)
+    .where(eq(eventosNfe.notaId, id))
+    .orderBy(desc(eventosNfe.criadoEm), desc(eventosNfe.id));
   const itens = nota.itens as ItemCalculado[];
+  const emitivel = ["rascunho", "rejeitada", "erro"].includes(nota.status);
+  const forma = FORMAS_PAGAMENTO.find(([v]) => v === nota.formaPagamento)?.[1] ?? nota.formaPagamento;
 
   return (
     <>
@@ -33,49 +56,40 @@ export default async function NotaPage({
         <ArrowLeft className="size-4" /> Notas fiscais
       </Link>
       <PageHeader
-        title={nota.numero ? `NF-e ${nota.numero}${nota.serie ? ` · série ${nota.serie}` : ""}` : "Rascunho de NF-e"}
-        description={`${nota.naturezaOperacao} · criada em ${formatDate(nota.criadoEm)}`}
+        title={nota.numero ? `NF-e ${nota.numero} · série ${nota.serie}` : "Rascunho de NF-e"}
+        description={`${nota.naturezaOperacao} · ${forma} · criada em ${formatDate(nota.criadoEm)}`}
         actions={
           <>
-            {["rascunho", "erro"].includes(nota.status) ? (
-              <>
-                <form action={excluirRascunho.bind(null, id)}>
-                  <SubmitButton variant="outline">
-                    <Trash2 /> Excluir
-                  </SubmitButton>
-                </form>
-                <form action={emitirNota.bind(null, id)}>
-                  <SubmitButton variant="gold" pendingText="Enviando à SEFAZ...">
-                    <Send /> {nota.status === "erro" ? "Reenviar" : "Emitir NF-e"}
-                  </SubmitButton>
-                </form>
-              </>
-            ) : null}
-            {nota.status === "processando" || nota.status === "autorizada" ? (
-              <form action={atualizarStatus.bind(null, id)}>
-                <SubmitButton variant="outline" pendingText="Consultando...">
-                  <RefreshCw /> Atualizar status
+            {["rascunho", "rejeitada"].includes(nota.status) ? (
+              <form action={excluirRascunho.bind(null, id)}>
+                <SubmitButton variant="outline">
+                  <Trash2 /> Excluir
                 </SubmitButton>
               </form>
             ) : null}
+            {emitivel ? (
+              <form action={emitirNota.bind(null, id)}>
+                <SubmitButton variant="gold" pendingText="Transmitindo à SEFAZ...">
+                  <Send /> {nota.status === "rascunho" ? "Emitir NF-e" : nota.status === "erro" ? "Consultar e transmitir" : "Corrigir e reenviar"}
+                </SubmitButton>
+              </form>
+            ) : null}
+            {nota.xml ? (
+              <a href={`/api/notas/${id}/xml`} className={buttonClass("outline")}>
+                <Download /> XML
+              </a>
+            ) : null}
+            {nota.xmlProc ? (
+              <a href={`/api/notas/${id}/danfe`} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
+                <FileText /> DANFE
+              </a>
+            ) : null}
             {nota.status === "autorizada" ? (
-              <>
-                {nota.danfeUrl ? (
-                  <a href={nota.danfeUrl} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
-                    <Download /> DANFE
-                  </a>
-                ) : null}
-                {nota.xmlUrl ? (
-                  <a href={nota.xmlUrl} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
-                    <Download /> XML
-                  </a>
-                ) : null}
-                <form action={enviarNotaPorEmail.bind(null, id)}>
-                  <SubmitButton pendingText="Enviando...">
-                    <Mail /> Enviar ao cliente
-                  </SubmitButton>
-                </form>
-              </>
+              <form action={enviarNotaPorEmail.bind(null, id)}>
+                <SubmitButton pendingText="Enviando...">
+                  <Mail /> Enviar ao cliente
+                </SubmitButton>
+              </form>
             ) : null}
           </>
         }
@@ -85,11 +99,16 @@ export default async function NotaPage({
         <div className="flex flex-wrap items-center gap-2">
           <StatusNota status={nota.status} />
           <Badge tone={nota.ambiente === "producao" ? "blue" : "neutral"}>{nota.ambiente === "producao" ? "Produção" : "Homologação"}</Badge>
+          {nota.protocolo ? <span className="text-xs text-muted">Protocolo {nota.protocolo}</span> : null}
           {nota.chave ? <span className="font-mono text-xs text-muted">Chave {nota.chave}</span> : null}
         </div>
         {erro ? <Alert>{erro}</Alert> : null}
-        {aviso ? <Alert tone={aviso.startsWith("Falha") ? "red" : "green"}>{aviso}</Alert> : null}
-        {nota.mensagem ? <Alert tone={nota.status === "erro" ? "red" : "blue"}>SEFAZ / Focus NFe: {nota.mensagem}</Alert> : null}
+        {aviso ? <Alert tone="green">{aviso}</Alert> : null}
+        {nota.mensagem ? (
+          <Alert tone={nota.status === "autorizada" ? "green" : nota.status === "cancelada" ? "blue" : nota.status === "erro" ? "gold" : "red"}>
+            SEFAZ{nota.codigoSefaz ? ` ${nota.codigoSefaz}` : ""}: {nota.mensagem}
+          </Alert>
+        ) : null}
 
         <div className="grid gap-6 lg:grid-cols-3">
           <Card className="lg:col-span-1">
@@ -118,7 +137,7 @@ export default async function NotaPage({
                 <p className="text-xl font-bold">{formatBRL(nota.totalProdutos)}</p>
               </div>
               <div>
-                <p className="text-xs uppercase tracking-wide text-muted">Impostos destacados</p>
+                <p className="text-xs uppercase tracking-wide text-muted">Impostos</p>
                 <p className="text-xl font-bold">{formatBRL(nota.totalImpostos)}</p>
               </div>
               <div>
@@ -154,11 +173,12 @@ export default async function NotaPage({
                     <td className="font-mono text-xs">{i.ncm}</td>
                     <td className="font-mono text-xs">{i.cfop}</td>
                     <td className="text-xs">
-                      {i.situacaoIcms}
-                      {i.valorIcms ? ` · ${formatBRL(i.valorIcms)}` : ""}
+                      {i.taxes.icms.cst}
+                      {i.taxes.icms.value ? ` · ${formatBRL(i.taxes.icms.value)}` : ""}
+                      {i.taxes.difal ? <p className="text-muted">DIFAL {formatBRL(i.taxes.difal.value + i.taxes.difal.fcpValue)}</p> : null}
                     </td>
                     <td className="text-xs">
-                      {i.cstPis} / {i.cstCofins}
+                      {i.taxes.pis.cst} / {i.taxes.cofins.cst}
                     </td>
                     <td className="text-right text-xs">
                       {i.quantidade} × {formatBRL(i.valorUnitario)}
@@ -172,16 +192,54 @@ export default async function NotaPage({
         </Card>
 
         {nota.status === "autorizada" ? (
-          <Card>
-            <CardHeader title="Cancelar NF-e" description="Permitido em até 24 horas após a autorização, na maioria dos estados." />
-            <form action={cancelarNota.bind(null, id)} className="flex flex-wrap gap-2 p-5">
-              <Input name="justificativa" placeholder="Justificativa (mínimo 15 caracteres)" minLength={15} required className="flex-1" />
-              <SubmitButton variant="danger" pendingText="Cancelando...">
-                <Ban /> Cancelar nota
-              </SubmitButton>
-            </form>
-          </Card>
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card>
+              <CardHeader title="Carta de correção" description="Corrige dados que não alteram valores, impostos, destinatário ou data." />
+              <form action={corrigirNota.bind(null, id)} className="flex flex-wrap gap-2 p-5">
+                <Input name="correcao" placeholder="Texto da correção (mínimo 15 caracteres)" minLength={15} required className="flex-1" />
+                <SubmitButton variant="outline" pendingText="Enviando...">
+                  <PenLine /> Registrar
+                </SubmitButton>
+              </form>
+            </Card>
+            <Card>
+              <CardHeader title="Cancelar NF-e" description="Permitido em até 24 horas após a autorização, na maioria dos estados." />
+              <form action={cancelarNota.bind(null, id)} className="flex flex-wrap gap-2 p-5">
+                <Input name="justificativa" placeholder="Justificativa (mínimo 15 caracteres)" minLength={15} required className="flex-1" />
+                <SubmitButton variant="danger" pendingText="Cancelando...">
+                  <Ban /> Cancelar nota
+                </SubmitButton>
+              </form>
+            </Card>
+          </div>
         ) : null}
+
+        <Card>
+          <CardHeader title="Histórico na SEFAZ" description="Cada ida à SEFAZ fica registrada, com a resposta recebida." />
+          {eventos.length === 0 ? (
+            <p className="p-5 text-sm text-muted">Esta nota ainda não foi transmitida.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="table-base">
+                <tbody>
+                  {eventos.map((e) => (
+                    <tr key={e.id}>
+                      <td className="whitespace-nowrap text-xs text-muted">{formatDate(e.criadoEm)}</td>
+                      <td className="whitespace-nowrap font-semibold">{TIPO_EVENTO[e.tipo] ?? e.tipo}</td>
+                      <td>
+                        <Badge tone={e.sucesso ? "green" : "red"}>{e.codigo ?? "—"}</Badge>
+                      </td>
+                      <td className="text-sm">
+                        {e.mensagem}
+                        {e.protocolo ? <span className="ml-2 text-xs text-muted">Prot. {e.protocolo}</span> : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
       </div>
     </>
   );

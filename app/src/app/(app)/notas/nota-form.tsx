@@ -15,8 +15,17 @@ type ClienteOpt = {
 type ProdutoOpt = { id: string; sku: string; nome: string; preco: number; estoque: number };
 type Linha = { key: number; produtoId: string; quantidade: string; valorUnitario: string };
 
-export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produtos: ProdutoOpt[] }) {
+export function NotaForm({
+  clientes,
+  produtos,
+  formas,
+}: {
+  clientes: ClienteOpt[];
+  produtos: ProdutoOpt[];
+  formas: readonly (readonly [string, string])[];
+}) {
   const [clienteId, setClienteId] = useState("");
+  const [formaPagamento, setFormaPagamento] = useState("99");
   const [enderecoId, setEnderecoId] = useState("");
   const [linhas, setLinhas] = useState<Linha[]>([{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }]);
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -46,7 +55,7 @@ export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produ
     <div className="grid gap-6">
       <Card>
         <CardHeader title="Destinatário" />
-        <div className="grid gap-4 p-5 sm:grid-cols-2">
+        <div className="grid gap-4 p-5 sm:grid-cols-3">
           <Field label="Cliente">
             <Select
               value={clienteId}
@@ -70,6 +79,15 @@ export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produ
               {cliente?.enderecos.map((e) => (
                 <option key={e.id} value={e.id}>
                   {e.apelido} · {e.cidade}/{e.uf}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Forma de pagamento">
+            <Select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)}>
+              {formas.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
                 </option>
               ))}
             </Select>
@@ -165,13 +183,14 @@ export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produ
                     <td className="text-xs text-muted">{i.regraNome}</td>
                     <td className="font-mono text-xs">{i.cfop}</td>
                     <td className="text-xs">
-                      {i.situacaoIcms} · {formatBRL(i.valorIcms)}
+                      {i.taxes.icms.cst} · {formatBRL(i.taxes.icms.value)}
+                      {i.taxes.difal ? <p className="text-muted">DIFAL {formatBRL(i.taxes.difal.value + i.taxes.difal.fcpValue)}</p> : null}
                     </td>
                     <td className="text-xs">
-                      {i.cstPis} · {formatBRL(i.valorPis)}
+                      {i.taxes.pis.cst} · {formatBRL(i.taxes.pis.value)}
                     </td>
                     <td className="text-xs">
-                      {i.cstCofins} · {formatBRL(i.valorCofins)}
+                      {i.taxes.cofins.cst} · {formatBRL(i.taxes.cofins.value)}
                     </td>
                     <td className="text-right font-semibold">{formatBRL(i.valorBruto)}</td>
                   </tr>
@@ -191,6 +210,7 @@ export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produ
       ) : null}
 
       {preview?.erros?.length ? <Alert>{preview.erros.join(" ")}</Alert> : null}
+      {preview?.avisos?.length ? <Alert tone="gold">{preview.avisos.join(" ")}</Alert> : null}
       {preview?.erro || erro ? <Alert>{preview?.erro || erro}</Alert> : null}
 
       <div className="flex flex-wrap justify-end gap-2">
@@ -207,7 +227,7 @@ export function NotaForm({ clientes, produtos }: { clientes: ClienteOpt[]; produ
           disabled={salvando || !preview?.itens?.length || Boolean(preview.erros?.length)}
           onClick={() =>
             startSave(async () => {
-              const r = await criarNota(entrada);
+              const r = await criarNota({ ...entrada, formaPagamento });
               if (r?.erro) setErro(r.erro);
             })
           }

@@ -54,6 +54,12 @@ export const empresa = pgTable("empresa", {
   codigoIbge: text("codigo_ibge").notNull().default(""),
   telefone: text("telefone").notNull().default(""),
   email: text("email").notNull().default(""),
+  // Emissão da NF-e direto na SEFAZ
+  ambienteNfe: text("ambiente_nfe", { enum: ["homologacao", "producao"] }).notNull().default("homologacao"),
+  serieNfe: integer("serie_nfe").notNull().default(1),
+  proximoNumeroNfe: integer("proximo_numero_nfe").notNull().default(1),
+  /** % de crédito de ICMS do Simples (CSOSN 101/201), se houver. */
+  aliquotaCreditoSn: numeric("aliquota_credito_sn", { precision: 5, scale: 2, mode: "number" }),
   ...timestamps,
 });
 
@@ -89,8 +95,6 @@ export const certificadoDigital = pgTable("certificado_digital", {
   cnpj: text("cnpj").notNull().default(""),
   validoDe: timestamp("valido_de", { withTimezone: true }).notNull(),
   validoAte: timestamp("valido_ate", { withTimezone: true }).notNull(),
-  enviadoFocusEm: timestamp("enviado_focus_em", { withTimezone: true }),
-  mensagemFocus: text("mensagem_focus").notNull().default(""),
   ...timestamps,
 });
 
@@ -200,30 +204,76 @@ export const regrasFiscais = pgTable("regras_fiscais", {
   ...timestamps,
 });
 
+export const STATUS_NOTA = ["rascunho", "autorizada", "rejeitada", "denegada", "erro", "cancelada"] as const;
+
 export const notas = pgTable("notas", {
   id: uuid("id").primaryKey().defaultRandom(),
-  referencia: text("referencia").notNull().unique(),
   clienteId: uuid("cliente_id")
     .notNull()
     .references(() => clientes.id),
   enderecoId: uuid("endereco_id").references(() => enderecos.id, { onDelete: "set null" }),
-  status: text("status", { enum: ["rascunho", "processando", "autorizada", "erro", "cancelada"] })
-    .notNull()
-    .default("rascunho"),
+  status: text("status", { enum: STATUS_NOTA }).notNull().default("rascunho"),
   ambiente: text("ambiente", { enum: ["homologacao", "producao"] }).notNull().default("homologacao"),
   naturezaOperacao: text("natureza_operacao").notNull(),
-  numero: text("numero"),
-  serie: text("serie"),
+  /** tPag da NF-e: 99 outros (marketplace), 17 PIX, 03 crédito, 04 débito, 15 boleto, 01 dinheiro, 90 sem pagamento. */
+  formaPagamento: text("forma_pagamento").notNull().default("99"),
+  numero: integer("numero"),
+  serie: integer("serie"),
   chave: text("chave"),
-  danfeUrl: text("danfe_url"),
-  xmlUrl: text("xml_url"),
+  protocolo: text("protocolo"),
+  codigoSefaz: text("codigo_sefaz"),
+  /** XML assinado (NFe) e, depois de autorizado, o nfeProc (NFe + protocolo). */
+  xml: text("xml"),
+  xmlProc: text("xml_proc"),
+  emitidaEm: timestamp("emitida_em", { withTimezone: true }),
+  autorizadaEm: timestamp("autorizada_em", { withTimezone: true }),
   totalProdutos: money("total_produtos").notNull().default(0),
   totalImpostos: money("total_impostos").notNull().default(0),
   totalNota: money("total_nota").notNull().default(0),
   itens: jsonb("itens").notNull(),
-  resposta: jsonb("resposta"),
   mensagem: text("mensagem").notNull().default(""),
   ...timestamps,
+});
+
+/** Cada ida à SEFAZ (transmissão, consulta, cancelamento, CC-e, status), com request e response para auditoria. */
+export const eventosNfe = pgTable(
+  "eventos_nfe",
+  {
+    id: serial("id").primaryKey(),
+    notaId: uuid("nota_id").references(() => notas.id, { onDelete: "cascade" }),
+    tipo: text("tipo").notNull(),
+    ambiente: text("ambiente").notNull(),
+    servico: text("servico").notNull().default(""),
+    url: text("url").notNull().default(""),
+    requisicao: text("requisicao"),
+    resposta: text("resposta"),
+    codigo: text("codigo"),
+    mensagem: text("mensagem").notNull().default(""),
+    protocolo: text("protocolo"),
+    sucesso: boolean("sucesso").notNull().default(false),
+    sequencia: integer("sequencia"),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("eventos_nfe_nota_idx").on(t.notaId)],
+);
+
+/** Cadastro de NCM: criado automaticamente ao salvar produto; a IA completa descrição e IPI. */
+export const ncms = pgTable("ncms", {
+  codigo: text("codigo").primaryKey(),
+  descricao: text("descricao").notNull(),
+  aliquotaIpi: numeric("aliquota_ipi", { precision: 6, scale: 2, mode: "number" }),
+  /** % aproximado de tributos (Lei 12.741). */
+  aliquotaAproximada: numeric("aliquota_aproximada", { precision: 6, scale: 2, mode: "number" }),
+  pendente: boolean("pendente").notNull().default(true),
+  fonte: text("fonte", { enum: ["auto", "ia", "manual"] }).notNull().default("auto"),
+  ...timestamps,
+});
+
+/** ICMS interno e FCP de cada UF (valores de referência: conferir). */
+export const ufIcms = pgTable("uf_icms", {
+  uf: text("uf").primaryKey(),
+  aliquotaInterna: numeric("aliquota_interna", { precision: 5, scale: 2, mode: "number" }).notNull(),
+  aliquotaFcp: numeric("aliquota_fcp", { precision: 5, scale: 2, mode: "number" }).notNull().default(0),
 });
 
 // ---------- Marketplaces ----------
@@ -296,9 +346,13 @@ export const anunciosRelations = relations(anuncios, ({ one }) => ({
   produto: one(produtos, { fields: [anuncios.produtoId], references: [produtos.id] }),
   conta: one(contasMarketplace, { fields: [anuncios.contaId], references: [contasMarketplace.id] }),
 }));
-export const notasRelations = relations(notas, ({ one }) => ({
+export const notasRelations = relations(notas, ({ one, many }) => ({
   cliente: one(clientes, { fields: [notas.clienteId], references: [clientes.id] }),
   endereco: one(enderecos, { fields: [notas.enderecoId], references: [enderecos.id] }),
+  eventos: many(eventosNfe),
+}));
+export const eventosNfeRelations = relations(eventosNfe, ({ one }) => ({
+  nota: one(notas, { fields: [eventosNfe.notaId], references: [notas.id] }),
 }));
 
 export type Cliente = typeof clientes.$inferSelect;
@@ -309,3 +363,4 @@ export type Empresa = typeof empresa.$inferSelect;
 export type ContaMarketplace = typeof contasMarketplace.$inferSelect;
 export type Nota = typeof notas.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
+export type Ncm = typeof ncms.$inferSelect;

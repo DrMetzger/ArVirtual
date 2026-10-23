@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { anuncios, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
 import { salvarImagem } from "@/lib/uploads";
@@ -73,6 +74,8 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   }
 
   let produtoId = id;
+  // NCM novo entra no cadastro e a IA completa a descrição e o IPI (em segundo plano, como no ERP Vanguard).
+  void garantirNcm(valores.ncm);
   if (id) {
     await db.update(produtos).set({ ...valores, imagens }).where(eq(produtos.id, id));
   } else {
@@ -159,4 +162,15 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
   }
   revalidatePath(`/produtos/${produtoId}`);
   return resultados;
+}
+
+export async function sugerirNcmIA(produto: { nome: string; descricao: string; material: string }): Promise<{ erro?: string; sugestoes?: SugestaoNcm[] }> {
+  await requireUser();
+  if (produto.nome.trim().length < 3) return { erro: "Preencha o nome do produto primeiro." };
+  try {
+    const sugestoes = await sugerirNcm(produto);
+    return sugestoes.length ? { sugestoes } : { erro: "A IA não encontrou um NCM para este produto." };
+  } catch (e) {
+    return { erro: (e as Error).message };
+  }
 }

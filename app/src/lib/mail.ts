@@ -21,7 +21,7 @@ export async function enviarEmail(opts: {
   para: string;
   assunto: string;
   html: string;
-  anexos?: { filename: string; path: string }[];
+  anexos?: { filename: string; content: Buffer }[];
 }) {
   const conta = opts.contaId
     ? await db.query.contasEmail.findFirst({ where: eq(contasEmail.id, opts.contaId) })

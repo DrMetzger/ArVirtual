@@ -11,11 +11,11 @@ dourado e o vermelho do logo).
 | **Dashboard** | Vendas dos últimos 30 dias por marketplace, ticket médio, NF-e do mês, estoque baixo e checklist de configuração. |
 | **Clientes** | PF e PJ. CNPJ busca razão social, IE, situação e endereço na Receita (CNPJ.ws / BrasilAPI). CPF é validado; o nome vem do Serpro, se configurado. Vários endereços por cliente, com busca de CEP (base dos Correios via ViaCEP / BrasilAPI) e código IBGE. |
 | **Produtos** | Catálogo com NCM, CEST, origem, GTIN, dimensões e imagens. Para impressão 3D (Bambu Lab A1 mini): filamento e tempo calculam custo e preço sugerido. |
-| **Matriz fiscal** | Regras por NCM, UF de destino e tipo de cliente definindo CFOP (interno/interestadual), CSOSN/CST e alíquotas de ICMS, PIS, COFINS e IPI. Já traz regras sugeridas para o Simples Nacional. |
-| **Notas fiscais** | Monta a nota, mostra os impostos de cada item e emite pela **Focus NFe** (homologação ou produção). DANFE, XML, cancelamento e envio por e-mail ao cliente. |
+| **Matriz fiscal** | Regras por NCM, UF de destino e tipo de cliente definindo CFOP (interno/interestadual), CSOSN/CST e alíquotas. Cálculo no formato do motor do ERP Vanguard: ICMS interno por UF e interestadual 4/7/12%, FCP, DIFAL, PIS/COFINS, IPI do NCM, crédito do Simples e tributos aproximados. **NCM automático:** produto salvo com NCM novo entra no cadastro e o Gemini completa a descrição oficial e o IPI; no produto, a IA também sugere o NCM pela descrição. |
+| **Notas fiscais** | Emissão **direto na SEFAZ** com o certificado A1 (mesmo emissor do ERP Vanguard, sem intermediário e sem mensalidade): monta o XML 4.00, assina, valida no XSD oficial, transmite, consulta pela chave antes de reenviar, cancela, carta de correção, DANFE em PDF, envio por e-mail com XML e DANFE, e histórico de cada ida à SEFAZ. |
 | **Marketplaces** | Conexão OAuth com cada loja, publicação de anúncios a partir do catálogo e importação de pedidos para o dashboard. |
 | **Assistente IA** | Chat com o Gemini e geração de título/descrição de anúncio na página do produto. |
-| **Configurações** | Dados da empresa (emitente), certificado digital A1, chaves de API, contas de e-mail SMTP e usuários. Senhas e tokens ficam criptografados (AES-256-GCM). |
+| **Configurações** | Dados da empresa (emitente), certificado digital A1 e emissão (ambiente, série, numeração), chaves de API, contas de e-mail SMTP e usuários. Senhas e tokens ficam criptografados (AES-256-GCM). |
 
 ## Tecnologias
 
@@ -68,7 +68,6 @@ DNS: registro **A**, nome `app`, destino = IP da VM.
 | Integração | Onde obter | Observação |
 |---|---|---|
 | Google Gemini | aistudio.google.com › Get API key | Modelo padrão `gemini-2.5-flash`, configurável. |
-| Focus NFe | app.focusnfe.com.br | O certificado A1 é enviado em Configurações › Certificado A1 (valida senha, CNPJ e validade e repassa à Focus pela API de Empresas; se o token não tiver acesso a essa API, envie pelo painel da Focus). Comece em homologação. |
 | Serpro Consulta CPF | loja.serpro.gov.br | Opcional e pago. Sem ele, o CPF só é validado. |
 | Mercado Livre | developers.mercadolivre.com.br › Criar aplicação | Redirect URI: `https://app.arvirtual.com.br/api/marketplaces/mercadolivre/callback` |
 | Shopee | open.shopee.com › App (Seller in-house) | Redirect: `https://app.arvirtual.com.br/api/marketplaces/shopee/callback` |
@@ -83,4 +82,4 @@ As URLs de retorno também aparecem na tela **Marketplaces**.
 - **Magalu**: a integração segue a documentação pública da API de sellers. Escopos e campos dependem do que o Magalu
   liberar para o app; valide a primeira publicação e os pedidos com a conta real.
 - **Fiscal**: as regras sugeridas são um ponto de partida para o Simples Nacional. Confirme NCM, CFOP e CSOSN com o contador
-  antes de emitir em produção. DIFAL e ICMS-ST não são calculados automaticamente.
+  antes de emitir em produção. ICMS-ST (MVA) e IBS/CBS ainda não são calculados; DIFAL no Simples é opcional (Configurações › Integrações › Fiscal). Venda por marketplace sai com indicador de intermediador 0 (sem o grupo do intermediador).

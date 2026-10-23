@@ -14,6 +14,8 @@ RUN npm run build && npm prune --omit=dev
 FROM node:22-alpine
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 UPLOAD_DIR=/app/uploads
+# xmllint: validação da NF-e no XSD oficial (esquemas em node_modules/@brasil-fiscal/nfe/schemas)
+RUN apk add --no-cache libxml2-utils
 RUN addgroup -S app && adduser -S app -G app && mkdir -p /app/uploads && chown app:app /app/uploads
 COPY --from=build --chown=app:app /app/package.json /app/next.config.mjs ./
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
