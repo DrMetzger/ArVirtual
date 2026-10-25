@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
+import { movimentar } from "@/lib/estoque";
 import { salvarImagem, salvarVideo } from "@/lib/uploads";
 import { onlyDigits, parseDecimal } from "@/lib/utils";
 
@@ -40,7 +41,7 @@ async function origin() {
 }
 
 export async function salvarProduto(_: FormState, form: FormData): Promise<FormState> {
-  await requireUser();
+  const user = await requireUser();
   const raw = Object.fromEntries([...form.entries()].filter(([, v]) => typeof v === "string"));
   const parsed = ProdutoSchema.safeParse(raw);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos" };
@@ -78,11 +79,16 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   let produtoId = id;
   // NCM novo entra no cadastro e a IA completa a descrição e o IPI (em segundo plano, como no ERP Vanguard).
   void garantirNcm(valores.ncm);
+  // O saldo só muda pelo estoque (kardex): na edição é ignorado; no cadastro vira o saldo inicial.
+  const { estoque: inicial, ...semEstoque } = valores;
   if (id) {
-    await db.update(produtos).set({ ...valores, imagens, videos }).where(eq(produtos.id, id));
+    await db.update(produtos).set({ ...semEstoque, imagens, videos }).where(eq(produtos.id, id));
   } else {
-    const [novo] = await db.insert(produtos).values({ ...valores, imagens, videos }).returning({ id: produtos.id });
-    produtoId = novo!.id;
+    produtoId = await db.transaction(async (tx) => {
+      const [novo] = await tx.insert(produtos).values({ ...semEstoque, estoque: 0, imagens, videos }).returning({ id: produtos.id });
+      if (inicial > 0) await movimentar(tx, { produtoId: novo!.id, quantidade: inicial, tipo: "entrada", observacao: "Saldo inicial", usuarioId: user.sub });
+      return novo!.id;
+    });
   }
   revalidatePath("/produtos");
   redirect(`/produtos/${produtoId}?salvo=1`);

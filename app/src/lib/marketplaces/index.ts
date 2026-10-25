@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace, type ContaMarketplace, type Marketplace } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
+import { atualizarEstoqueDoPedido } from "@/lib/estoque";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
 import { shopee } from "./shopee";
@@ -82,10 +83,13 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
           entrega: p.entrega,
           dados: p.dados as object,
         };
-        await db
+        const [salvo] = await db
           .insert(pedidosMarketplace)
           .values({ contaId: conta.id, marketplace: conta.marketplace, idExterno: p.idExterno, ...valores })
-          .onConflictDoUpdate({ target: [pedidosMarketplace.marketplace, pedidosMarketplace.idExterno], set: { ...valores, atualizadoEm: new Date() } });
+          .onConflictDoUpdate({ target: [pedidosMarketplace.marketplace, pedidosMarketplace.idExterno], set: { ...valores, atualizadoEm: new Date() } })
+          .returning();
+        // Pago sai do estoque; cancelado depois de baixado volta.
+        if (salvo) await atualizarEstoqueDoPedido(salvo).catch((e: Error) => console.warn(`[estoque] pedido ${p.idExterno}: ${e.message}`));
       }
       await db.update(contasMarketplace).set({ ultimaSincronizacao: new Date() }).where(eq(contasMarketplace.id, conta.id));
       resultado.push({ conta: conta.nome, marketplace: conta.marketplace, pedidos: pedidos.length });

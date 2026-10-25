@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Boxes,
   ChevronDown,
   FileText,
   FolderOpen,
@@ -31,6 +32,7 @@ import { cn } from "@/lib/utils";
 type Item = { href: string; label: string; icon: LucideIcon };
 type Grupo = { label: string; icon: LucideIcon; itens: Item[] };
 
+// Módulos do backoffice, cada um no seu grupo.
 const NAV: (Item | Grupo)[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
   {
@@ -42,8 +44,19 @@ const NAV: (Item | Grupo)[] = [
       { href: "/fiscal", label: "Matriz fiscal", icon: Scale },
     ],
   },
-  { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
-  { href: "/notas", label: "Notas fiscais", icon: FileText },
+  {
+    label: "Vendas",
+    icon: ShoppingCart,
+    itens: [
+      { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
+      { href: "/notas", label: "Notas fiscais", icon: FileText },
+    ],
+  },
+  {
+    label: "Estoque",
+    icon: Boxes,
+    itens: [{ href: "/estoque", label: "Produtos acabados", icon: Package }],
+  },
   { href: "/marketplaces", label: "Marketplaces", icon: Store },
   { href: "/assistente", label: "Assistente IA", icon: Sparkles },
 ];

@@ -1,5 +1,5 @@
 import { desc, eq } from "drizzle-orm";
-import { MarcaIcone, MarcaLogo } from "@/components/marca";
+import { CANAIS, MarcaIcone, MarcaLogo } from "@/components/marca";
 import { Link2, RefreshCw, Store, Unplug } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -148,7 +148,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                       <td>
                         <span className="inline-flex items-center gap-2">
                           <MarcaIcone canal={p.marketplace} />
-                          {MARKETPLACE_INFO[p.marketplace].nome}
+                          {CANAIS[p.marketplace].nome}
                         </span>
                         <p className="text-xs text-muted">{p.conta}</p>
                       </td>

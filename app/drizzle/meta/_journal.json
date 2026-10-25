@@ -57,6 +57,13 @@
       "when": 1792943104735,
       "tag": "0007_consultas_cpf",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1792952025537,
+      "tag": "0008_vendas_estoque",
+      "breakpoints": true
     }
   ]
 }

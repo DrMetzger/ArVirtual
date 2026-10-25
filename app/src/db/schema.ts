@@ -182,6 +182,8 @@ export const produtos = pgTable(
     preco: money("preco").notNull().default(0),
     custo: money("custo").notNull().default(0),
     estoque: integer("estoque").notNull().default(0),
+    /** Abaixo disso o produto aparece como "repor" no estoque. */
+    estoqueMinimo: integer("estoque_minimo").notNull().default(0),
     pesoG: integer("peso_g").notNull().default(0),
     alturaCm: numeric("altura_cm", { precision: 8, scale: 1, mode: "number" }).notNull().default(0),
     larguraCm: numeric("largura_cm", { precision: 8, scale: 1, mode: "number" }).notNull().default(0),
@@ -305,6 +307,9 @@ export const ufIcms = pgTable("uf_icms", {
 // Ordem fixa usada em gráficos e listas.
 export const MARKETPLACES = ["mercadolivre", "magalu", "shopee"] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
+/** Canais de venda dos pedidos: os marketplaces e a loja própria (Sincrolab, pedido manual). */
+export const CANAIS_VENDA = [...MARKETPLACES, "loja"] as const;
+export type CanalVenda = (typeof CANAIS_VENDA)[number];
 
 export const contasMarketplace = pgTable(
   "contas_marketplace",
@@ -344,10 +349,9 @@ export const pedidosMarketplace = pgTable(
   "pedidos_marketplace",
   {
     id: serial("id").primaryKey(),
-    contaId: integer("conta_id")
-      .notNull()
-      .references(() => contasMarketplace.id, { onDelete: "cascade" }),
-    marketplace: text("marketplace", { enum: MARKETPLACES }).notNull(),
+    /** Conta do marketplace; vazio nos pedidos da loja própria. */
+    contaId: integer("conta_id").references(() => contasMarketplace.id, { onDelete: "cascade" }),
+    marketplace: text("marketplace", { enum: CANAIS_VENDA }).notNull(),
     idExterno: text("id_externo").notNull(),
     status: text("status").notNull(),
     total: money("total").notNull().default(0),
@@ -358,6 +362,12 @@ export const pedidosMarketplace = pgTable(
     entrega: jsonb("entrega").$type<EntregaPedido | null>(),
     /** Nota fiscal gerada a partir do pedido. */
     notaId: uuid("nota_id").references(() => notas.id, { onDelete: "set null" }),
+    /** Cliente do cadastro (pedido manual ou comprador já cadastrado). */
+    clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }),
+    desconto: money("desconto").notNull().default(0),
+    observacoes: text("observacoes").notNull().default(""),
+    /** A venda já saiu do estoque (volta se o pedido for cancelado). */
+    estoqueBaixado: boolean("estoque_baixado").notNull().default(false),
     dados: jsonb("dados"),
     ...timestamps,
   },
@@ -365,6 +375,28 @@ export const pedidosMarketplace = pgTable(
     uniqueIndex("pedidos_marketplace_ext_idx").on(t.marketplace, t.idExterno),
     index("pedidos_marketplace_data_idx").on(t.data),
   ],
+);
+
+// ---------- Estoque ----------
+export const TIPOS_MOVIMENTO = ["entrada", "saida", "ajuste", "producao", "venda", "estorno"] as const;
+/** Kardex dos produtos: cada linha muda o saldo (quantidade positiva entra, negativa sai). */
+export const movimentosEstoque = pgTable(
+  "movimentos_estoque",
+  {
+    id: serial("id").primaryKey(),
+    produtoId: uuid("produto_id")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    tipo: text("tipo", { enum: TIPOS_MOVIMENTO }).notNull(),
+    quantidade: integer("quantidade").notNull(),
+    saldo: integer("saldo").notNull(),
+    /** De onde veio: "pedido:12", "nota-entrada:3", "producao:5"... */
+    origem: text("origem").notNull().default(""),
+    observacao: text("observacao").notNull().default(""),
+    usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("movimentos_estoque_produto_idx").on(t.produtoId, t.criadoEm)],
 );
 
 // Consultas de CPF na APICPF: controla os limites do plano (por dia e por minuto) e serve de cache.
@@ -407,5 +439,6 @@ export type Empresa = typeof empresa.$inferSelect;
 export type ContaMarketplace = typeof contasMarketplace.$inferSelect;
 export type Nota = typeof notas.$inferSelect;
 export type PedidoMarketplace = typeof pedidosMarketplace.$inferSelect;
+export type MovimentoEstoque = typeof movimentosEstoque.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
 export type Ncm = typeof ncms.$inferSelect;

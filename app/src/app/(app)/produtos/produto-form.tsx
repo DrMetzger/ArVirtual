@@ -1,6 +1,7 @@
 "use client";
 
 import { Calculator, Printer } from "lucide-react";
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
@@ -58,9 +59,18 @@ export function ProdutoForm({ produto, parametros, precos }: { produto?: Produto
             <Field label="GTIN / EAN" className="sm:col-span-2" hint="Deixe vazio se não tiver">
               <Input name="gtin" defaultValue={produto?.gtin} inputMode="numeric" />
             </Field>
-            <Field label="Estoque" className="sm:col-span-2">
-              <Input name="estoque" type="number" defaultValue={produto?.estoque ?? 0} />
-            </Field>
+            {produto ? (
+              <Field label="Estoque" className="sm:col-span-2" hint="Entradas, saídas e contagens ficam no Estoque.">
+                <Link href={`/estoque/${produto.id}`} className="flex h-10 items-center justify-between rounded-xl border border-border px-3 text-sm hover:border-gold">
+                  <span className="font-semibold">{produto.estoque} un.</span>
+                  <span className="text-xs text-gold">movimentar →</span>
+                </Link>
+              </Field>
+            ) : (
+              <Field label="Estoque inicial" className="sm:col-span-2" hint="Entra no kardex como saldo inicial.">
+                <Input name="estoque" type="number" min={0} defaultValue={0} />
+              </Field>
+            )}
             <Field label="Unidade" className="sm:col-span-2">
               <Input name="unidade" defaultValue={produto?.unidade ?? "UN"} maxLength={6} />
             </Field>

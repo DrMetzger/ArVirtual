@@ -1,4 +1,4 @@
-import type { Marketplace } from "@/db/schema";
+import type { CanalVenda } from "@/db/schema";
 
 // Cada marketplace tem seus próprios status; aqui viram uma situação única para filtrar e somar.
 export const SITUACOES = {
@@ -10,7 +10,9 @@ export const SITUACOES = {
 } as const;
 export type Situacao = keyof typeof SITUACOES;
 
-const MAPA: Record<Marketplace, Record<string, Situacao>> = {
+const MAPA: Record<CanalVenda, Record<string, Situacao>> = {
+  // Loja própria: o status gravado já é a situação.
+  loja: { aguardando: "aguardando", pago: "pago", enviado: "enviado", entregue: "entregue", cancelado: "cancelado" },
   mercadolivre: {
     confirmed: "aguardando",
     payment_required: "aguardando",
@@ -52,13 +54,13 @@ const MAPA: Record<Marketplace, Record<string, Situacao>> = {
   },
 };
 
-export function situacaoPedido(marketplace: Marketplace, status: string): Situacao {
+export function situacaoPedido(marketplace: CanalVenda, status: string): Situacao {
   return MAPA[marketplace]?.[status] ?? MAPA[marketplace]?.[status.toLowerCase()] ?? "aguardando";
 }
 
 /** Status originais de cada situação (para filtrar no banco). */
-export function statusDaSituacao(situacao: Situacao): { marketplace: Marketplace; status: string }[] {
-  return (Object.entries(MAPA) as [Marketplace, Record<string, Situacao>][]).flatMap(([marketplace, m]) =>
+export function statusDaSituacao(situacao: Situacao): { marketplace: CanalVenda; status: string }[] {
+  return (Object.entries(MAPA) as [CanalVenda, Record<string, Situacao>][]).flatMap(([marketplace, m]) =>
     Object.entries(m)
       .filter(([, s]) => s === situacao)
       .map(([status]) => ({ marketplace, status })),
@@ -66,12 +68,13 @@ export function statusDaSituacao(situacao: Situacao): { marketplace: Marketplace
 }
 
 /** Número do pedido como o marketplace mostra (a Magalu exibe "LU-" na frente). */
-export function numeroPedido(marketplace: Marketplace, idExterno: string) {
+export function numeroPedido(marketplace: CanalVenda, idExterno: string) {
   return marketplace === "magalu" && /^\d+$/.test(idExterno) ? `LU-${idExterno}` : idExterno;
 }
 
 /** Link do pedido no painel do vendedor. */
-export function linkPedido(marketplace: Marketplace, idExterno: string) {
+export function linkPedido(marketplace: CanalVenda, idExterno: string) {
+  if (marketplace === "loja") return null;
   if (marketplace === "mercadolivre") return `https://www.mercadolivre.com.br/vendas/${idExterno}/detalhe`;
   if (marketplace === "shopee") return `https://seller.shopee.com.br/portal/sale/order?search=${idExterno}`;
   return "https://seller.magalu.com/pedidos";
