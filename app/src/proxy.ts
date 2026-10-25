@@ -7,6 +7,8 @@ export async function proxy(req: NextRequest) {
   const session = await verifySession(req.cookies.get(SESSION_COOKIE)?.value);
   // /login e /login/verificar (código da verificação em duas etapas) são públicas.
   const isLogin = req.nextUrl.pathname === "/login" || req.nextUrl.pathname.startsWith("/login/");
+  // Termos e privacidade são públicos (links mostrados pelos marketplaces no consentimento).
+  if (["/termos", "/privacidade"].includes(req.nextUrl.pathname)) return NextResponse.next();
 
   if (!session && !isLogin) {
     if (req.nextUrl.pathname.startsWith("/api/")) {

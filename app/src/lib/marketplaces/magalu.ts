@@ -5,13 +5,19 @@ import { lerResposta, MarketplaceError, type MarketplaceAdapter, type Tokens } f
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
 // criar o app, pois o Magalu libera escopos por conta.
-const ID = "https://id.magalu.com";
+const ID = process.env.MAGALU_ID_URL || "https://id.magalu.com";
 const API = "https://api.magalu.com";
+// Escopos (developers.magalu.com › APIs › Pedidos / Produtos › overview).
 export const MAGALU_SCOPES = [
   "open:order-order-seller:read",
+  "open:order-delivery-seller:read",
+  "open:order-delivery-seller:write",
+  "open:order-invoice-seller:read",
   "open:portfolio-skus-seller:read",
   "open:portfolio-skus-seller:write",
+  "open:portfolio-prices-seller:read",
   "open:portfolio-prices-seller:write",
+  "open:portfolio-stocks-seller:read",
   "open:portfolio-stocks-seller:write",
 ].join(" ");
 
@@ -20,18 +26,21 @@ async function credenciais() {
   return { clientId: s["magalu.clientId"], clientSecret: s["magalu.clientSecret"] };
 }
 
-type TokenResp = { access_token: string; refresh_token: string; expires_in: number };
+type TokenResp = { access_token: string; refresh_token: string; expires_in: number; scope?: string };
 const toTokens = (t: TokenResp): Tokens => ({
   accessToken: t.access_token,
   refreshToken: t.refresh_token ?? "",
   expiraEm: new Date(Date.now() + (t.expires_in ?? 3600) * 1000),
 });
 
+// Troca do código: JSON. Renovação: x-www-form-urlencoded (como na documentação do ID Magalu).
 async function token(body: Record<string, string>) {
+  const form = body.grant_type === "refresh_token";
   const res = await fetch(`${ID}/oauth/token`, {
     method: "POST",
-    headers: { "Content-Type": "application/json", Accept: "application/json" },
-    body: JSON.stringify(body),
+    headers: { "Content-Type": form ? "application/x-www-form-urlencoded" : "application/json", Accept: "application/json" },
+    body: form ? new URLSearchParams(body) : JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   return lerResposta<TokenResp>(res, "Magalu");
 }
@@ -45,13 +54,24 @@ async function api<T>(path: string, accessToken: string, init: RequestInit = {})
   return lerResposta<T>(res, "Magalu");
 }
 
-/** Lê o identificador do tenant (seller) de dentro do JWT do ID Magalu. */
-function tenantDoToken(accessToken: string): string {
+/** Dados do JWT do ID Magalu: tenant (loja escolhida no consentimento) e nome, quando vierem. */
+function dadosDoToken(accessToken: string): { tenant: string; nome: string; payload: Record<string, unknown> } {
   try {
     const payload = JSON.parse(Buffer.from(accessToken.split(".")[1] ?? "", "base64url").toString()) as Record<string, unknown>;
-    return String(payload.tenant ?? payload.tenant_id ?? payload.sub ?? "");
+    const t = payload.tenant as unknown;
+    const tenant =
+      typeof t === "object" && t !== null
+        ? String((t as Record<string, unknown>).uuid ?? (t as Record<string, unknown>).id ?? "")
+        : String(t ?? payload.tenant_id ?? payload.org ?? payload.sub ?? "");
+    const nome = String(
+      (typeof t === "object" && t !== null ? (t as Record<string, unknown>).legal_name ?? (t as Record<string, unknown>).name : "") ??
+        payload.tenant_name ??
+        payload.name ??
+        "",
+    );
+    return { tenant, nome, payload };
   } catch {
-    return "";
+    return { tenant: "", nome: "", payload: {} };
   }
 }
 
@@ -88,8 +108,15 @@ export const magalu: MarketplaceAdapter = {
       redirect_uri: redirectUri,
       code,
     });
-    const tenant = tenantDoToken(t.access_token) || `magalu-${Date.now()}`;
-    return { ...toTokens(t), idExterno: tenant, nome: `Seller Magalu ${tenant.slice(0, 8)}` };
+    const d = dadosDoToken(t.access_token);
+    const tenant = d.tenant || `magalu-${Date.now()}`;
+    return {
+      ...toTokens(t),
+      idExterno: tenant,
+      nome: d.nome || `Loja Magalu ${tenant.slice(0, 8)}`,
+      // Guarda o que veio no token (sem assinatura) para conferir tenant e escopos concedidos.
+      dados: { escopos: t.scope ?? "", token: d.payload },
+    };
   },
 
   async renovar(refreshToken) {

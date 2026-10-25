@@ -82,7 +82,7 @@ export function CardHeader({ title, description, action }: { title: ReactNode; d
     <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border px-5 py-4">
       <div>
         <h2 className="text-base font-bold">{title}</h2>
-        {description ? <p className="mt-0.5 text-sm text-muted">{description}</p> : null}
+        {description ? <div className="mt-0.5 text-sm text-muted">{description}</div> : null}
       </div>
       {action}
     </div>
