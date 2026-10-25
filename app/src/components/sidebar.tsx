@@ -1,7 +1,11 @@
 "use client";
 
 import {
+  ArrowDownCircle,
+  ArrowUpCircle,
   Boxes,
+  Landmark,
+  Wallet,
   FileInput,
   Printer,
   Spool,
@@ -71,6 +75,16 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/compras/notas", label: "Notas de entrada", icon: FileInput },
       { href: "/compras/fornecedores", label: "Fornecedores", icon: Truck },
+    ],
+  },
+  {
+    label: "Financeiro",
+    icon: Wallet,
+    itens: [
+      { href: "/financeiro", label: "Visão geral", icon: Wallet },
+      { href: "/financeiro/receber", label: "Contas a receber", icon: ArrowDownCircle },
+      { href: "/financeiro/pagar", label: "Contas a pagar", icon: ArrowUpCircle },
+      { href: "/financeiro/contas", label: "Contas bancárias", icon: Landmark },
     ],
   },
   { href: "/marketplaces", label: "Marketplaces", icon: Store },

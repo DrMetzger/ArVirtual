@@ -8,6 +8,7 @@ import { clientes, pedidosMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { z } from "zod";
 import { atualizarEstoqueDoPedido } from "@/lib/estoque";
+import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
 import { sincronizarPedidos } from "@/lib/marketplaces";
 import type { Situacao } from "@/lib/marketplaces/situacao";
 import { cadastrarClienteDoPedido } from "@/lib/pedidos";
@@ -111,12 +112,14 @@ export async function criarPedidoManual(entrada: PedidoManual): Promise<{ erro?:
       .where(eq(pedidosMarketplace.id, novo!.id))
       .returning();
     await atualizarEstoqueDoPedido(pedido!);
+    await atualizarFinanceiroDoPedido(pedido!);
     id = pedido!.id;
   } catch (e) {
     return { erro: (e as Error).message };
   }
   revalidatePath("/pedidos");
   revalidatePath("/estoque");
+  revalidatePath("/financeiro", "layout");
   redirect(`/pedidos/${id}`);
 }
 
@@ -128,7 +131,10 @@ export async function alterarSituacao(id: number, situacao: Situacao) {
     .set({ status: situacao, atualizadoEm: new Date() })
     .where(and(eq(pedidosMarketplace.id, id), eq(pedidosMarketplace.marketplace, "loja")))
     .returning();
-  if (p) await atualizarEstoqueDoPedido(p);
+  if (p) {
+    await atualizarEstoqueDoPedido(p);
+    await atualizarFinanceiroDoPedido(p);
+  }
   revalidatePath(`/pedidos/${id}`);
   revalidatePath("/pedidos");
   revalidatePath("/estoque");
