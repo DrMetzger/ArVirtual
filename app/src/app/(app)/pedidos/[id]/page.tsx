@@ -1,4 +1,5 @@
 import { eq } from "drizzle-orm";
+import { MarcaLogo } from "@/components/marca";
 import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -44,8 +45,8 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
         title={`Pedido ${numeroPedido(pedido.marketplace, pedido.idExterno)}`}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
-            <span className="size-2.5 rounded-full" style={{ background: info.cor }} />
-            {info.nome} · {conta?.nome} · {formatDate(pedido.data)}
+            <MarcaLogo canal={pedido.marketplace} className="h-5" />
+            · {conta?.nome} · {formatDate(pedido.data)}
             <Badge tone={SITUACOES[situacao].tom}>{SITUACOES[situacao].nome}</Badge>
             <span className="font-mono text-xs">({pedido.status})</span>
           </span>

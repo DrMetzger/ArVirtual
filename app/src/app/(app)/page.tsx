@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
+import { MarcaIcone } from "@/components/marca";
 import { ArrowRight, CheckCircle2, Circle, FileText, Package, ShoppingBag, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, CardHeader } from "@/components/ui";
@@ -197,7 +198,7 @@ export default async function Dashboard() {
                 <div key={m} className="grid gap-1.5">
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-2 font-semibold">
-                      <span className="size-2.5 rounded-sm" style={{ background: MARKETPLACE_INFO[m].cor }} />
+                      <MarcaIcone canal={m} />
                       {MARKETPLACE_INFO[m].nome}
                     </span>
                     <span className="font-semibold">{formatBRL(r?.total ?? 0)}</span>

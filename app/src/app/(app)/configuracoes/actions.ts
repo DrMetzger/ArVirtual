@@ -14,6 +14,7 @@ import { lerCertificado } from "@/lib/fiscal/certificado";
 import { certificateFromPfx } from "@/lib/nfe/sefaz";
 import { isValidCnpj } from "@/lib/documento";
 import { conferirCodigo, emailConfigurado, enviarCodigo } from "@/lib/dois-fatores";
+import { lerFaixas } from "@/lib/precificacao";
 import { getSetting, SETTINGS, setSetting, type SettingKey } from "@/lib/settings";
 import { UPLOAD_DIR } from "@/lib/uploads";
 import { onlyDigits } from "@/lib/utils";
@@ -83,6 +84,7 @@ export async function salvarIntegracoes(_: FormState, form: FormData): Promise<F
     }
     for (const k of chaves) {
       const valor = String(form.get(k) ?? "").trim();
+      if (k.endsWith(".faixas") && valor) lerFaixas(valor); // valida antes de salvar
       const limpar = form.get(`${k}__limpar`) === "on";
       // Campo secreto vazio = manter o valor atual (a tela nunca recebe o segredo de volta).
       if (SETTINGS[k].secret && !valor && !limpar) continue;

@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -8,7 +9,7 @@ import { anuncios, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
-import { getParametrosImpressao } from "@/lib/settings";
+import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
@@ -28,7 +29,7 @@ export default async function ProdutoPage({
   const produto = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
   if (!produto) notFound();
 
-  const [contas, historico, parametros, ia] = await Promise.all([
+  const [contas, historico, parametros, ia, precos] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
     db.query.anuncios.findMany({
       where: eq(anuncios.produtoId, id),
@@ -38,6 +39,7 @@ export default async function ProdutoPage({
     }),
     getParametrosImpressao(),
     geminiConfigurado(),
+    getParametrosPreco(),
   ]);
 
   return (
@@ -59,7 +61,7 @@ export default async function ProdutoPage({
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
-        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} />
+        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} precos={precos} />
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}
@@ -84,7 +86,7 @@ export default async function ProdutoPage({
               <div className="grid divide-y divide-border">
                 {historico.map((a) => (
                   <div key={a.id} className="flex items-start gap-3 px-5 py-3 text-sm">
-                    <span className="mt-1.5 size-2.5 shrink-0 rounded-full" style={{ background: MARKETPLACE_INFO[a.marketplace].cor }} />
+                    <MarcaIcone canal={a.marketplace} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{MARKETPLACE_INFO[a.marketplace].nome}</span>

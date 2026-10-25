@@ -1,4 +1,5 @@
 import { desc, eq } from "drizzle-orm";
+import { MarcaIcone, MarcaLogo } from "@/components/marca";
 import { Link2, RefreshCw, Store, Unplug } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -66,7 +67,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
               <Card key={m} className="flex flex-col overflow-hidden">
                 <div className="h-1.5" style={{ background: info.cor }} />
                 <CardHeader
-                  title={info.nome}
+                  title={<MarcaLogo canal={m} className="h-8" />}
                   description={cfg[m] ? `${minhas.length} conta(s) conectada(s)` : "App ainda não configurado"}
                   action={<Badge tone={minhas.length ? "green" : cfg[m] ? "gold" : "neutral"}>{minhas.length ? "Ativo" : cfg[m] ? "Pronto" : "Pendente"}</Badge>}
                 />
@@ -146,7 +147,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                     <tr key={p.id}>
                       <td>
                         <span className="inline-flex items-center gap-2">
-                          <span className="size-2.5 rounded-full" style={{ background: MARKETPLACE_INFO[p.marketplace].cor }} />
+                          <MarcaIcone canal={p.marketplace} />
                           {MARKETPLACE_INFO[p.marketplace].nome}
                         </span>
                         <p className="text-xs text-muted">{p.conta}</p>

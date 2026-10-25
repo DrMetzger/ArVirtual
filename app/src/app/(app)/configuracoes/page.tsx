@@ -6,6 +6,7 @@ import { Alert, PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { contasEmail, usuarios } from "@/db/schema";
 import { usoApicpf } from "@/lib/apicpf";
+import { FAIXAS_PADRAO } from "@/lib/precificacao";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
 import { getSetting, getSettingsForDisplay } from "@/lib/settings";
@@ -20,6 +21,7 @@ const ABAS = [
   { id: "empresa", label: "Empresa" },
   { id: "certificado", label: "Certificado A1 e NF-e" },
   { id: "integracoes", label: "Integrações e APIs" },
+  { id: "precificacao", label: "Precificação" },
   { id: "emails", label: "E-mails" },
   { id: "usuarios", label: "Usuários" },
 ] as const;
@@ -48,7 +50,25 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
     Magalu: <MagaluGuia base={process.env.APP_URL ?? origin} clientId={(await getSetting("magalu.clientId")) ?? ""} />,
-    "Impressão 3D (Bambu Lab A1 mini)": "Usado no cálculo de custo e preço sugerido dos produtos.",
+    "Impressão 3D (Bambu Lab A1 mini)": "Usado no cálculo do custo de produção dos produtos.",
+    "Precificação: geral": "Vale para todos os canais. O preço sugerido de cada canal é o que deixa este lucro depois de taxas, campanha, imposto e embalagem.",
+    "Precificação: Mercado Livre": (
+      <>
+        Formato: <code>limite:comissão%+taxa</code> separados por “;” (o limite é o preço de venda; “*” = acima). Padrão do Clássico: <code>{FAIXAS_PADRAO.mercadolivre}</code>. Confira na
+        central do vendedor: a comissão muda por categoria.
+      </>
+    ),
+    "Precificação: Shopee": (
+      <>
+        Tabela da Shopee desde 01/10/2026 (padrão): <code>{FAIXAS_PADRAO.shopee}</code>.
+      </>
+    ),
+    "Precificação: Magalu": (
+      <>
+        Padrão: <code>{FAIXAS_PADRAO.magalu}</code>. Confira a comissão da sua categoria no Portal do Seller.
+      </>
+    ),
+    "Precificação: loja própria (Sincrolab)": "Taxas do meio de pagamento da loja própria (ex.: *:4.99% para cartão). Sem campanha.",
   };
 
   return (
@@ -75,10 +95,10 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
       {aba === "certificado" ? await certificadoAba() : null}
 
-      {aba === "integracoes" ? (
+      {aba === "integracoes" || aba === "precificacao" ? (
         <div className="grid gap-6 xl:grid-cols-2">
           {Object.entries(
-            (await getSettingsForDisplay()).reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
+            (await getSettingsForDisplay()).filter((s) => s.group.startsWith("Precificação") === (aba === "precificacao")).reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
               (acc[s.group] ??= []).push(s);
               return acc;
             }, {}),

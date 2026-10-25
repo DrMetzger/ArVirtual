@@ -1,18 +1,24 @@
 import { asc, ilike, or, sql } from "drizzle-orm";
-import { Package, Plus, Search } from "lucide-react";
+import { LayoutGrid, List, Package, Plus, Search } from "lucide-react";
+import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, buttonClass, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { formatBRL } from "@/lib/utils";
+import { cn, formatBRL } from "@/lib/utils";
 
 export const metadata: Metadata = { title: "Produtos" };
 
-export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ q?: string }> }) {
+const COOKIE_VISTA = "arv_produtos_vista";
+
+export default async function ProdutosPage({ searchParams }: { searchParams: Promise<{ q?: string; vista?: string }> }) {
   await requireUser();
-  const q = (await searchParams).q?.trim() ?? "";
+  const sp = await searchParams;
+  const q = sp.q?.trim() ?? "";
+  // Grade (tabela) ou cards; a última escolha fica guardada (ver /produtos/vista).
+  const vista = sp.vista === "grade" || sp.vista === "cards" ? sp.vista : (await cookies()).get(COOKIE_VISTA)?.value === "grade" ? "grade" : "cards";
   const lista = await db
     .select({
       id: produtos.id,
@@ -43,10 +49,35 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
           </Link>
         }
       />
-      <form className="relative mb-6">
-        <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
-        <Input name="q" defaultValue={q} placeholder="Buscar por nome ou SKU" className="pl-9" />
-      </form>
+      <div className="mb-6 flex gap-3">
+        <form className="relative flex-1">
+          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+          <Input name="q" defaultValue={q} placeholder="Buscar por nome ou SKU" className="pl-9" />
+          <input type="hidden" name="vista" value={vista} />
+        </form>
+        <div className="flex rounded-xl border border-border bg-surface p-1">
+          {(
+            [
+              ["cards", LayoutGrid, "Cards"],
+              ["grade", List, "Grade"],
+            ] as const
+          ).map(([v, Icon, rotulo]) => (
+            <Link
+              key={v}
+              // Sem prefetch: a rota grava a escolha num cookie (o prefetch dos dois links sobrescreveria).
+              prefetch={false}
+              href={`/produtos/vista?v=${v}${q ? `&q=${encodeURIComponent(q)}` : ""}`}
+              title={rotulo}
+              className={cn(
+                "flex h-8 items-center gap-1.5 rounded-lg px-3 text-xs font-semibold transition",
+                vista === v ? "bg-primary text-primary-fg" : "text-muted hover:text-foreground",
+              )}
+            >
+              <Icon className="size-4" /> {rotulo}
+            </Link>
+          ))}
+        </div>
+      </div>
       {lista.length === 0 ? (
         <Card>
           <EmptyState
@@ -61,6 +92,48 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
               ) : null
             }
           />
+        </Card>
+      ) : vista === "grade" ? (
+        <Card className="overflow-x-auto">
+          <table className="table-base">
+            <thead>
+              <tr>
+                <th className="w-14"></th>
+                <th>SKU</th>
+                <th>Produto</th>
+                <th>Material</th>
+                <th className="text-right">Custo</th>
+                <th className="text-right">Preço</th>
+                <th className="text-right">Margem</th>
+                <th className="text-right">Estoque</th>
+                <th>Anúncios</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lista.map((p) => (
+                <tr key={p.id} className={p.ativo ? "" : "opacity-60"}>
+                  <td>
+                    <div className="grid size-10 place-items-center overflow-hidden rounded-lg bg-surface-2">
+                      {p.capa ? <img src={p.capa} alt="" className="size-full object-cover" /> : <Package className="size-5 text-muted opacity-50" />}
+                    </div>
+                  </td>
+                  <td className="font-mono text-xs whitespace-nowrap">{p.sku}</td>
+                  <td>
+                    <Link href={`/produtos/${p.id}`} className="font-semibold hover:text-gold">
+                      {p.nome}
+                    </Link>
+                    {!p.ativo ? <Badge tone="red" className="ml-2">Inativo</Badge> : null}
+                  </td>
+                  <td className="text-muted">{p.material || "—"}</td>
+                  <td className="text-right whitespace-nowrap text-muted">{p.custo ? formatBRL(p.custo) : "—"}</td>
+                  <td className="text-right font-semibold whitespace-nowrap">{formatBRL(p.preco)}</td>
+                  <td className="text-right whitespace-nowrap">{p.custo && p.preco ? `${Math.round((p.preco / p.custo - 1) * 100)}%` : "—"}</td>
+                  <td className={cn("text-right", p.estoque <= 0 && "font-semibold text-red")}>{p.estoque}</td>
+                  <td>{p.anuncios > 0 ? <Badge tone="gold">{p.anuncios}</Badge> : <span className="text-muted">—</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </Card>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
