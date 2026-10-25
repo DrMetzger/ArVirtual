@@ -42,6 +42,8 @@ const MAPA: Record<Marketplace, Record<string, Situacao>> = {
     approved: "pago",
     invoiced: "pago",
     handling: "pago",
+    frozen: "pago",
+    processing: "pago",
     shipped: "enviado",
     delivered: "entregue",
     finished: "entregue",
@@ -61,6 +63,11 @@ export function statusDaSituacao(situacao: Situacao): { marketplace: Marketplace
       .filter(([, s]) => s === situacao)
       .map(([status]) => ({ marketplace, status })),
   );
+}
+
+/** Número do pedido como o marketplace mostra (a Magalu exibe "LU-" na frente). */
+export function numeroPedido(marketplace: Marketplace, idExterno: string) {
+  return marketplace === "magalu" && /^\d+$/.test(idExterno) ? `LU-${idExterno}` : idExterno;
 }
 
 /** Link do pedido no painel do vendedor. */

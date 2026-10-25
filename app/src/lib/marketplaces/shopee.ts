@@ -240,7 +240,7 @@ export const shopee: MarketplaceAdapter = {
     return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
   },
 
-  async pedidos(conta, desde) {
+  async pedidos(conta, desde, porAtualizacao) {
     // A Shopee aceita janelas de no máximo 15 dias por consulta.
     const sns: string[] = [];
     const agora = Math.floor(Date.now() / 1000);
@@ -252,7 +252,7 @@ export const shopee: MarketplaceAdapter = {
           "/api/v2/order/get_order_list",
           {
             query: {
-              time_range_field: "create_time",
+              time_range_field: porAtualizacao ? "update_time" : "create_time",
               time_from: String(from),
               time_to: String(Math.min(from + 15 * 86400 - 1, agora)),
               page_size: "100",

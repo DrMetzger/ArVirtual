@@ -9,7 +9,7 @@ import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
-import { linkPedido, situacaoPedido, SITUACOES } from "@/lib/marketplaces/situacao";
+import { linkPedido, numeroPedido, situacaoPedido, SITUACOES } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
 import { faturarPedido } from "../actions";
@@ -41,7 +41,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
         <ArrowLeft className="size-4" /> Pedidos
       </Link>
       <PageHeader
-        title={`Pedido ${pedido.idExterno}`}
+        title={`Pedido ${numeroPedido(pedido.marketplace, pedido.idExterno)}`}
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <span className="size-2.5 rounded-full" style={{ background: info.cor }} />

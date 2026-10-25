@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { contasMarketplace, MARKETPLACES, pedidosMarketplace, type Marketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
-import { situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
+import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { sincronizarAgora } from "./actions";
 
@@ -28,10 +28,10 @@ type Filtros = { mp?: string; sit?: string; q?: string; periodo?: string; pagina
 export default async function PedidosPage({ searchParams }: { searchParams: Promise<Filtros> }) {
   await requireUser();
   const f = await searchParams;
-  const periodo = PERIODOS.some(([v]) => v === f.periodo) ? f.periodo! : "30";
+  const periodo = PERIODOS.some(([v]) => v === f.periodo) ? f.periodo! : "90";
   const mp = MARKETPLACES.includes(f.mp as Marketplace) ? (f.mp as Marketplace) : undefined;
   const sit = f.sit && f.sit in SITUACOES ? (f.sit as Situacao) : undefined;
-  const q = f.q?.trim() ?? "";
+  const q = (f.q?.trim() ?? "").replace(/^LU-/i, "");
 
   const filtros: SQL[] = [];
   if (periodo !== "todos") filtros.push(gte(pedidosMarketplace.data, new Date(Date.now() - Number(periodo) * 86400_000)));
@@ -76,7 +76,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   const url = (extra: Partial<Filtros>) => {
     const p = new URLSearchParams();
     const v = { mp, sit, q, periodo, ...extra };
-    for (const [k, val] of Object.entries(v)) if (val && !(k === "periodo" && val === "30")) p.set(k, String(val));
+    for (const [k, val] of Object.entries(v)) if (val && !(k === "periodo" && val === "90")) p.set(k, String(val));
     const s = p.toString();
     return `/pedidos${s ? `?${s}` : ""}`;
   };
@@ -92,7 +92,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
           </>
         }
         actions={
-          <form action={sincronizarAgora.bind(null, periodo === "todos" ? 365 : Math.max(Number(periodo), 30))}>
+          <form action={sincronizarAgora.bind(null, periodo === "todos" ? 3650 : Math.max(Number(periodo), 30))}>
             <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
               <RefreshCw /> Sincronizar agora
             </SubmitButton>
@@ -187,10 +187,10 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                     return (
                       <tr key={p.id}>
                         <td>
-                          <Link href={`/pedidos/${p.id}`} className="font-mono text-xs font-semibold hover:text-gold">
-                            {p.idExterno}
+                          <Link href={`/pedidos/${p.id}`} className="block font-mono text-xs font-semibold whitespace-nowrap hover:text-gold">
+                            {numeroPedido(p.marketplace, p.idExterno)}
                           </Link>
-                          <p className="mt-0.5 inline-flex items-center gap-1.5 text-xs text-muted">
+                          <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">
                             <span className="size-2 rounded-full" style={{ background: MARKETPLACE_INFO[p.marketplace].cor }} />
                             {MARKETPLACE_INFO[p.marketplace].nome} · {p.conta}
                           </p>

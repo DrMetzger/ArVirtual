@@ -57,6 +57,8 @@ export type PedidoExterno = {
   data: Date;
   itens: ItemPedido[];
   entrega: EntregaPedido | null;
+  /** Nome da loja no marketplace, quando o pedido informa (usado para nomear a conta). */
+  loja?: string;
   dados: unknown;
 };
 
@@ -70,7 +72,8 @@ export interface MarketplaceAdapter {
   conectar(params: URLSearchParams, redirectUri: string): Promise<ContaConectada>;
   renovar(refreshToken: string, conta: ContaComToken): Promise<Tokens>;
   publicar(conta: ContaComToken, produto: Produto, anuncio: DadosAnuncio): Promise<ResultadoAnuncio>;
-  pedidos(conta: ContaComToken, desde: Date): Promise<PedidoExterno[]>;
+  /** Pedidos comprados desde `desde` ou, com `porAtualizacao`, atualizados desde `desde` (sincronização automática). */
+  pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean): Promise<PedidoExterno[]>;
 }
 
 export class MarketplaceError extends Error {}
