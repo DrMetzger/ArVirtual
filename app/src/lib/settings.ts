@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { configuracoes } from "@/db/schema";
 import { decrypt, encrypt, mask } from "./crypto";
 import { PARAMETROS_PADRAO, type ParametrosImpressao } from "./impressao";
+import { FAIXAS_PADRAO, lerFaixas, type ParametrosPreco } from "./precificacao";
 
 /** Todas as chaves configuráveis pela tela de Configurações › Integrações. */
 export const SETTINGS = {
@@ -32,7 +33,21 @@ export const SETTINGS = {
   "impressao.custoFilamentoKg": { label: "Custo do filamento (R$/kg)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "120" },
   "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "95" },
   "impressao.custoKwh": { label: "Tarifa de energia (R$/kWh)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "0.95" },
-  "impressao.margem": { label: "Margem desejada (%)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "60" },
+  "impressao.margem": { label: "Lucro desejado sobre o custo (%)", secret: false, group: "Precificação: geral", placeholder: "60" },
+  "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
+  "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
+
+  "mercadolivre.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Mercado Livre", placeholder: "78.99:14%+6.5; *:14%" },
+  "mercadolivre.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Mercado Livre", placeholder: "10" },
+  "mercadolivre.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Mercado Livre", placeholder: "0" },
+  "shopee.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Shopee", placeholder: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26" },
+  "shopee.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Shopee", placeholder: "10" },
+  "shopee.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Shopee", placeholder: "0" },
+  "magalu.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Magalu", placeholder: "*:16%+5" },
+  "magalu.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Magalu", placeholder: "10" },
+  "magalu.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Magalu", placeholder: "0" },
+  "loja.faixas": { label: "Taxas da loja própria (cartão/gateway) por faixa", secret: false, group: "Precificação: loja própria (Sincrolab)", placeholder: "*:0%" },
+  "loja.frete": { label: "Frete pago pela loja (R$)", secret: false, group: "Precificação: loja própria (Sincrolab)", placeholder: "0" },
 } as const satisfies Record<
   string,
   { label: string; secret: boolean; group: string; placeholder?: string; options?: readonly string[] }
@@ -79,6 +94,40 @@ export async function setSetting(key: SettingKey, value: string) {
     .insert(configuracoes)
     .values({ chave: key, valor: stored, secreto: secret })
     .onConflictDoUpdate({ target: configuracoes.chave, set: { valor: stored, secreto: secret, atualizadoEm: new Date() } });
+}
+
+/** Parâmetros de preço por canal (Configurações › Precificação); campos vazios usam os padrões. */
+export async function getParametrosPreco(): Promise<ParametrosPreco> {
+  const chaves = [
+    "impressao.margem", "precificacao.imposto", "precificacao.embalagem",
+    "mercadolivre.faixas", "mercadolivre.campanha", "mercadolivre.frete",
+    "shopee.faixas", "shopee.campanha", "shopee.frete",
+    "magalu.faixas", "magalu.campanha", "magalu.frete",
+    "loja.faixas", "loja.frete",
+  ] as const satisfies readonly SettingKey[];
+  const s = await getSettings([...chaves]);
+  const num = (v: string, d: number) => {
+    const n = Number(v.replace(",", "."));
+    return v && Number.isFinite(n) ? n : d;
+  };
+  const faixas = (v: string, padrao: string) => {
+    try {
+      return lerFaixas(v || padrao);
+    } catch {
+      return lerFaixas(padrao);
+    }
+  };
+  return {
+    margem: num(s["impressao.margem"], PARAMETROS_PADRAO.margem),
+    imposto: num(s["precificacao.imposto"], 6),
+    embalagem: num(s["precificacao.embalagem"], 0),
+    canais: {
+      mercadolivre: { faixas: faixas(s["mercadolivre.faixas"], FAIXAS_PADRAO.mercadolivre), campanha: num(s["mercadolivre.campanha"], 10), frete: num(s["mercadolivre.frete"], 0) },
+      shopee: { faixas: faixas(s["shopee.faixas"], FAIXAS_PADRAO.shopee), campanha: num(s["shopee.campanha"], 10), frete: num(s["shopee.frete"], 0) },
+      magalu: { faixas: faixas(s["magalu.faixas"], FAIXAS_PADRAO.magalu), campanha: num(s["magalu.campanha"], 10), frete: num(s["magalu.frete"], 0) },
+      loja: { faixas: faixas(s["loja.faixas"], "*:0%"), campanha: 0, frete: num(s["loja.frete"], 0) },
+    },
+  };
 }
 
 export async function getParametrosImpressao(): Promise<ParametrosImpressao> {

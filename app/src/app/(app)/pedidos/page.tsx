@@ -1,4 +1,5 @@
 import { and, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
+import { MarcaIcone } from "@/components/marca";
 import { FileCheck2, RefreshCw, Search, ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -191,8 +192,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                             {numeroPedido(p.marketplace, p.idExterno)}
                           </Link>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">
-                            <span className="size-2 rounded-full" style={{ background: MARKETPLACE_INFO[p.marketplace].cor }} />
-                            {MARKETPLACE_INFO[p.marketplace].nome} · {p.conta}
+                            <MarcaIcone canal={p.marketplace} className="size-4" />
+                            {p.conta}
                           </p>
                         </td>
                         <td>{p.comprador || "—"}</td>

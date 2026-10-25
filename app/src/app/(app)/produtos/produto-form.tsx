@@ -6,10 +6,12 @@ import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from 
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Produto } from "@/db/schema";
 import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
+import type { ParametrosPreco } from "@/lib/precificacao";
 import { formatBRL, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { NcmField } from "./ncm-field";
 import { ImagensField } from "./imagens-field";
+import { PrecosCanal } from "./precos-canal";
 import { VideosField } from "./videos-field";
 
 const ORIGENS = [
@@ -26,7 +28,7 @@ const ORIGENS = [
 const MATERIAIS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PLA Silk", "PLA Matte", "Outro"];
 const fmt = (n: number | undefined) => (n ? String(n).replace(".", ",") : "");
 
-export function ProdutoForm({ produto, parametros }: { produto?: Produto; parametros: ParametrosImpressao }) {
+export function ProdutoForm({ produto, parametros, precos }: { produto?: Produto; parametros: ParametrosImpressao; precos: ParametrosPreco }) {
   const [state, onSubmit, pending] = useFormAction(salvarProduto, null);
   const [filamentoG, setFilamentoG] = useState(produto?.filamentoG ?? 0);
   const [tempoMin, setTempoMin] = useState(produto?.tempoImpressaoMin ?? 0);
@@ -122,22 +124,8 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
               <span>Custo de produção</span>
               <span>{formatBRL(calc.custo)}</span>
             </div>
-            <div className="flex justify-between font-semibold text-gold">
-              <span>Preço sugerido (+{parametros.margem}%)</span>
-              <span>{formatBRL(calc.precoSugerido)}</span>
-            </div>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="mt-2"
-              disabled={!calc.custo}
-              onClick={() => {
-                setCusto(fmt(calc.custo));
-                setPreco(fmt(calc.precoSugerido));
-              }}
-            >
-              <Calculator /> Usar custo e preço sugeridos
+            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={!calc.custo} onClick={() => setCusto(fmt(calc.custo))}>
+              <Calculator /> Usar como custo
             </Button>
           </div>
         </Card>
@@ -148,7 +136,7 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
             <Field label="Custo (R$)">
               <Input name="custo" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} />
             </Field>
-            <Field label="Preço de venda (R$)" hint={margemReal !== null ? `Margem: ${margemReal.toFixed(0)}%` : undefined}>
+            <Field label="Preço de venda (R$)" hint={margemReal !== null ? `Margem bruta (sem taxas): ${margemReal.toFixed(0)}%` : undefined}>
               <Input name="preco" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} required />
             </Field>
             <Field label="Peso c/ embalagem (g)">
@@ -169,6 +157,8 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
             </label>
           </div>
         </Card>
+
+        <PrecosCanal custo={parseDecimal(custo) || calc.custo} preco={parseDecimal(preco)} parametros={precos} usar={(v) => setPreco(fmt(v))} />
 
         {state?.erro ? <Alert>{state.erro}</Alert> : null}
         <SubmitButton pending={pending} size="lg" pendingText="Salvando...">
