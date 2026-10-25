@@ -10,7 +10,8 @@ import { notaVale } from "@/lib/nota-pedido";
 import { z } from "zod";
 import { atualizarEstoqueDoPedido, movimentar } from "@/lib/estoque";
 import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
-import { sincronizarPedidos } from "@/lib/marketplaces";
+import { adapter, buscarNotasDosPedidos, contaComToken, sincronizarPedidos } from "@/lib/marketplaces";
+import { importarNotasDoPedido } from "@/lib/marketplaces/notas-externas";
 import type { Situacao } from "@/lib/marketplaces/situacao";
 import { cadastrarClienteDoPedido, garantirEnderecoEntrega } from "@/lib/pedidos";
 
@@ -25,6 +26,40 @@ export async function sincronizarAgora(dias: number) {
     ? `erro=${encodeURIComponent(erros.map((e) => `${e.conta}: ${e.erro}`).join(" | "))}`
     : `ok=${encodeURIComponent(r.length ? `${total} pedido(s) atualizados de ${r.length} conta(s).` : "Nenhuma conta conectada: conecte em Marketplaces.")}`;
   redirect(`/pedidos?${q}`);
+}
+
+/** Puxa do marketplace (Magalu) as NF-e emitidas fora e liga aos pedidos. */
+export async function buscarNotas(voltar: string) {
+  await requireUser();
+  let q: string;
+  try {
+    const r = await buscarNotasDosPedidos();
+    q = r.erros.length
+      ? `erro=${encodeURIComponent(`${r.notas} nota(s) importada(s); falhas: ${r.erros.slice(0, 3).join(" | ")}`)}`
+      : `ok=${encodeURIComponent(r.pedidos ? `${r.notas} nota(s) encontrada(s) em ${r.pedidos} pedido(s).` : "Todos os pedidos faturados já estão com a nota.")}`;
+  } catch (e) {
+    q = `erro=${encodeURIComponent((e as Error).message)}`;
+  }
+  revalidatePath("/pedidos");
+  redirect(`${voltar}${voltar.includes("?") ? "&" : "?"}${q}`);
+}
+
+/** Puxa a nota de um pedido só (tela do pedido). */
+export async function buscarNotaDoPedido(id: number) {
+  await requireUser();
+  const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id) });
+  if (!pedido?.contaId) redirect(`/pedidos/${id}`);
+  const conta = await db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId) });
+  let q: string;
+  try {
+    if (!conta) throw new Error("A conta do marketplace deste pedido não está mais conectada.");
+    const n = await importarNotasDoPedido(adapter(conta.marketplace), await contaComToken(conta), pedido);
+    q = n ? `ok=${encodeURIComponent(`${n} nota(s) encontrada(s) no ${conta.nome}.`)}` : `erro=${encodeURIComponent("O marketplace não tem nota informada para este pedido.")}`;
+  } catch (e) {
+    q = `erro=${encodeURIComponent((e as Error).message)}`;
+  }
+  revalidatePath(`/pedidos/${id}`);
+  redirect(`/pedidos/${id}?${q}`);
 }
 
 /** Cadastra o comprador e abre a nota fiscal já preenchida com o pedido. */

@@ -79,3 +79,5 @@ export function linkPedido(marketplace: CanalVenda, idExterno: string) {
   if (marketplace === "shopee") return `https://seller.shopee.com.br/portal/sale/order?search=${idExterno}`;
   return "https://seller.magalu.com/pedidos";
 }
+
+export const MAGALU_SEM_NOTA = "Nenhuma nota encontrada ainda. Se a nota foi enviada no Portal do Seller, clique em Buscar nota.";

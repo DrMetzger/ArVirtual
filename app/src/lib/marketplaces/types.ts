@@ -62,6 +62,9 @@ export type PedidoExterno = {
   dados: unknown;
 };
 
+/** NF-e que o vendedor informou ao marketplace (emitida em outro sistema). */
+export type NotaDoPedido = { chave: string; status: string; emitidaEm: Date | null; xml: string };
+
 export interface MarketplaceAdapter {
   id: Marketplace;
   nome: string;
@@ -74,6 +77,8 @@ export interface MarketplaceAdapter {
   publicar(conta: ContaComToken, produto: Produto, anuncio: DadosAnuncio): Promise<ResultadoAnuncio>;
   /** Pedidos comprados desde `desde` ou, com `porAtualizacao`, atualizados desde `desde` (sincronização automática). */
   pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean): Promise<PedidoExterno[]>;
+  /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
+  notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
 }
 
 export class MarketplaceError extends Error {}

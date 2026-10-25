@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
 import { CANAIS, MarcaIcone } from "@/components/marca";
-import { FileCheck2, Plus, RefreshCw, Search, ShoppingCart } from "lucide-react";
+import { FileDown, Plus, RefreshCw, Search, ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, Button, buttonClass, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
@@ -12,7 +12,8 @@ import { StatusNota } from "../notas/status";
 import { requireUser } from "@/lib/auth";
 import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
-import { sincronizarAgora } from "./actions";
+import { buscarNotas, sincronizarAgora } from "./actions";
+import { notasDosPedidos } from "@/lib/marketplaces/notas-externas";
 import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Pedidos" };
@@ -72,12 +73,15 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   const validos = pedidos.filter((p) => p.situacao !== "cancelado" && p.situacao !== "aguardando");
   const faturamento = validos.reduce((s, p) => s + p.total, 0);
   const aEnviar = todos.filter((p) => p.situacao === "pago").length;
-  // Nota cancelada/rejeitada não conta: o pedido continua sem nota válida.
-  const semNota = validos.filter((p) => !notaVale(p.notaStatus)).length;
 
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const paginas = Math.max(1, Math.ceil(pedidos.length / POR_PAGINA));
   const visiveis = pedidos.slice((pagina - 1) * POR_PAGINA, pagina * POR_PAGINA);
+  // NF-e emitidas fora e puxadas do marketplace.
+  const externas = await notasDosPedidos(pedidos.map((p) => p.id));
+  const externaDe = (id: number) => externas.find((n) => n.pedidoId === id && n.status !== "invalid") ?? externas.find((n) => n.pedidoId === id);
+  // Nota cancelada/rejeitada não conta: o pedido continua sem nota válida.
+  const semNota = validos.filter((p) => !notaVale(p.notaStatus) && !externaDe(p.id)).length;
   const ultima = contas.map((c) => c.ultima).filter(Boolean).sort((a, b) => b!.getTime() - a!.getTime())[0];
 
   const url = (extra: Partial<Filtros>) => {
@@ -103,6 +107,11 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
           <Link href="/pedidos/novo" className={buttonClass("primary")}>
             <Plus /> Novo pedido
           </Link>
+          <form action={buscarNotas.bind(null, "/pedidos")}>
+            <SubmitButton variant="outline" pendingText="Buscando notas..." disabled={!contas.length}>
+              <FileDown /> Buscar notas do Magalu
+            </SubmitButton>
+          </form>
           <form action={sincronizarAgora.bind(null, periodo === "todos" ? 3650 : Math.max(Number(periodo), 30))}>
             <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
               <RefreshCw /> Sincronizar agora
@@ -226,7 +235,14 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                           <Badge tone={SITUACOES[p.situacao].tom}>{SITUACOES[p.situacao].nome}</Badge>
                         </td>
                         <td>
-                          {p.notaId && p.notaStatus ? (
+                          {!notaVale(p.notaStatus) && externaDe(p.id) ? (
+                            <a href={`/api/notas-externas/${externaDe(p.id)!.id}/danfe`} target="_blank" rel="noreferrer" className="inline-flex flex-col items-start gap-0.5 text-xs" title={`Chave ${externaDe(p.id)!.chave} · abrir DANFE`}>
+                              <Badge tone={externaDe(p.id)!.status === "invalid" ? "red" : externaDe(p.id)!.status === "validating" ? "gold" : "green"}>
+                                {externaDe(p.id)!.status === "invalid" ? "Inválida" : externaDe(p.id)!.status === "validating" ? "Validando" : "Emitida"}
+                              </Badge>
+                              <span className="whitespace-nowrap text-muted">NF {externaDe(p.id)!.numero}</span>
+                            </a>
+                          ) : p.notaId && p.notaStatus ? (
                             <Link href={`/notas/${p.notaId}`} className="inline-flex flex-col items-start gap-0.5 text-xs" title="Abrir a nota">
                               <StatusNota status={p.notaStatus} />
                               {p.notaNumero ? <span className="text-muted">NF {p.notaNumero}</span> : null}
