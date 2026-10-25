@@ -1,14 +1,13 @@
 import { and, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
-import { MarcaIcone } from "@/components/marca";
-import { FileCheck2, RefreshCw, Search, ShoppingCart } from "lucide-react";
+import { CANAIS, MarcaIcone } from "@/components/marca";
+import { FileCheck2, Plus, RefreshCw, Search, ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, Button, buttonClass, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { contasMarketplace, MARKETPLACES, pedidosMarketplace, type Marketplace } from "@/db/schema";
+import { CANAIS_VENDA, contasMarketplace, pedidosMarketplace, type CanalVenda } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { sincronizarAgora } from "./actions";
@@ -30,7 +29,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   await requireUser();
   const f = await searchParams;
   const periodo = PERIODOS.some(([v]) => v === f.periodo) ? f.periodo! : "90";
-  const mp = MARKETPLACES.includes(f.mp as Marketplace) ? (f.mp as Marketplace) : undefined;
+  const mp = CANAIS_VENDA.includes(f.mp as CanalVenda) ? (f.mp as CanalVenda) : undefined;
   const sit = f.sit && f.sit in SITUACOES ? (f.sit as Situacao) : undefined;
   const q = (f.q?.trim() ?? "").replace(/^LU-/i, "");
 
@@ -54,7 +53,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         conta: contasMarketplace.nome,
       })
       .from(pedidosMarketplace)
-      .innerJoin(contasMarketplace, eq(contasMarketplace.id, pedidosMarketplace.contaId))
+      .leftJoin(contasMarketplace, eq(contasMarketplace.id, pedidosMarketplace.contaId))
       .where(and(...filtros))
       .orderBy(desc(pedidosMarketplace.data))
       .limit(5000),
@@ -88,16 +87,21 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         title="Pedidos"
         description={
           <>
-            Vendas do Mercado Livre, Shopee e Magalu num lugar só. Atualiza sozinho a cada 15 minutos
+            Vendas do Mercado Livre, Shopee, Magalu e da loja própria num lugar só. Atualiza sozinho a cada 15 minutos
             {ultima ? <> · última sincronização {formatDate(ultima)}</> : null}.
           </>
         }
         actions={
+          <>
+          <Link href="/pedidos/novo" className={buttonClass("primary")}>
+            <Plus /> Novo pedido
+          </Link>
           <form action={sincronizarAgora.bind(null, periodo === "todos" ? 3650 : Math.max(Number(periodo), 30))}>
             <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
               <RefreshCw /> Sincronizar agora
             </SubmitButton>
           </form>
+          </>
         }
       />
       <div className="grid gap-6">
@@ -124,10 +128,10 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               <Input name="q" defaultValue={q} placeholder="Nº do pedido ou comprador" className="pl-9" />
             </div>
             <Select name="mp" defaultValue={mp ?? ""}>
-              <option value="">Todos os marketplaces</option>
-              {MARKETPLACES.map((m) => (
+              <option value="">Todos os canais</option>
+              {CANAIS_VENDA.map((m) => (
                 <option key={m} value={m}>
-                  {MARKETPLACE_INFO[m].nome}
+                  {m === "loja" ? "Loja própria (Sincrolab)" : CANAIS[m].nome}
                 </option>
               ))}
             </Select>
@@ -157,15 +161,20 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               title={todos.length || q || mp || sit ? "Nenhum pedido com esses filtros" : "Nenhum pedido ainda"}
               description={
                 contas.length
-                  ? "Os pedidos aparecem aqui assim que entram no marketplace (sincronização a cada 15 minutos)."
+                  ? "Os pedidos dos marketplaces aparecem aqui sozinhos (a cada 15 minutos). Vendas da loja própria: Novo pedido."
                   : "Conecte suas contas do Mercado Livre, Shopee e Magalu para trazer os pedidos."
               }
               action={
-                contas.length ? undefined : (
-                  <Link href="/marketplaces" className={buttonClass("gold")}>
-                    Conectar marketplaces
+                <div className="flex flex-wrap justify-center gap-2">
+                  <Link href="/pedidos/novo" className={buttonClass("primary")}>
+                    <Plus /> Novo pedido
                   </Link>
-                )
+                  {contas.length ? null : (
+                    <Link href="/marketplaces" className={buttonClass("gold")}>
+                      Conectar marketplaces
+                    </Link>
+                  )}
+                </div>
               }
             />
           ) : (
@@ -193,7 +202,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                           </Link>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">
                             <MarcaIcone canal={p.marketplace} className="size-4" />
-                            {p.conta}
+                            {p.conta ?? "Loja própria"}
                           </p>
                         </td>
                         <td>{p.comprador || "—"}</td>

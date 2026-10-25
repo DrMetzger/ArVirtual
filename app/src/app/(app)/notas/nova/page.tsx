@@ -1,4 +1,5 @@
 import { asc, eq } from "drizzle-orm";
+import { CANAIS } from "@/components/marca";
 import type { Metadata } from "next";
 import { Alert, PageHeader } from "@/components/ui";
 import { db } from "@/db";
@@ -46,7 +47,7 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
         title="Nova nota fiscal"
         description={
           pedido
-            ? `Pedido ${pedido.idExterno} do ${MARKETPLACE_INFO[pedido.marketplace].nome}: confira e salve; a emissão vai direto para a SEFAZ.`
+            ? `Pedido ${pedido.idExterno} do ${CANAIS[pedido.marketplace].nome}: confira e salve; a emissão vai direto para a SEFAZ.`
             : "Monte a nota, confira os impostos e salve como rascunho; a emissão vai direto para a SEFAZ."
         }
       />

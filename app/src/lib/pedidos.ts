@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { anuncios, clientes, enderecos, produtos, type PedidoMarketplace } from "@/db/schema";
+import { anuncios, clientes, enderecos, produtos, type Marketplace, type PedidoMarketplace } from "@/db/schema";
 import { consultarCep } from "@/lib/consultas";
 import { isValidCnpj, isValidCpf } from "@/lib/documento";
 import { onlyDigits } from "@/lib/utils";
@@ -13,12 +13,12 @@ export async function vincularItens(pedido: PedidoMarketplace): Promise<ItemVinc
   const ids = pedido.itens.map((i) => i.idAnuncio).filter(Boolean);
   const skus = pedido.itens.map((i) => i.sku).filter(Boolean);
   const [porAnuncio, porSku] = await Promise.all([
-    ids.length
+    ids.length && pedido.marketplace !== "loja"
       ? db
           .select({ idExterno: anuncios.idExterno, id: produtos.id, nome: produtos.nome, sku: produtos.sku })
           .from(anuncios)
           .innerJoin(produtos, eq(produtos.id, anuncios.produtoId))
-          .where(and(eq(anuncios.marketplace, pedido.marketplace), inArray(anuncios.idExterno, ids)))
+          .where(and(eq(anuncios.marketplace, pedido.marketplace as Marketplace), inArray(anuncios.idExterno, ids)))
       : [],
     skus.length ? db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(inArray(produtos.sku, skus)) : [],
   ]);
@@ -36,6 +36,10 @@ export function documentoDoPedido(pedido: PedidoMarketplace) {
 }
 
 export async function clienteDoPedido(pedido: PedidoMarketplace) {
+  if (pedido.clienteId) {
+    const c = await db.query.clientes.findFirst({ where: eq(clientes.id, pedido.clienteId), with: { enderecos: true } });
+    if (c) return c;
+  }
   const doc = documentoDoPedido(pedido);
   if (!doc) return null;
   return (await db.query.clientes.findFirst({ where: eq(clientes.documento, doc), with: { enderecos: true } })) ?? null;
@@ -43,11 +47,11 @@ export async function clienteDoPedido(pedido: PedidoMarketplace) {
 
 /** Cadastra o comprador (e o endereço de entrega) a partir do pedido. O CEP completa logradouro, bairro e código IBGE. */
 export async function cadastrarClienteDoPedido(pedido: PedidoMarketplace) {
-  const e = pedido.entrega;
-  const doc = documentoDoPedido(pedido);
-  if (!e || !doc) throw new Error("O marketplace não informou CPF/CNPJ do comprador: cadastre o cliente manualmente.");
   const existente = await clienteDoPedido(pedido);
   if (existente) return existente.id;
+  const e = pedido.entrega;
+  const doc = documentoDoPedido(pedido);
+  if (!e || !doc) throw new Error("O pedido não tem CPF/CNPJ do comprador: cadastre o cliente manualmente.");
 
   const cep = onlyDigits(e.cep);
   const viaCep = cep.length === 8 ? await consultarCep(cep).catch(() => null) : null;

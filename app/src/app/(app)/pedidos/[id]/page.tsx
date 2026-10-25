@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { MarcaLogo } from "@/components/marca";
+import { CANAIS, MarcaLogo } from "@/components/marca";
 import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -9,11 +9,10 @@ import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { MARKETPLACE_INFO } from "@/lib/marketplaces";
-import { linkPedido, numeroPedido, situacaoPedido, SITUACOES } from "@/lib/marketplaces/situacao";
+import { linkPedido, numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
-import { faturarPedido } from "../actions";
+import { alterarSituacao, faturarPedido } from "../actions";
 
 export const metadata: Metadata = { title: "Pedido" };
 
@@ -24,12 +23,22 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
   const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id) });
   if (!pedido) notFound();
   const [conta, itens, cliente] = await Promise.all([
-    db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId), columns: { nome: true } }),
+    pedido.contaId ? db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId), columns: { nome: true } }) : undefined,
     vincularItens(pedido),
     clienteDoPedido(pedido),
   ]);
   const situacao = situacaoPedido(pedido.marketplace, pedido.status);
-  const info = MARKETPLACE_INFO[pedido.marketplace];
+  const info = CANAIS[pedido.marketplace];
+  const link = linkPedido(pedido.marketplace, pedido.idExterno);
+  const loja = pedido.marketplace === "loja";
+  // Próximos passos de um pedido da loja própria.
+  const PROXIMOS: Partial<Record<Situacao, Situacao[]>> = {
+    aguardando: ["pago", "cancelado"],
+    pago: ["enviado", "entregue", "cancelado"],
+    enviado: ["entregue", "cancelado"],
+    entregue: [],
+    cancelado: ["aguardando"],
+  };
   const e = pedido.entrega;
   const doc = documentoDoPedido(pedido);
   const subtotal = itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
@@ -46,16 +55,27 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <MarcaLogo canal={pedido.marketplace} className="h-5" />
-            · {conta?.nome} · {formatDate(pedido.data)}
+            · {conta?.nome ?? "Loja própria"} · {formatDate(pedido.data)}
             <Badge tone={SITUACOES[situacao].tom}>{SITUACOES[situacao].nome}</Badge>
-            <span className="font-mono text-xs">({pedido.status})</span>
+            {loja ? null : <span className="font-mono text-xs">({pedido.status})</span>}
           </span>
         }
         actions={
           <>
-            <a href={linkPedido(pedido.marketplace, pedido.idExterno)} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
-              <ExternalLink /> Abrir no {info.nome}
-            </a>
+            {loja
+              ? (PROXIMOS[situacao] ?? []).map((s) => (
+                  <form key={s} action={alterarSituacao.bind(null, pedido.id, s)}>
+                    <SubmitButton variant={s === "cancelado" ? "outline" : "primary"} pendingText="Salvando...">
+                      {s === "cancelado" ? "Cancelar pedido" : `Marcar ${SITUACOES[s].nome.toLowerCase()}`}
+                    </SubmitButton>
+                  </form>
+                ))
+              : null}
+            {link ? (
+              <a href={link} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
+                <ExternalLink /> Abrir no {info.nome}
+              </a>
+            ) : null}
             {pedido.notaId ? (
               <Link href={`/notas/${pedido.notaId}`} className={buttonClass("primary")}>
                 <FileCheck2 /> Ver nota fiscal
@@ -103,7 +123,8 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
                       <td>
                         <p className="font-medium">{i.titulo}</p>
                         <p className="mt-0.5 text-xs text-muted">
-                          {i.sku ? <>SKU {i.sku} · </> : null}anúncio {i.idAnuncio || "—"}
+                          {i.sku ? <>SKU {i.sku}</> : null}
+                          {i.idAnuncio ? <> · anúncio {i.idAnuncio}</> : null}
                         </p>
                         {i.produto ? (
                           <Link href={`/produtos/${i.produto.id}`} className="mt-1 inline-flex items-center gap-1 text-xs font-semibold text-green">
@@ -132,12 +153,20 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
             </div>
           </Card>
 
-          <Card>
-            <details>
-              <summary className="cursor-pointer p-5 text-sm font-semibold text-muted hover:text-gold">Dados originais do {info.nome}</summary>
-              <pre className="max-h-96 overflow-auto border-t border-border p-5 text-xs">{JSON.stringify(pedido.dados, null, 2)}</pre>
-            </details>
-          </Card>
+          {pedido.observacoes ? (
+            <Card>
+              <CardHeader title="Observações" />
+              <p className="p-5 text-sm whitespace-pre-wrap">{pedido.observacoes}</p>
+            </Card>
+          ) : null}
+          {loja ? null : (
+            <Card>
+              <details>
+                <summary className="cursor-pointer p-5 text-sm font-semibold text-muted hover:text-gold">Dados originais do {info.nome}</summary>
+                <pre className="max-h-96 overflow-auto border-t border-border p-5 text-xs">{JSON.stringify(pedido.dados, null, 2)}</pre>
+              </details>
+            </Card>
+          )}
         </div>
 
         <div className="grid content-start gap-6">
@@ -145,6 +174,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
             <CardHeader title="Valores" />
             <dl className="grid gap-2 p-5 text-sm">
               <Linha nome="Produtos" valor={formatBRL(subtotal)} />
+              {pedido.desconto ? <Linha nome="Desconto" valor={`− ${formatBRL(pedido.desconto)}`} /> : null}
               <Linha nome="Frete" valor={formatBRL(pedido.frete)} />
               <div className="mt-1 flex justify-between border-t border-border pt-3 text-base font-bold">
                 <dt>Total do pedido</dt>
@@ -157,7 +187,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
             <CardHeader title={<span className="inline-flex items-center gap-2"><User className="size-4 text-gold" /> Comprador</span>} />
             <div className="grid gap-1 p-5 text-sm">
               <p className="font-semibold">{e?.nome || pedido.comprador || "—"}</p>
-              {doc ? <p className="text-muted">{formatDocumento(doc)}</p> : <p className="text-xs text-muted">CPF/CNPJ não informado pelo marketplace.</p>}
+              {doc ? <p className="text-muted">{formatDocumento(doc)}</p> : <p className="text-xs text-muted">{loja ? "Sem cliente cadastrado (consumidor final)." : "CPF/CNPJ não informado pelo marketplace."}</p>}
               {e?.telefone ? <p className="text-muted">{formatTelefone(e.telefone.replace(/\D/g, "").replace(/^55(?=\d{10,11}$)/, ""))}</p> : null}
               {cliente ? (
                 <Link href={`/clientes/${cliente.id}`} className="mt-2 text-xs font-semibold text-green">
@@ -182,7 +212,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
                   </p>
                 </>
               ) : (
-                <p className="text-muted">Endereço não informado pelo marketplace.</p>
+                <p className="text-muted">{loja ? "Sem endereço (retirada ou consumidor final)." : "Endereço não informado pelo marketplace."}</p>
               )}
             </div>
           </Card>
