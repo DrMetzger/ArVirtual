@@ -4,8 +4,9 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { clientes, contasMarketplace, movimentosEstoque, pedidosMarketplace, produtos, vinculosSku } from "@/db/schema";
+import { clientes, contasMarketplace, movimentosEstoque, notas, pedidosMarketplace, produtos, vinculosSku } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { notaVale } from "@/lib/nota-pedido";
 import { z } from "zod";
 import { atualizarEstoqueDoPedido, movimentar } from "@/lib/estoque";
 import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
@@ -31,7 +32,10 @@ export async function faturarPedido(id: number) {
   await requireUser();
   const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id) });
   if (!pedido) redirect("/pedidos");
-  if (pedido.notaId) redirect(`/notas/${pedido.notaId}`);
+  if (pedido.notaId) {
+    const nota = await db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { status: true } });
+    if (notaVale(nota?.status)) redirect(`/notas/${pedido.notaId}`);
+  }
   let erro = "";
   let endereco: string | null = null;
   try {

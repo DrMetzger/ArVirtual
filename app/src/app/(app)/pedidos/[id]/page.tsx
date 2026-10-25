@@ -7,7 +7,9 @@ import { notFound } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { contasMarketplace, pedidosMarketplace, produtos } from "@/db/schema";
+import { contasMarketplace, notas, pedidosMarketplace, produtos } from "@/db/schema";
+import { notaVale } from "@/lib/nota-pedido";
+import { StatusNota } from "../../notas/status";
 import { requireUser } from "@/lib/auth";
 import { linkPedido, numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
@@ -23,12 +25,14 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
   if (!Number.isInteger(id)) notFound();
   const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id) });
   if (!pedido) notFound();
-  const [conta, itens, cliente, listaProdutos] = await Promise.all([
+  const [conta, itens, cliente, listaProdutos, nota] = await Promise.all([
     pedido.contaId ? db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId), columns: { nome: true } }) : undefined,
     vincularItens(pedido),
     clienteDoPedido(pedido),
     db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(eq(produtos.ativo, true)).orderBy(asc(produtos.nome)),
+    pedido.notaId ? db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { id: true, status: true, numero: true } }) : undefined,
   ]);
+  const notaValida = nota && notaVale(nota.status) ? nota : null;
   const situacao = situacaoPedido(pedido.marketplace, pedido.status);
   const info = CANAIS[pedido.marketplace];
   const link = linkPedido(pedido.marketplace, pedido.idExterno);
@@ -80,9 +84,14 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
                 <ExternalLink /> Abrir no {info.nome}
               </a>
             ) : null}
-            {pedido.notaId ? (
-              <Link href={`/notas/${pedido.notaId}`} className={buttonClass("primary")}>
-                <FileCheck2 /> Ver nota fiscal
+            {nota && !notaValida ? (
+              <Link href={`/notas/${nota.id}`} className={buttonClass("outline")}>
+                <FileCheck2 /> Nota anterior{nota.numero ? ` ${nota.numero}` : ""} <StatusNota status={nota.status} />
+              </Link>
+            ) : null}
+            {notaValida ? (
+              <Link href={`/notas/${notaValida.id}`} className={buttonClass("primary")}>
+                <FileCheck2 /> Ver nota fiscal{notaValida.numero ? ` ${notaValida.numero}` : ""}
               </Link>
             ) : (
               <form action={faturarPedido.bind(null, pedido.id)}>
@@ -97,7 +106,10 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="grid content-start gap-6 lg:col-span-2">
-          {!podeFaturar && !pedido.notaId ? (
+          {nota && !notaValida && podeFaturar ? (
+            <Alert tone="gold">A nota deste pedido foi {nota.status === "cancelada" ? "cancelada" : nota.status}. Você pode emitir uma nova NF-e.</Alert>
+          ) : null}
+          {!podeFaturar && !notaValida ? (
             <Alert tone="gold">
               {situacao === "cancelado" ? "Pedido cancelado: não há nota a emitir." : "Aguardando pagamento: a nota fica disponível quando o pedido for pago."}
             </Alert>
