@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { contasMarketplace, type Marketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { encrypt } from "@/lib/crypto";
-import { adapter, callbackUrl } from "@/lib/marketplaces";
+import { adapter, callbackUrl, sincronizarPedidos } from "@/lib/marketplaces";
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ mp: string }> }) {
   await requireUser();
@@ -34,7 +34,9 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ mp: 
       .insert(contasMarketplace)
       .values({ marketplace: a.id, idExterno: conta.idExterno, ...valores })
       .onConflictDoUpdate({ target: [contasMarketplace.marketplace, contasMarketplace.idExterno], set: valores });
-    return voltar(`ok=${encodeURIComponent(`${a.nome} conectado: ${conta.nome}`)}`);
+    // Conta nova: importa o histórico de pedidos (2 anos) em segundo plano.
+    void sincronizarPedidos(730).catch(() => undefined);
+    return voltar(`ok=${encodeURIComponent(`${a.nome} conectado: ${conta.nome}. Importando o histórico de pedidos em segundo plano.`)}`);
   } catch (e) {
     return voltar(`erro=${encodeURIComponent((e as Error).message)}`);
   }

@@ -51,21 +51,26 @@ let emAndamento: Promise<ResultadoSync> | null = null;
 
 /** Busca pedidos dos últimos `dias` em todas as contas conectadas e grava/atualiza no banco.
  *  Uma sincronização por vez: a automática e o botão compartilham a mesma execução. */
-export function sincronizarPedidos(dias = 30) {
-  emAndamento ??= sincronizar(dias).finally(() => {
+export function sincronizarPedidos(dias = 30, porAtualizacao = false) {
+  emAndamento ??= sincronizar(dias, porAtualizacao).finally(() => {
     emAndamento = null;
   });
   return emAndamento;
 }
 
-async function sincronizar(dias: number): Promise<ResultadoSync> {
+async function sincronizar(dias: number, porAtualizacao: boolean): Promise<ResultadoSync> {
   const contas = await db.select().from(contasMarketplace);
   const desde = new Date(Date.now() - dias * 86400_000);
   const resultado: ResultadoSync = [];
 
   for (const conta of contas) {
     try {
-      const pedidos = await adapter(conta.marketplace).pedidos(await contaComToken(conta), desde);
+      const pedidos = await adapter(conta.marketplace).pedidos(await contaComToken(conta), desde, porAtualizacao);
+      // Conta com nome genérico ganha o nome da loja que vem nos pedidos.
+      const loja = pedidos.find((p) => p.loja)?.loja;
+      if (loja && /^(Loja|Seller) Magalu\b/.test(conta.nome)) {
+        await db.update(contasMarketplace).set({ nome: loja }).where(eq(contasMarketplace.id, conta.id));
+      }
       for (const p of pedidos) {
         const valores = {
           status: p.status,

@@ -10,7 +10,7 @@ import { sincronizarPedidos } from "@/lib/marketplaces";
 
 export async function sincronizar() {
   await requireUser();
-  const r = await sincronizarPedidos(30);
+  const r = await sincronizarPedidos(365);
   revalidatePath("/");
   const erros = r.filter((x) => x.erro);
   const total = r.reduce((s, x) => s + x.pedidos, 0);

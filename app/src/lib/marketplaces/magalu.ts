@@ -6,7 +6,7 @@ import { lerResposta, MarketplaceError, type MarketplaceAdapter, type Tokens } f
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
 // criar o app, pois o Magalu libera escopos por conta.
 const ID = process.env.MAGALU_ID_URL || "https://id.magalu.com";
-const API = "https://api.magalu.com";
+const API = process.env.MAGALU_API_URL || "https://api.magalu.com";
 // Escopos (developers.magalu.com › APIs › Pedidos / Produtos › overview).
 export const MAGALU_SCOPES = [
   "open:order-order-seller:read",
@@ -113,7 +113,7 @@ export const magalu: MarketplaceAdapter = {
     return {
       ...toTokens(t),
       idExterno: tenant,
-      nome: d.nome || `Loja Magalu ${tenant.slice(0, 8)}`,
+      nome: d.nome || "Loja Magalu",
       // Guarda o que veio no token (sem assinatura) para conferir tenant e escopos concedidos.
       dados: { escopos: t.scope ?? "", token: d.payload },
     };
@@ -150,46 +150,64 @@ export const magalu: MarketplaceAdapter = {
     return { idExterno: sku.id ?? sku.code ?? produto.sku, link: "https://seller.magalu.com" };
   },
 
-  async pedidos(conta, desde) {
-    // Valores da Magalu vêm em inteiros com "normalizer" (100 = centavos).
-    type Valor = { value?: number; normalizer?: number } | number | undefined;
-    const valor = (v: Valor, normalizer = 100) => (typeof v === "number" ? v / normalizer : (v?.value ?? 0) / (v?.normalizer ?? normalizer));
+  async pedidos(conta, desde, porAtualizacao) {
+    // Valores vêm em inteiros com "normalizer" (100 = centavos): { total | value, normalizer }.
+    type Valor = { value?: number; total?: number; normalizer?: number } | number | undefined;
+    const valor = (v: Valor, normalizer = 100) =>
+      typeof v === "number" ? v / normalizer : (v?.total ?? v?.value ?? 0) / (v?.normalizer ?? normalizer);
+    type Endereco = { street?: string; number?: string; complement?: string; district?: string; city?: string; state?: string; zipcode?: string };
+    type Entrega = {
+      status?: string;
+      seller?: { id?: string; name?: string };
+      shipping?: {
+        recipient?: { name?: string; document_number?: string; address?: Endereco; phones?: { area_code?: string; number?: string }[] };
+      };
+      items?: { info?: { sku?: string; id?: string; name?: string }; quantity?: number; unit_price?: Valor }[];
+    };
     type Pedido = {
       id?: string;
       code?: string;
       status?: string;
       created_at?: string;
       purchased_at?: string;
-      customer?: { name?: string; document_number?: string; phones?: { number?: string }[] };
+      customer?: { name?: string; document_number?: string; phones?: { area_code?: string; number?: string }[] };
       amounts?: { total?: number; normalizer?: number; freight?: Valor };
-      deliveries?: {
-        shipping?: {
-          recipient?: { name?: string; document_number?: string };
-          address?: { street?: string; number?: string; complement?: string; district?: string; city?: string; state?: string; zipcode?: string };
-        };
-        items?: { info?: { sku?: string; id?: string; name?: string }; quantity?: number; unit_price?: Valor }[];
-      }[];
+      deliveries?: Entrega[];
     };
+    // O status do pedido fica "approved" mesmo depois de enviado; o andamento real está em cada entrega.
+    const ORDEM = ["cancelled", "new", "approved", "frozen", "invoiced", "shipped", "delivered"];
+    const statusReal = (o: Pedido) => {
+      const ents = (o.deliveries ?? []).map((d) => d.status ?? "").filter(Boolean);
+      if (!ents.length) return o.status ?? "";
+      const ativas = ents.filter((e) => e !== "cancelled");
+      if (!ativas.length) return "cancelled";
+      return ativas.reduce((m, e) => (ORDEM.indexOf(e) < ORDEM.indexOf(m) ? e : m)); // a entrega mais atrasada manda
+    };
+    const telefone = (ps?: { area_code?: string; number?: string }[]) => (ps?.[0] ? `${ps[0].area_code ?? ""}${ps[0].number ?? ""}` : undefined);
+
     const out = [];
-    for (let offset = 0; offset < 500; offset += 50) {
-      const q = new URLSearchParams({ _limit: "50", _offset: String(offset), purchased_at__gte: desde.toISOString() });
+    // Pagina até acabar. Na sincronização automática busca por data de atualização (pega envios e entregas de pedidos antigos).
+    for (let offset = 0; ; offset += 50) {
+      const q = new URLSearchParams({ _limit: "50", _offset: String(offset), _sort: "purchased_at:desc" });
+      q.set(porAtualizacao ? "updated_at__gte" : "purchased_at__gte", desde.toISOString());
       const r = await api<{ results?: Pedido[] }>(`/seller/v1/orders?${q}`, conta.accessToken);
       const lista = r.results ?? [];
       out.push(
         ...lista.map((o) => {
           const norm = o.amounts?.normalizer ?? 100;
-          const entrega = o.deliveries?.[0]?.shipping;
-          const end = entrega?.address;
+          const rec = o.deliveries?.find((d) => d.shipping?.recipient)?.shipping?.recipient;
+          const end = rec?.address;
           return {
             idExterno: String(o.code ?? o.id),
-            status: o.status ?? "",
+            status: statusReal(o),
             total: (o.amounts?.total ?? 0) / norm,
             frete: valor(o.amounts?.freight, norm),
-            comprador: o.customer?.name ?? "",
+            comprador: o.customer?.name ?? rec?.name ?? "",
             data: new Date(o.purchased_at ?? o.created_at ?? Date.now()),
+            loja: o.deliveries?.find((d) => d.seller?.name)?.seller?.name,
             itens: (o.deliveries ?? []).flatMap((d) =>
               (d.items ?? []).map((i) => ({
-                idAnuncio: i.info?.id ?? i.info?.sku ?? "",
+                idAnuncio: i.info?.sku ?? i.info?.id ?? "",
                 sku: i.info?.sku ?? "",
                 titulo: i.info?.name ?? "",
                 quantidade: i.quantity ?? 1,
@@ -198,9 +216,9 @@ export const magalu: MarketplaceAdapter = {
             ),
             entrega: end
               ? {
-                  nome: entrega?.recipient?.name ?? o.customer?.name ?? "",
-                  documento: entrega?.recipient?.document_number ?? o.customer?.document_number,
-                  telefone: o.customer?.phones?.[0]?.number,
+                  nome: rec?.name ?? o.customer?.name ?? "",
+                  documento: rec?.document_number ?? o.customer?.document_number,
+                  telefone: telefone(rec?.phones) ?? telefone(o.customer?.phones),
                   endereco: [end.street, end.number, end.complement, end.district].filter(Boolean).join(", "),
                   logradouro: end.street,
                   numero: end.number,
@@ -215,7 +233,7 @@ export const magalu: MarketplaceAdapter = {
           };
         }),
       );
-      if (lista.length < 50) break;
+      if (lista.length < 50 || offset >= 5000) break;
     }
     return out;
   },
