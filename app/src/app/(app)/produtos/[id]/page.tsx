@@ -58,7 +58,8 @@ export default async function ProdutoPage({
       />
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
-        <ProdutoForm produto={produto} parametros={parametros} />
+        {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
+        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} />
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}

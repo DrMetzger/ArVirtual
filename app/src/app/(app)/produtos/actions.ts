@@ -62,17 +62,14 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   });
   if (dup) return { erro: `SKU já usado por "${dup.nome}".` };
 
-  // Imagens e vídeos: os já existentes (na ordem do formulário) + novos envios.
-  const imagens = form.getAll("imagensExistentes").map(String);
-  const videos = form.getAll("videosExistentes").map(String);
+  // Imagens e vídeos na ordem escolhida na tela: "e:<url>" (já salva) ou "n:<i>" (i-ésimo arquivo enviado agora).
+  const atuais = id ? await db.query.produtos.findFirst({ where: eq(produtos.id, id), columns: { imagens: true, videos: true } }) : undefined;
+  let imagens: string[];
+  let videos: string[];
   try {
     const o = await origin();
-    for (const f of form.getAll("novasImagens")) {
-      if (f instanceof File && f.size > 0) imagens.push(await salvarImagem(f, o));
-    }
-    for (const f of form.getAll("novosVideos")) {
-      if (f instanceof File && f.size > 0) videos.push(await salvarVideo(f, o));
-    }
+    imagens = await ordenarMidias(form, "ordemImagens", "novasImagens", atuais?.imagens ?? [], (f) => salvarImagem(f, o));
+    videos = await ordenarMidias(form, "ordemVideos", "novosVideos", atuais?.videos ?? [], (f) => salvarVideo(f, o));
   } catch (e) {
     return { erro: (e as Error).message };
   }
@@ -183,4 +180,24 @@ export async function sugerirNcmIA(produto: { nome: string; descricao: string; m
   } catch (e) {
     return { erro: (e as Error).message };
   }
+}
+
+async function ordenarMidias(form: FormData, campoOrdem: string, campoArquivos: string, existentes: string[], salvar: (f: File) => Promise<string>) {
+  const arquivos = form.getAll(campoArquivos).filter((f): f is File => f instanceof File && f.size > 0);
+  let ordem: string[] = [];
+  try {
+    ordem = JSON.parse(String(form.get(campoOrdem) ?? "[]"));
+  } catch {
+    ordem = [];
+  }
+  const enviados = await Promise.all(arquivos.map(salvar));
+  const out: string[] = [];
+  for (const t of ordem) {
+    // Só aceita URLs que já eram do produto (a ordem vem do navegador).
+    if (t.startsWith("e:") && existentes.includes(t.slice(2))) out.push(t.slice(2));
+    else if (t.startsWith("n:") && enviados[Number(t.slice(2))]) out.push(enviados[Number(t.slice(2))]!);
+  }
+  // Arquivo enviado sem posição na ordem (não deveria acontecer) vai para o fim.
+  for (const u of enviados) if (!out.includes(u)) out.push(u);
+  return out;
 }
