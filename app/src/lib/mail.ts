@@ -4,6 +4,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { contasEmail } from "@/db/schema";
 import { decrypt } from "./crypto";
+import { anexoLogo, CID_LOGO } from "./email-layout";
 
 type Conta = typeof contasEmail.$inferSelect;
 
@@ -32,6 +33,6 @@ export async function enviarEmail(opts: {
     to: opts.para,
     subject: opts.assunto,
     html: opts.html,
-    attachments: opts.anexos,
+    attachments: [...(opts.html.includes(`cid:${CID_LOGO}`) ? await anexoLogo() : []), ...(opts.anexos ?? [])],
   });
 }

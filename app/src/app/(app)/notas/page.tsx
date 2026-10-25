@@ -10,6 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { consultarStatusSefaz } from "./actions";
 import { StatusNota } from "./status";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Notas fiscais" };
 
@@ -81,7 +82,7 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
               </thead>
               <tbody>
                 {lista.map((n) => (
-                  <tr key={n.id}>
+                  <LinhaLink key={n.id} href={`/notas/${n.id}`}>
                     <td>
                       <Link href={`/notas/${n.id}`} className="font-semibold hover:text-gold">
                         {n.numero ? `NF-e ${n.numero}/${n.serie}` : "Rascunho"}
@@ -94,7 +95,7 @@ export default async function NotasPage({ searchParams }: { searchParams: Promis
                       <StatusNota status={n.status} />
                     </td>
                     <td className="text-right font-semibold">{formatBRL(n.total)}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

@@ -3,7 +3,7 @@ import { CANAIS } from "@/components/marca";
 import type { Metadata } from "next";
 import { Alert, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { clientes, pedidosMarketplace, produtos } from "@/db/schema";
+import { pedidosMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { FORMAS_PAGAMENTO } from "@/lib/nfe/emissor";
@@ -16,24 +16,20 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
   await requireUser();
   const sp = await searchParams;
   const pedido = sp.pedido ? await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, Number(sp.pedido) || 0) }) : undefined;
-  const [listaClientes, listaProdutos] = await Promise.all([
-    db.query.clientes.findMany({
-      columns: { id: true, nome: true, documento: true },
-      with: { enderecos: { columns: { id: true, apelido: true, cidade: true, uf: true, principal: true } } },
-      orderBy: asc(clientes.nome),
-      limit: 1000,
-    }),
-    db
-      .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, preco: produtos.preco, estoque: produtos.estoque })
-      .from(produtos)
-      .where(eq(produtos.ativo, true))
-      .orderBy(asc(produtos.nome)),
-  ]);
+  const listaProdutos = await db
+    .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, preco: produtos.preco, estoque: produtos.estoque })
+    .from(produtos)
+    .where(eq(produtos.ativo, true))
+    .orderBy(asc(produtos.nome));
 
   // Nota a partir de um pedido de marketplace: comprador, endereço e itens já preenchidos.
   let iniciais;
+  let clienteInicial = null;
   if (pedido) {
     const [cliente, itens] = await Promise.all([clienteDoPedido(pedido), vincularItens(pedido)]);
+    clienteInicial = cliente
+      ? { id: cliente.id, nome: cliente.nome, documento: cliente.documento, email: cliente.email, enderecos: cliente.enderecos.map((e) => ({ id: e.id, apelido: e.apelido, cidade: e.cidade, uf: e.uf, principal: e.principal })) }
+      : null;
     iniciais = {
       pedidoId: pedido.id,
       clienteId: cliente?.id ?? "",
@@ -61,7 +57,7 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
           <Alert tone="gold">{sp.aviso}</Alert>
         </div>
       ) : null}
-      <NotaForm clientes={listaClientes} produtos={listaProdutos} formas={FORMAS_PAGAMENTO} iniciais={iniciais} />
+      <NotaForm clienteInicial={clienteInicial} produtos={listaProdutos} formas={FORMAS_PAGAMENTO} iniciais={iniciais} />
     </>
   );
 }

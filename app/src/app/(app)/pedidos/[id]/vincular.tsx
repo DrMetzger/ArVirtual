@@ -2,7 +2,7 @@
 
 import { Link2 } from "lucide-react";
 import { useActionState } from "react";
-import { Select } from "@/components/ui";
+import { BuscaSelectCampo } from "@/components/busca-select";
 import { SubmitButton } from "@/components/ui/client";
 import { vincularProduto } from "../actions";
 
@@ -11,14 +11,14 @@ export function Vincular({ pedidoId, chaves, produtos }: { pedidoId: number; cha
   const [state, action, pending] = useActionState(vincularProduto.bind(null, pedidoId, chaves), null);
   return (
     <form action={action} className="mt-2 flex flex-wrap items-center gap-2">
-      <Select name="produtoId" defaultValue="" className="h-8 max-w-72 text-xs" required>
-        <option value="">É qual produto do cadastro?</option>
-        {produtos.map((p) => (
-          <option key={p.id} value={p.id}>
-            {p.sku} · {p.nome}
-          </option>
-        ))}
-      </Select>
+      <div className="relative w-full max-w-80">
+        <BuscaSelectCampo
+          name="produtoId"
+          required
+          opcoes={produtos.map((p) => ({ id: p.id, titulo: p.nome, detalhe: p.sku }))}
+          placeholder="É qual produto do cadastro?"
+        />
+      </div>
       <SubmitButton size="sm" variant="outline" pending={pending} pendingText="...">
         <Link2 /> Vincular
       </SubmitButton>

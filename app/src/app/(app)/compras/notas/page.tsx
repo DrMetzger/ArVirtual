@@ -8,6 +8,7 @@ import { fornecedores, notasEntrada } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { STATUS_ENTRADA } from "@/lib/status-entrada";
 import { formatBRL, formatDate } from "@/lib/utils";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Notas de entrada" };
 
@@ -56,7 +57,7 @@ export default async function NotasEntradaPage() {
               </thead>
               <tbody>
                 {lista.map(({ n, fornecedor, fantasia }) => (
-                  <tr key={n.id}>
+                  <LinhaLink key={n.id} href={`/compras/notas/${n.id}`}>
                     <td>
                       <Link href={`/compras/notas/${n.id}`} className="font-semibold hover:text-gold">
                         {n.numero ? `NF ${n.numero}${n.serie ? `/${n.serie}` : ""}` : `Entrada #${n.id}`}
@@ -69,7 +70,7 @@ export default async function NotasEntradaPage() {
                       <Badge tone={STATUS_ENTRADA[n.status].tom}>{STATUS_ENTRADA[n.status].nome}</Badge>
                     </td>
                     <td className="text-right font-semibold whitespace-nowrap">{formatBRL(n.valorTotal)}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

@@ -2,7 +2,8 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { usuarios } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth";
-import { gerarComGeminiDetalhado } from "@/lib/gemini";
+import { gerarComGeminiDetalhado, gerarImagemComGemini } from "@/lib/gemini";
+import { layoutEmail, paragrafo } from "@/lib/email-layout";
 import { enviarEmail } from "@/lib/mail";
 import { statusSefaz } from "@/lib/nfe/emissor";
 
@@ -15,6 +16,12 @@ export async function POST(req: Request, { params }: { params: Promise<{ alvo: s
       await requireUser();
       const { texto, modelo } = await gerarComGeminiDetalhado([{ role: "user", text: "Responda apenas: OK, conectado." }], { temperature: 0 });
       return Response.json({ ok: `Gemini (${modelo}) respondeu: ${texto.trim().slice(0, 80)}` });
+    }
+    if (alvo === "gemini-imagem") {
+      await requireUser();
+      const r = await gerarImagemComGemini([{ role: "user", text: "Um pequeno cubo de calibração impresso em 3D em PLA azul, fundo branco." }], { proporcao: "1:1" });
+      if (!r.imagens.length) return Response.json({ erro: `${r.modelo} respondeu sem imagem: ${r.texto.slice(0, 120)}` });
+      return Response.json({ ok: `Geração de imagens funcionando (${r.modelo}).` });
     }
     if (alvo === "sefaz") {
       await requireAdmin();
@@ -30,7 +37,11 @@ export async function POST(req: Request, { params }: { params: Promise<{ alvo: s
         contaId: Number(new URL(req.url).searchParams.get("conta")),
         para: user.email,
         assunto: "Teste de e-mail · ArVirtual",
-        html: "<p>Tudo certo! Esta conta de e-mail está configurada no sistema ArVirtual.</p>",
+        html: layoutEmail({
+          titulo: "Teste de e-mail",
+          resumo: "Esta conta de e-mail está configurada no sistema ArVirtual.",
+          corpo: paragrafo("Tudo certo! Esta conta de e-mail está configurada e enviando mensagens do sistema ArVirtual."),
+        }),
       });
       return Response.json({ ok: `E-mail de teste enviado para ${user.email}.` });
     }

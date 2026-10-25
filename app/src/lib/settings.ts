@@ -10,6 +10,40 @@ import { FAIXAS_PADRAO, lerFaixas, type ParametrosPreco } from "./precificacao";
 export const SETTINGS = {
   "gemini.apiKey": { label: "Chave da API Gemini", secret: true, group: "IA (Google Gemini)" },
   "gemini.model": { label: "Modelo Gemini", secret: false, group: "IA (Google Gemini)", placeholder: "gemini-3.6-flash" },
+  "gemini.modeloImagem": { label: "Modelo para gerar imagens", secret: false, group: "IA (Google Gemini)", placeholder: "gemini-3.1-flash-image" },
+  "ia.aprender": { label: "Aprender com as conversas (guardar fatos e preferências na memória)", secret: false, group: "IA (Google Gemini)", options: ["sim", "nao"] },
+  "ia.instrucoes": { label: "Instruções fixas para o assistente (tom, regras, o que evitar)", secret: false, group: "IA (Google Gemini)", multiline: true, placeholder: "Ex.: responda curto; sempre calcule o preço para os 3 marketplaces; evite PETG para peças de cozinha." },
+
+  "impressora.modelo": {
+    label: "Impressora",
+    secret: false,
+    group: "Impressora 3D",
+    options: ["Bambu Lab A1 mini", "Bambu Lab A1", "Bambu Lab P1S", "Bambu Lab P2S", "Bambu Lab X1C", "Bambu Lab H2D", "Outra"],
+  },
+  "impressora.quantidade": { label: "Quantidade de impressoras", secret: false, group: "Impressora 3D", placeholder: "1" },
+  "impressora.bico": {
+    label: "Bico (nozzle)",
+    secret: false,
+    group: "Impressora 3D",
+    options: ["0,4 mm aço inox (padrão)", "0,4 mm aço endurecido", "0,2 mm aço inox", "0,6 mm aço endurecido", "0,8 mm aço endurecido"],
+  },
+  "impressora.mesa": {
+    label: "Mesa (placa)",
+    secret: false,
+    group: "Impressora 3D",
+    options: ["Textured PEI", "Smooth PEI", "Cool Plate SuperTack", "Engineering Plate", "High Temp Plate"],
+  },
+  "impressora.ams": { label: "Multicor", secret: false, group: "Impressora 3D", options: ["AMS lite (4 cores)", "Sem AMS (uma cor)", "AMS lite + troca manual", "AMS 2 Pro", "AMS HT"] },
+  "impressora.fatiador": { label: "Fatiador", secret: false, group: "Impressora 3D", options: ["Bambu Studio", "OrcaSlicer", "Bambu Handy (celular)"] },
+  "impressora.materiais": { label: "Materiais que usamos", secret: false, group: "Impressora 3D", placeholder: "PLA Basic, PLA Matte, PLA Silk, PETG HF, TPU 95A" },
+  "impressora.ambiente": { label: "Ambiente da impressora", secret: false, group: "Impressora 3D", placeholder: "Ex.: sala sem ar-condicionado, 28 °C, umidade alta" },
+  "impressora.observacoes": {
+    label: "Observações (upgrades, problemas conhecidos, perfis que funcionam)",
+    secret: false,
+    group: "Impressora 3D",
+    multiline: true,
+    placeholder: "Ex.: secadora de filamento; PETG sai melhor a 250 °C; altura de camada padrão 0,20 mm.",
+  },
 
   "seguranca.exigir2fa": { label: "Exigir verificação em duas etapas (código por e-mail) de todos os usuários", secret: false, group: "Segurança", options: ["nao", "sim"] },
 
@@ -30,9 +64,9 @@ export const SETTINGS = {
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
 
-  "impressao.custoFilamentoKg": { label: "Custo do filamento (R$/kg)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "120" },
-  "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "95" },
-  "impressao.custoKwh": { label: "Tarifa de energia (R$/kWh)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "0.95" },
+  "impressao.custoFilamentoKg": { label: "Custo do filamento (R$/kg)", secret: false, group: "Impressão 3D: custos", placeholder: "120" },
+  "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D: custos", placeholder: "95" },
+  "impressao.custoKwh": { label: "Tarifa de energia (R$/kWh)", secret: false, group: "Impressão 3D: custos", placeholder: "0.95" },
   "impressao.margem": { label: "Lucro desejado sobre o custo (%)", secret: false, group: "Precificação: geral", placeholder: "60" },
   "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
   "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
@@ -53,10 +87,18 @@ export const SETTINGS = {
   "loja.frete": { label: "Frete pago pela loja (R$)", secret: false, group: "Precificação: loja própria (Sincrolab)", placeholder: "0" },
 } as const satisfies Record<
   string,
-  { label: string; secret: boolean; group: string; placeholder?: string; options?: readonly string[] }
+  { label: string; secret: boolean; group: string; placeholder?: string; options?: readonly string[]; multiline?: boolean }
 >;
 
 export type SettingKey = keyof typeof SETTINGS;
+
+/** Grupos que ficam na aba Impressora 3D de Configurações. */
+export const GRUPOS_IMPRESSORA = ["Impressora 3D", "Impressão 3D: custos"];
+export function abaDoGrupo(grupo: string) {
+  if (grupo.startsWith("Precificação")) return "precificacao";
+  if (GRUPOS_IMPRESSORA.includes(grupo)) return "impressora";
+  return "integracoes";
+}
 
 export async function getSettings<K extends SettingKey>(keys: K[]): Promise<Record<K, string>> {
   const rows = await db.select().from(configuracoes).where(inArray(configuracoes.chave, keys));
@@ -84,6 +126,7 @@ export async function getSettingsForDisplay() {
       group: def.group,
       placeholder: "placeholder" in def ? def.placeholder : undefined,
       options: "options" in def ? [...def.options] : undefined,
+      multiline: "multiline" in def ? def.multiline : false,
       value,
       isSet: Boolean(row?.valor),
     };

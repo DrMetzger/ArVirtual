@@ -11,6 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { sincronizarAgora } from "./actions";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Pedidos" };
 
@@ -195,7 +196,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                   {visiveis.map((p) => {
                     const qtd = p.itens.reduce((s, i) => s + i.quantidade, 0);
                     return (
-                      <tr key={p.id}>
+                      <LinhaLink key={p.id} href={`/pedidos/${p.id}`}>
                         <td>
                           <Link href={`/pedidos/${p.id}`} className="block font-mono text-xs font-semibold whitespace-nowrap hover:text-gold">
                             {numeroPedido(p.marketplace, p.idExterno)}
@@ -228,7 +229,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                           )}
                         </td>
                         <td className="text-right font-semibold whitespace-nowrap">{formatBRL(p.total)}</td>
-                      </tr>
+                      </LinhaLink>
                     );
                   })}
                 </tbody>

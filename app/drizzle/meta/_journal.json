@@ -85,6 +85,20 @@
       "when": 1792954432467,
       "tag": "0011_vinculos_sku",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1792955859507,
+      "tag": "0012_assistente_ia",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1792961426868,
+      "tag": "0013_mei_cfop",
+      "breakpoints": true
     }
   ]
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { Loader2, Mail, Pencil, Plus, Search, Send, ShieldCheck, Sparkles, Trash2, UserPlus } from "lucide-react";
+import { ImageIcon, Loader2, Mail, Pencil, Plus, Search, Send, ShieldCheck, Sparkles, Trash2, UserPlus } from "lucide-react";
 import { useActionState, useState, useTransition } from "react";
 import { AddressFields, emptyAddress, type AddressValues } from "@/components/address-fields";
-import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select } from "@/components/ui";
+import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Empresa } from "@/db/schema";
 import { formatCep, formatDocumento, formatTelefone, onlyDigits } from "@/lib/utils";
@@ -199,6 +199,7 @@ type SettingItem = {
   secret: boolean;
   placeholder?: string;
   options?: string[];
+  multiline?: boolean;
   value: string;
   isSet: boolean;
 };
@@ -224,6 +225,7 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
           <Field
             key={i.key}
             label={i.label}
+            className={i.multiline ? "sm:col-span-2" : undefined}
             hint={
               i.secret && i.isSet ? (
                 <span className="flex items-center gap-3">
@@ -243,6 +245,8 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
                   </option>
                 ))}
               </Select>
+            ) : i.multiline ? (
+              <Textarea name={i.key} rows={3} defaultValue={i.value} placeholder={i.placeholder} />
             ) : (
               <Input
                 name={i.key}
@@ -259,9 +263,14 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
           <Feedback state={teste} />
           <div className="flex justify-end gap-2">
             {grupo.startsWith("IA") ? (
-              <Button type="button" variant="outline" disabled={testando} onClick={() => rodarTeste("gemini", setTeste)}>
-                {testando ? <Loader2 className="animate-spin" /> : <Sparkles />} Testar
-              </Button>
+              <>
+                <Button type="button" variant="outline" disabled={testando} onClick={() => rodarTeste("gemini-imagem", setTeste)}>
+                  {testando ? <Loader2 className="animate-spin" /> : <ImageIcon />} Testar imagem
+                </Button>
+                <Button type="button" variant="outline" disabled={testando} onClick={() => rodarTeste("gemini", setTeste)}>
+                  {testando ? <Loader2 className="animate-spin" /> : <Sparkles />} Testar
+                </Button>
+              </>
             ) : null}
             <SubmitButton pending={pending} pendingText="Salvando...">Salvar</SubmitButton>
           </div>

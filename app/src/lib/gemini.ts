@@ -1,7 +1,11 @@
 import "server-only";
 import { getSettings } from "./settings";
 
-export type ChatMessage = { role: "user" | "model"; text: string };
+/** Parte extra da mensagem: texto (conteúdo de arquivo) ou arquivo em base64 (imagem, PDF). */
+export type Parte = { text: string } | { inlineData: { mimeType: string; data: string } };
+export type ChatMessage = { role: "user" | "model"; text: string; partes?: Parte[] };
+export type Fonte = { titulo: string; url: string };
+type Opcoes = { system?: string; json?: boolean; temperature?: number; pesquisa?: boolean };
 
 const SYSTEM = `Você é o assistente da ArVirtual, empresa de pesquisa e desenvolvimento de São José do Rio Preto (SP)
 que vende peças impressas em 3D (Bambu Lab A1 mini) em Mercado Livre, Shopee e Magalu e emite NF-e.
@@ -28,53 +32,85 @@ function pensamento(model: string) {
 export const MODELO_PADRAO = "gemini-3.6-flash";
 // Em ordem: os que responderam com a chave gratuita no teste (25/10/2026). Os "-latest" apontam para a versão estável do Google.
 const RESERVAS = [MODELO_PADRAO, "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+export const MODELO_IMAGEM_PADRAO = "gemini-3.1-flash-image";
+const RESERVAS_IMAGEM = [MODELO_IMAGEM_PADRAO, "gemini-3.1-flash-lite-image", "gemini-nano-banana-2.1", "gemini-3.1-flash-image-preview", "gemini-2.5-flash-image"];
 const TEMPO_LIMITE_MS = 20_000;
 const ORCAMENTO_MS = 60_000; // tempo máximo somando todas as tentativas
+// GEMINI_API_URL só para testes locais (servidor falso).
+const BASE = process.env.GEMINI_API_URL || "https://generativelanguage.googleapis.com/v1beta/models";
 
 class Indisponivel extends Error {}
 
-async function chamar(model: string, apiKey: string, messages: ChatMessage[], opts: { system?: string; json?: boolean; temperature?: number }) {
-  const res = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
-    {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: opts.system ?? SYSTEM }] },
-        contents: messages.map((m) => ({ role: m.role, parts: [{ text: m.text }] })),
-        generationConfig: {
+type Resposta = {
+  candidates?: {
+    content?: { parts?: { text?: string; thought?: boolean; inlineData?: { mimeType: string; data: string } }[] };
+    groundingMetadata?: { groundingChunks?: { web?: { uri?: string; title?: string } }[] };
+    finishReason?: string;
+  }[];
+  promptFeedback?: { blockReason?: string };
+  error?: { message: string };
+};
+
+function corpo(model: string, messages: ChatMessage[], opts: Opcoes & { imagem?: { proporcao?: string } }) {
+  return JSON.stringify({
+    systemInstruction: { parts: [{ text: opts.system ?? SYSTEM }] },
+    contents: messages.map((m) => ({ role: m.role, parts: [...(m.partes ?? []), ...(m.text ? [{ text: m.text }] : [])] })),
+    ...(opts.pesquisa ? { tools: [{ google_search: {} }] } : {}),
+    generationConfig: opts.imagem
+      ? { responseModalities: ["TEXT", "IMAGE"], ...(opts.imagem.proporcao ? { imageConfig: { aspectRatio: opts.imagem.proporcao } } : {}) }
+      : {
           temperature: opts.temperature ?? 0.7,
           ...(opts.json ? { responseMimeType: "application/json" } : {}),
           thinkingConfig: pensamento(model),
         },
-      }),
-      signal: AbortSignal.timeout(TEMPO_LIMITE_MS),
-    },
-  ).catch((e: Error) => {
-    if (e.name === "TimeoutError") throw new Indisponivel(`${model} não respondeu em ${TEMPO_LIMITE_MS / 1000} s`);
+  });
+}
+
+async function requisitar(model: string, apiKey: string, acao: string, body: string, signal: AbortSignal) {
+  const res = await fetch(`${BASE}/${encodeURIComponent(model)}:${acao}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-goog-api-key": apiKey },
+    body,
+    signal,
+  }).catch((e: Error) => {
+    if (e.name === "TimeoutError" || e.name === "AbortError") throw new Indisponivel(`${model} não respondeu em ${TEMPO_LIMITE_MS / 1000} s`);
     throw new Error(`Gemini: falha de conexão (${e.message}).`);
   });
-  const data = (await res.json().catch(() => ({}))) as {
-    candidates?: { content?: { parts?: { text?: string }[] } }[];
-    error?: { message: string };
-  };
-  if ([404, 429, 500, 503].includes(res.status)) throw new Indisponivel(`${model}: ${data.error?.message ?? res.statusText}`);
-  if (!res.ok) throw new Error(`Gemini (${model}): ${data.error?.message ?? res.statusText}`);
-  const text = data.candidates?.[0]?.content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+  if (!res.ok) {
+    const data = (await res.json().catch(() => ({}))) as Resposta;
+    if ([404, 429, 500, 503].includes(res.status)) throw new Indisponivel(`${model}: ${res.status} ${data.error?.message ?? res.statusText}`);
+    throw new Error(`Gemini (${model}): ${data.error?.message ?? res.statusText}`);
+  }
+  return res;
+}
+
+const textoDe = (data: Resposta) =>
+  data.candidates?.[0]?.content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? "").join("") ?? "";
+
+function fontesDe(data: Resposta, acc: Fonte[]) {
+  for (const c of data.candidates?.[0]?.groundingMetadata?.groundingChunks ?? []) {
+    if (c.web?.uri && !acc.some((f) => f.url === c.web!.uri)) acc.push({ titulo: c.web.title || c.web.uri, url: c.web.uri });
+  }
+}
+
+async function chamar(model: string, apiKey: string, messages: ChatMessage[], opts: Opcoes) {
+  const res = await requisitar(model, apiKey, "generateContent", corpo(model, messages, opts), AbortSignal.timeout(TEMPO_LIMITE_MS));
+  const data = (await res.json().catch(() => ({}))) as Resposta;
+  const text = textoDe(data);
   if (!text) throw new Indisponivel(`${model} não retornou conteúdo`);
   return text;
 }
 
-/** Gera texto e informa qual modelo respondeu (o configurado ou uma reserva). */
-export async function gerarComGeminiDetalhado(
-  messages: ChatMessage[],
-  opts: { system?: string; json?: boolean; temperature?: number } = {},
-): Promise<{ texto: string; modelo: string }> {
-  const s = await getSettings(["gemini.apiKey", "gemini.model"]);
+async function credenciais(chaveModelo: "gemini.model" | "gemini.modeloImagem", padrao: string, reservas: string[]) {
+  const s = await getSettings(["gemini.apiKey", chaveModelo]);
   // A chave da tela tem prioridade; GEMINI_API_KEY vem do segredo APP_GEMINI do GitHub.
   const apiKey = s["gemini.apiKey"] || process.env.GEMINI_API_KEY;
   if (!apiKey) throw new Error("Cadastre a chave da API Gemini em Configurações › Integrações.");
-  const modelos = [...new Set([s["gemini.model"] || MODELO_PADRAO, ...RESERVAS])];
+  return { apiKey, modelos: [...new Set([s[chaveModelo] || padrao, ...reservas])] };
+}
+
+/** Tenta cada modelo (duas voltas pela lista) até um responder. */
+async function comReservas<T>(modelos: string[], tentar: (modelo: string) => Promise<T>): Promise<T> {
   const falhas: string[] = [];
   const limite = Date.now() + ORCAMENTO_MS;
   // Duas voltas pela lista: picos de "high demand" do plano gratuito costumam passar em poucos segundos.
@@ -83,7 +119,7 @@ export async function gerarComGeminiDetalhado(
     for (const modelo of modelos) {
       if (Date.now() > limite) break;
       try {
-        return { texto: await chamar(modelo, apiKey, messages, opts), modelo };
+        return await tentar(modelo);
       } catch (e) {
         if (!(e instanceof Indisponivel)) throw e;
         falhas.push(e.message);
@@ -91,15 +127,108 @@ export async function gerarComGeminiDetalhado(
     }
   }
   console.warn(`[gemini] todos os modelos indisponíveis: ${falhas.join(" · ")}`);
-  throw new Error(
-    "O Google Gemini está sobrecarregado agora (plano gratuito) e nenhum dos modelos respondeu. Tente de novo em 1 ou 2 minutos.",
-  );
+  throw new FalhaGemini(falhas);
 }
 
-export async function gerarComGemini(
+class FalhaGemini extends Error {
+  constructor(readonly falhas: string[]) {
+    super("O Google Gemini está sobrecarregado agora (plano gratuito) e nenhum dos modelos respondeu. Tente de novo em 1 ou 2 minutos.");
+  }
+}
+
+/** Gera texto e informa qual modelo respondeu (o configurado ou uma reserva). */
+export async function gerarComGeminiDetalhado(messages: ChatMessage[], opts: Opcoes = {}): Promise<{ texto: string; modelo: string }> {
+  const { apiKey, modelos } = await credenciais("gemini.model", MODELO_PADRAO, RESERVAS);
+  return comReservas(modelos, async (modelo) => ({ texto: await chamar(modelo, apiKey, messages, opts), modelo }));
+}
+
+/**
+ * Resposta em tempo real (streaming), como no app do Gemini. Se um modelo cair no meio da resposta,
+ * `aoReiniciar` limpa o texto parcial e o próximo modelo da lista responde do zero.
+ */
+export async function transmitirComGemini(
   messages: ChatMessage[],
-  opts: { system?: string; json?: boolean; temperature?: number } = {},
-): Promise<string> {
+  opts: Opcoes,
+  aoReceber: (trecho: string) => void,
+  aoReiniciar: () => void,
+): Promise<{ texto: string; modelo: string; fontes: Fonte[] }> {
+  const { apiKey, modelos } = await credenciais("gemini.model", MODELO_PADRAO, RESERVAS);
+  return comReservas(modelos, async (modelo) => {
+    const ctrl = new AbortController();
+    let relogio = setTimeout(() => ctrl.abort(), TEMPO_LIMITE_MS);
+    let texto = "";
+    const fontes: Fonte[] = [];
+    try {
+      const res = await requisitar(modelo, apiKey, "streamGenerateContent?alt=sse", corpo(modelo, messages, opts), ctrl.signal);
+      const leitor = res.body!.pipeThrough(new TextDecoderStream()).getReader();
+      let resto = "";
+      for (;;) {
+        const { value, done } = await leitor.read();
+        if (done) break;
+        // Sem novidade por 20 s = modelo travado.
+        clearTimeout(relogio);
+        relogio = setTimeout(() => ctrl.abort(), TEMPO_LIMITE_MS);
+        resto += value;
+        const linhas = resto.split(/\r?\n/);
+        resto = linhas.pop() ?? "";
+        for (const l of linhas) {
+          if (!l.startsWith("data:")) continue;
+          const data = JSON.parse(l.slice(5)) as Resposta;
+          if (data.error) throw new Indisponivel(`${modelo}: ${data.error.message}`);
+          fontesDe(data, fontes);
+          const t = textoDe(data);
+          if (t) {
+            texto += t;
+            aoReceber(t);
+          }
+        }
+      }
+      if (!texto) throw new Indisponivel(`${modelo} não retornou conteúdo`);
+      return { texto, modelo, fontes };
+    } catch (e) {
+      if (texto) aoReiniciar();
+      if (e instanceof Indisponivel) throw e;
+      if ((e as Error).name === "AbortError") throw new Indisponivel(`${modelo} parou de responder`);
+      throw e;
+    } finally {
+      clearTimeout(relogio);
+    }
+  });
+}
+
+export type ImagemGerada = { mimeType: string; data: string };
+
+/** Gera (ou edita, se houver imagens anexadas) imagens com o modelo de imagem do Gemini. */
+export async function gerarImagemComGemini(
+  messages: ChatMessage[],
+  opts: { system?: string; proporcao?: string } = {},
+): Promise<{ texto: string; imagens: ImagemGerada[]; modelo: string }> {
+  const { apiKey, modelos } = await credenciais("gemini.modeloImagem", MODELO_IMAGEM_PADRAO, RESERVAS_IMAGEM);
+  try {
+    return await comReservas(modelos, async (modelo) => {
+      const res = await requisitar(modelo, apiKey, "generateContent", corpo(modelo, messages, { ...opts, imagem: { proporcao: opts.proporcao } }), AbortSignal.timeout(90_000));
+      const data = (await res.json().catch(() => ({}))) as Resposta;
+      const partes = data.candidates?.[0]?.content?.parts ?? [];
+      const imagens = partes.filter((p) => p.inlineData && !p.thought).map((p) => p.inlineData!);
+      const texto = partes.filter((p) => p.text && !p.thought).map((p) => p.text).join("");
+      if (!imagens.length && !texto) {
+        const motivo = data.promptFeedback?.blockReason ?? data.candidates?.[0]?.finishReason;
+        if (motivo) throw new Error(`O Gemini recusou gerar esta imagem (${motivo}). Reformule o pedido.`);
+        throw new Indisponivel(`${modelo} não retornou imagem`);
+      }
+      return { texto, imagens, modelo };
+    });
+  } catch (e) {
+    if (e instanceof FalhaGemini && e.falhas.some((f) => /: 429 /.test(f)) && !e.falhas.some((f) => /: 503 /.test(f))) {
+      throw new Error(
+        "Sua chave do Gemini não tem cota para gerar imagens (erro 429: o plano gratuito normalmente não inclui modelos de imagem). Ative o faturamento em aistudio.google.com › Billing ou use outra chave em Configurações › Integrações.",
+      );
+    }
+    throw e;
+  }
+}
+
+export async function gerarComGemini(messages: ChatMessage[], opts: Opcoes = {}): Promise<string> {
   return (await gerarComGeminiDetalhado(messages, opts)).texto;
 }
 

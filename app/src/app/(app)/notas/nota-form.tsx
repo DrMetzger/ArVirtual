@@ -2,16 +2,11 @@
 
 import { Calculator, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
+import { BuscaSelect, buscarClientes, opcaoCliente, type ClienteBusca, type Opcao } from "@/components/busca-select";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select } from "@/components/ui";
 import { formatBRL, formatDocumento, formatValor, parseDecimal } from "@/lib/utils";
 import { criarNota, previsualizarNota, type Preview } from "./actions";
 
-type ClienteOpt = {
-  id: string;
-  nome: string;
-  documento: string;
-  enderecos: { id: string; apelido: string; cidade: string; uf: string; principal: boolean }[];
-};
 type ProdutoOpt = { id: string; sku: string; nome: string; preco: number; estoque: number };
 type Linha = { key: number; produtoId: string; quantidade: string; valorUnitario: string };
 type Iniciais = {
@@ -24,17 +19,19 @@ type Iniciais = {
 const decimal = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
 
 export function NotaForm({
-  clientes,
+  clienteInicial,
   produtos,
   formas,
   iniciais,
 }: {
-  clientes: ClienteOpt[];
+  clienteInicial?: ClienteBusca | null;
   produtos: ProdutoOpt[];
   formas: readonly (readonly [string, string])[];
   iniciais?: Iniciais;
 }) {
-  const [clienteId, setClienteId] = useState(iniciais?.clienteId ?? "");
+  const [clienteSel, setClienteSel] = useState<Opcao<ClienteBusca> | null>(clienteInicial ? opcaoCliente(clienteInicial, formatDocumento) : null);
+  const clienteId = clienteSel?.id ?? "";
+  const opcoesProduto = produtos.map((p) => ({ id: p.id, titulo: p.nome, detalhe: `${p.sku} · ${formatBRL(p.preco)} · ${p.estoque} em estoque`, dados: p }));
   const [formaPagamento, setFormaPagamento] = useState("99");
   const [enderecoId, setEnderecoId] = useState(iniciais?.enderecoId ?? "");
   const [linhas, setLinhas] = useState<Linha[]>(() =>
@@ -47,7 +44,7 @@ export function NotaForm({
   const [calculando, startCalc] = useTransition();
   const [salvando, startSave] = useTransition();
 
-  const cliente = clientes.find((c) => c.id === clienteId);
+  const cliente = clienteSel?.dados;
   const entrada = useMemo(
     () => ({
       clienteId,
@@ -71,22 +68,17 @@ export function NotaForm({
         <CardHeader title="Destinatário" />
         <div className="grid gap-4 p-5 sm:grid-cols-3">
           <Field label="Cliente">
-            <Select
-              value={clienteId}
-              onChange={(e) => {
-                const c = clientes.find((x) => x.id === e.target.value);
-                setClienteId(e.target.value);
+            <BuscaSelect
+              valor={clienteSel}
+              onChange={(o) => {
+                const c = o?.dados;
+                setClienteSel(o);
                 setEnderecoId(c?.enderecos.find((x) => x.principal)?.id ?? c?.enderecos[0]?.id ?? "");
                 setPreview(null);
               }}
-            >
-              <option value="">Selecione...</option>
-              {clientes.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.nome} · {formatDocumento(c.documento)}
-                </option>
-              ))}
-            </Select>
+              buscar={(q) => buscarClientes(q, formatDocumento)}
+              placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone"
+            />
           </Field>
           <Field label="Endereço de entrega" hint={cliente && !cliente.enderecos.length ? "Cliente sem endereço cadastrado." : undefined}>
             <Select value={enderecoId} onChange={(e) => (setEnderecoId(e.target.value), setPreview(null))} disabled={!cliente}>
@@ -126,20 +118,12 @@ export function NotaForm({
           {linhas.map((l) => (
             <div key={l.key} className="grid gap-3 sm:grid-cols-[1fr_110px_150px_120px_40px] sm:items-end">
               <Field label="Produto">
-                <Select
-                  value={l.produtoId}
-                  onChange={(e) => {
-                    const p = produtos.find((x) => x.id === e.target.value);
-                    atualizar(l.key, { produtoId: e.target.value, valorUnitario: p ? formatValor(p.preco) : "" });
-                  }}
-                >
-                  <option value="">Selecione...</option>
-                  {produtos.map((p) => (
-                    <option key={p.id} value={p.id}>
-                      {p.sku} · {p.nome}
-                    </option>
-                  ))}
-                </Select>
+                <BuscaSelect
+                  valor={opcoesProduto.find((o) => o.id === l.produtoId) ?? null}
+                  opcoes={opcoesProduto}
+                  onChange={(o) => atualizar(l.key, { produtoId: o?.id ?? "", valorUnitario: o?.dados ? formatValor(o.dados.preco) : "" })}
+                  placeholder="Buscar produto por nome ou SKU"
+                />
               </Field>
               <Field label="Qtd.">
                 <Input inputMode="decimal" value={l.quantidade} onChange={(e) => atualizar(l.key, { quantidade: e.target.value })} />

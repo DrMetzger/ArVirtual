@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { fornecedores } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { formatDocumento, formatTelefone } from "@/lib/utils";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Fornecedores" };
 
@@ -55,7 +56,7 @@ export default async function FornecedoresPage({ searchParams }: { searchParams:
               </thead>
               <tbody>
                 {lista.map(({ f, notas, comprado }) => (
-                  <tr key={f.id}>
+                  <LinhaLink key={f.id} href={`/compras/fornecedores/${f.id}`}>
                     <td>
                       <Link href={`/compras/fornecedores/${f.id}`} className="font-semibold hover:text-gold">
                         {f.nomeFantasia || f.nome}
@@ -67,7 +68,7 @@ export default async function FornecedoresPage({ searchParams }: { searchParams:
                     <td className="text-muted">{f.cidade ? `${f.cidade}/${f.uf}` : "—"}</td>
                     <td className="text-right">{notas}</td>
                     <td className="text-right font-semibold whitespace-nowrap">{comprado.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

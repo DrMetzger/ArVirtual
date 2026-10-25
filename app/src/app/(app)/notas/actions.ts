@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { notas, pedidosMarketplace, regrasFiscais } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { escaparHtml, layoutEmail, paragrafo } from "@/lib/email-layout";
 import { calcularNota, EntradaNotaSchema, type EntradaNota } from "@/lib/fiscal/calculo";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
 import { enviarEmail } from "@/lib/mail";
@@ -140,9 +141,15 @@ export async function enviarNotaPorEmail(id: string) {
     await enviarEmail({
       para: nota.cliente.email,
       assunto: `Nota fiscal ${nota.numero} - ArVirtual`,
-      html: `<p>Olá, ${nota.cliente.nome}!</p>
-<p>Segue em anexo a nota fiscal eletrônica nº <strong>${nota.numero}</strong> (DANFE em PDF e XML), no valor de <strong>${formatBRL(nota.totalNota)}</strong>.</p>
-<p>Chave de acesso: ${nota.chave}</p><p>Obrigado pela preferência!<br>ArVirtual</p>`,
+      html: layoutEmail({
+        titulo: `Nota fiscal nº ${nota.numero}`,
+        resumo: `NF-e ${nota.numero} no valor de ${formatBRL(nota.totalNota)}: DANFE e XML em anexo.`,
+        corpo:
+          paragrafo(`Olá, <strong>${escaparHtml(nota.cliente.nome)}</strong>!`) +
+          paragrafo(`Segue em anexo a nota fiscal eletrônica nº <strong>${nota.numero}</strong> (DANFE em PDF e XML), no valor de <strong>${formatBRL(nota.totalNota)}</strong>.`) +
+          paragrafo(`Chave de acesso:<br><span style="font-family:Consolas,monospace;font-size:13px;color:#0b2a4f">${(nota.chave ?? "").replace(/(\d{4})(?=\d)/g, "$1 ")}</span>`) +
+          paragrafo("Obrigado pela preferência!"),
+      }),
       anexos: [
         { filename: danfe.nome, content: danfe.pdf },
         { filename: xml.nome, content: Buffer.from(xml.xml, "utf8") },

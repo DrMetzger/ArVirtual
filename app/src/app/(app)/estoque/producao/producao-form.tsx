@@ -1,5 +1,6 @@
 "use client";
 
+import { BuscaSelectCampo } from "@/components/busca-select";
 import { useState } from "react";
 import { Alert, Card, CardHeader, Field, Input, Select } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
@@ -23,22 +24,19 @@ export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[];
       <CardHeader title="Registrar produção" description="As peças entram no estoque e o filamento usado sai." />
       <form onSubmit={onSubmit} className="grid gap-4 p-5">
         <Field label="Produto">
-          <Select
-            name="produtoId"
-            value={produtoId}
-            onChange={(e) => {
-              setProdutoId(e.target.value);
-              setFilamentoId("");
-            }}
-            required
-          >
-            <option value="">Selecione...</option>
-            {produtos.map((x) => (
-              <option key={x.id} value={x.id}>
-                {x.sku} · {x.nome}
-              </option>
-            ))}
-          </Select>
+          <div className="relative">
+            <BuscaSelectCampo
+              name="produtoId"
+              required
+              defaultId={produtoId}
+              opcoes={produtos.map((x) => ({ id: x.id, titulo: x.nome, detalhe: x.sku }))}
+              onChange={(o) => {
+                setProdutoId(o?.id ?? "");
+                setFilamentoId("");
+              }}
+              placeholder="Buscar produto por nome ou SKU"
+            />
+          </div>
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Peças boas">

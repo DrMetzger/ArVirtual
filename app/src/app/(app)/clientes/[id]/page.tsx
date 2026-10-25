@@ -10,6 +10,7 @@ import { formatBRL, formatDate, formatDocumento } from "@/lib/utils";
 import { excluirCliente } from "../actions";
 import { ClienteForm } from "../cliente-form";
 import { Enderecos } from "../enderecos";
+import { LinhaLink } from "@/components/linha-link";
 
 export default async function ClientePage({
   params,
@@ -59,7 +60,7 @@ export default async function ClientePage({
             <table className="table-base">
               <tbody>
                 {ultimasNotas.map((n) => (
-                  <tr key={n.id}>
+                  <LinhaLink key={n.id} href={`/notas/${n.id}`}>
                     <td>
                       <Link href={`/notas/${n.id}`} className="font-semibold hover:text-gold">
                         {n.numero ? `NF-e ${n.numero}` : "Rascunho"}
@@ -70,7 +71,7 @@ export default async function ClientePage({
                       <Badge>{n.status}</Badge>
                     </td>
                     <td className="text-right font-semibold">{formatBRL(n.totalNota)}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

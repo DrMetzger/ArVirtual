@@ -9,7 +9,7 @@ import { usoApicpf } from "@/lib/apicpf";
 import { FAIXAS_PADRAO } from "@/lib/precificacao";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
-import { getSetting, getSettingsForDisplay } from "@/lib/settings";
+import { abaDoGrupo, getSetting, getSettingsForDisplay } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { MagaluGuia } from "./magalu-guia";
@@ -21,6 +21,7 @@ const ABAS = [
   { id: "empresa", label: "Empresa" },
   { id: "certificado", label: "Certificado A1 e NF-e" },
   { id: "integracoes", label: "Integrações e APIs" },
+  { id: "impressora", label: "Impressora 3D" },
   { id: "precificacao", label: "Precificação" },
   { id: "emails", label: "E-mails" },
   { id: "usuarios", label: "Usuários" },
@@ -37,7 +38,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const [usoCpf, apicpfReserva] = await Promise.all([usoApicpf(), getSetting("apicpf.chave").then((c) => !c && Boolean(process.env.APICPF_CHAVE))]);
 
   const AJUDA: Record<string, React.ReactNode> = {
-    "IA (Google Gemini)": "Gere a chave em aistudio.google.com › Get API key.",
+    "IA (Google Gemini)": "Gere a chave em aistudio.google.com › Get API key. Gerar imagens pode exigir faturamento ativo no Google AI Studio (o plano gratuito costuma não ter cota para imagens).",
     Fiscal: "Parâmetros do cálculo de impostos (a matriz fica em Matriz fiscal).",
     Segurança: "Com \"sim\", todos recebem um código por e-mail ao entrar. Precisa de uma conta de e-mail padrão (aba E-mails).",
     "Consulta de CPF (APICPF)": (
@@ -50,7 +51,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
     Magalu: <MagaluGuia base={process.env.APP_URL ?? origin} clientId={(await getSetting("magalu.clientId")) ?? ""} />,
-    "Impressão 3D (Bambu Lab A1 mini)": "Usado no cálculo do custo de produção dos produtos.",
+    "Impressão 3D: custos": "Usado no cálculo do custo de produção dos produtos.",
+    "Impressora 3D": "O assistente de IA usa estes dados para dar dicas de impressão (temperaturas, perfis, mesa, AMS) da sua máquina.",
     "Precificação: geral": "Vale para todos os canais. O preço sugerido de cada canal é o que deixa este lucro depois de taxas, campanha, imposto e embalagem.",
     "Precificação: Mercado Livre": (
       <>
@@ -95,10 +97,10 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
       {aba === "certificado" ? await certificadoAba() : null}
 
-      {aba === "integracoes" || aba === "precificacao" ? (
+      {aba === "integracoes" || aba === "precificacao" || aba === "impressora" ? (
         <div className="grid gap-6 xl:grid-cols-2">
           {Object.entries(
-            (await getSettingsForDisplay()).filter((s) => s.group.startsWith("Precificação") === (aba === "precificacao")).reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
+            (await getSettingsForDisplay()).filter((s) => abaDoGrupo(s.group) === aba).reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
               (acc[s.group] ??= []).push(s);
               return acc;
             }, {}),
