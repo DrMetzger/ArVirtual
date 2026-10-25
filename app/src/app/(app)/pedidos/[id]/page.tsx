@@ -1,6 +1,6 @@
 import { asc, eq } from "drizzle-orm";
 import { CANAIS, MarcaLogo } from "@/components/marca";
-import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, RefreshCw, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,12 +14,15 @@ import { requireUser } from "@/lib/auth";
 import { linkPedido, numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
-import { alterarSituacao, faturarPedido } from "../actions";
+import { alterarSituacao, buscarNotaDoPedido, faturarPedido } from "../actions";
+import { notasDosPedidos } from "@/lib/marketplaces/notas-externas";
+import { MAGALU_SEM_NOTA } from "@/lib/marketplaces/situacao";
 import { Vincular } from "./vincular";
 
 export const metadata: Metadata = { title: "Pedido" };
 
-export default async function PedidoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function PedidoPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ ok?: string; erro?: string }> }) {
+  const msg = await searchParams;
   await requireUser();
   const id = Number((await params).id);
   if (!Number.isInteger(id)) notFound();
@@ -33,6 +36,8 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
     pedido.notaId ? db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { id: true, status: true, numero: true } }) : undefined,
   ]);
   const notaValida = nota && notaVale(nota.status) ? nota : null;
+  const externas = await notasDosPedidos([pedido.id]);
+  const externaValida = externas.find((n) => n.status !== "invalid");
   const situacao = situacaoPedido(pedido.marketplace, pedido.status);
   const info = CANAIS[pedido.marketplace];
   const link = linkPedido(pedido.marketplace, pedido.idExterno);
@@ -89,7 +94,11 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
                 <FileCheck2 /> Nota anterior{nota.numero ? ` ${nota.numero}` : ""} <StatusNota status={nota.status} />
               </Link>
             ) : null}
-            {notaValida ? (
+            {!notaValida && externaValida ? (
+              <a href={`/api/notas-externas/${externaValida.id}/danfe`} target="_blank" rel="noreferrer" className={buttonClass("primary")}>
+                <FileCheck2 /> DANFE NF {externaValida.numero}
+              </a>
+            ) : notaValida ? (
               <Link href={`/notas/${notaValida.id}`} className={buttonClass("primary")}>
                 <FileCheck2 /> Ver nota fiscal{notaValida.numero ? ` ${notaValida.numero}` : ""}
               </Link>
@@ -106,6 +115,56 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
 
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="grid content-start gap-6 lg:col-span-2">
+          {msg.ok ? <Alert tone="green">{msg.ok}</Alert> : null}
+          {msg.erro ? <Alert>{msg.erro}</Alert> : null}
+          {externas.length || (pedido.marketplace === "magalu" && podeFaturar && !notaValida) ? (
+            <Card>
+              <CardHeader
+                title={<span className="inline-flex items-center gap-2"><FileCheck2 className="size-4 text-gold" /> Nota fiscal informada no {info.nome}</span>}
+                description="Emitida em outro sistema e enviada ao marketplace; puxada com o XML."
+                action={
+                  <form action={buscarNotaDoPedido.bind(null, pedido.id)}>
+                    <SubmitButton variant="outline" size="sm" pendingText="Buscando...">
+                      <RefreshCw /> {externas.length ? "Atualizar" : "Buscar nota"}
+                    </SubmitButton>
+                  </form>
+                }
+              />
+              {externas.length ? (
+                <div className="divide-y divide-border">
+                  {externas.map((n) => (
+                    <div key={n.id} className="flex flex-wrap items-center gap-x-6 gap-y-2 px-5 py-4 text-sm">
+                      <div>
+                        <p className="font-semibold">NF {n.numero} · série {n.serie}</p>
+                        <p className="font-mono text-xs break-all text-muted">{n.chave.replace(/(\d{4})(?=\d)/g, "$1 ")}</p>
+                      </div>
+                      <div className="text-xs text-muted">
+                        {n.emitidaEm ? `Emitida ${formatDate(n.emitidaEm)}` : null}
+                        {n.valor ? <span className="block font-semibold text-foreground">{formatBRL(n.valor)}</span> : null}
+                      </div>
+                      <Badge tone={n.status === "invalid" ? "red" : n.status === "validating" ? "gold" : "green"}>
+                        {n.status === "invalid" ? "Inválida no marketplace" : n.status === "validating" ? "Em validação" : "Aprovada"}
+                      </Badge>
+                      <div className="ml-auto flex gap-2">
+                        {n.xml ? (
+                          <>
+                            <a href={`/api/notas-externas/${n.id}/danfe`} target="_blank" rel="noreferrer" className={buttonClass("outline", "sm")}>
+                              DANFE
+                            </a>
+                            <a href={`/api/notas-externas/${n.id}/xml`} className={buttonClass("outline", "sm")}>
+                              XML
+                            </a>
+                          </>
+                        ) : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="px-5 py-4 text-sm text-muted">{MAGALU_SEM_NOTA}</p>
+              )}
+            </Card>
+          ) : null}
           {nota && !notaValida && podeFaturar ? (
             <Alert tone="gold">A nota deste pedido foi {nota.status === "cancelada" ? "cancelada" : nota.status}. Você pode emitir uma nova NF-e.</Alert>
           ) : null}

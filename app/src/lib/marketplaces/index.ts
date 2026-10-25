@@ -5,6 +5,7 @@ import { contasMarketplace, pedidosMarketplace, type ContaMarketplace, type Mark
 import { decrypt, encrypt } from "@/lib/crypto";
 import { atualizarEstoqueDoPedido } from "@/lib/estoque";
 import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
+import { buscarNotasPendentes, importarNotasDoPedido, precisaBuscarNotas } from "./notas-externas";
 import { situacaoPedido } from "./situacao";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
@@ -22,6 +23,9 @@ export function adapter(id: string): MarketplaceAdapter {
   if (!a) throw new Error(`Marketplace desconhecido: ${id}`);
   return a;
 }
+
+/** Busca as notas dos pedidos faturados que ainda não têm nota salva (botão em Pedidos). */
+export const buscarNotasDosPedidos = () => buscarNotasPendentes(contaComToken, adapter);
 
 export function callbackUrl(origin: string, id: Marketplace) {
   return `${process.env.APP_URL ?? origin}/api/marketplaces/${id}/callback`;
@@ -68,7 +72,9 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
 
   for (const conta of contas) {
     try {
-      const pedidos = await adapter(conta.marketplace).pedidos(await contaComToken(conta), desde, porAtualizacao);
+      const a = adapter(conta.marketplace);
+      const token = await contaComToken(conta);
+      const pedidos = await a.pedidos(token, desde, porAtualizacao);
       const historico = (data: Date) => data.getTime() < conta.criadoEm.getTime() - 86400_000;
       // Conta com nome genérico ganha o nome da loja que vem nos pedidos.
       const loja = pedidos.find((p) => p.loja)?.loja;
@@ -104,6 +110,10 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
         if (salvo) {
           await atualizarEstoqueDoPedido(salvo).catch((e: Error) => console.warn(`[estoque] pedido ${p.idExterno}: ${e.message}`));
           await atualizarFinanceiroDoPedido(salvo).catch((e: Error) => console.warn(`[financeiro] pedido ${p.idExterno}: ${e.message}`));
+          // NF-e emitida fora e informada ao marketplace (Magalu devolve chave e XML).
+          if (a.notasDoPedido && (await precisaBuscarNotas(salvo))) {
+            await importarNotasDoPedido(a, token, salvo).catch((e: Error) => console.warn(`[notas] pedido ${p.idExterno}: ${e.message}`));
+          }
         }
       }
       await db.update(contasMarketplace).set({ ultimaSincronizacao: new Date() }).where(eq(contasMarketplace.id, conta.id));

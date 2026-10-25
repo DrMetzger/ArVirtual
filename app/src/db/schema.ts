@@ -381,6 +381,29 @@ export const pedidosMarketplace = pgTable(
   ],
 );
 
+/** NF-e emitida fora do sistema e informada ao marketplace (ex.: Magalu devolve chave e XML), ligada ao pedido. */
+export const notasExternas = pgTable(
+  "notas_externas",
+  {
+    id: serial("id").primaryKey(),
+    pedidoId: integer("pedido_id")
+      .notNull()
+      .references(() => pedidosMarketplace.id, { onDelete: "cascade" }),
+    origem: text("origem").notNull(),
+    chave: text("chave").notNull(),
+    numero: integer("numero").notNull().default(0),
+    serie: integer("serie").notNull().default(0),
+    cnpjEmitente: text("cnpj_emitente").notNull().default(""),
+    emitidaEm: timestamp("emitida_em", { withTimezone: true }),
+    valor: money("valor").notNull().default(0),
+    /** Situação no marketplace: approved, validating, invalid. */
+    status: text("status").notNull().default(""),
+    xml: text("xml").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("notas_externas_chave_idx").on(t.chave), index("notas_externas_pedido_idx").on(t.pedidoId)],
+);
+
 /** SKU/anúncio do marketplace ligado a um produto do cadastro (quando o SKU do anúncio é diferente). */
 export const vinculosSku = pgTable(
   "vinculos_sku",
@@ -693,3 +716,4 @@ export type Ncm = typeof ncms.$inferSelect;
 export type ConversaIa = typeof conversasIa.$inferSelect;
 export type MensagemIa = typeof mensagensIa.$inferSelect;
 export type MemoriaIa = typeof memoriasIa.$inferSelect;
+export type NotaExterna = typeof notasExternas.$inferSelect;

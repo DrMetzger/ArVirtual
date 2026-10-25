@@ -237,4 +237,29 @@ export const magalu: MarketplaceAdapter = {
     }
     return out;
   },
+
+  async notasDoPedido(conta, dados) {
+    type Ped = { id?: string; deliveries?: { id?: string }[] };
+    let entregas = ((dados as Ped)?.deliveries ?? []).filter((d) => d.id);
+    // Pedido salvo sem o id da entrega: busca o pedido de novo.
+    if (!entregas.length && (dados as Ped)?.id) {
+      const o = await api<Ped>(`/seller/v1/orders/${encodeURIComponent((dados as Ped).id!)}`, conta.accessToken);
+      entregas = (o.deliveries ?? []).filter((d) => d.id);
+    }
+    const out = [];
+    for (const d of entregas) {
+      type Nota = { key?: string; status?: string | { id?: string }; issued_at?: string; xml?: string };
+      const r = await api<{ results?: Nota[] }>(`/seller/v1/deliveries/${encodeURIComponent(d.id!)}/invoices?_limit=20`, conta.accessToken);
+      for (const n of r.results ?? []) {
+        if (!n.key) continue;
+        out.push({
+          chave: n.key.replace(/\D/g, ""),
+          status: typeof n.status === "string" ? n.status : (n.status?.id ?? ""),
+          emitidaEm: n.issued_at ? new Date(n.issued_at) : null,
+          xml: n.xml ?? "",
+        });
+      }
+    }
+    return out;
+  },
 };
