@@ -1,6 +1,6 @@
 "use client";
 
-import { Calculator, ImagePlus, Printer, X } from "lucide-react";
+import { Calculator, Printer } from "lucide-react";
 import { useMemo, useState } from "react";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
@@ -9,6 +9,7 @@ import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
 import { formatBRL, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { NcmField } from "./ncm-field";
+import { ImagensField } from "./imagens-field";
 import { VideosField } from "./videos-field";
 
 const ORIGENS = [
@@ -27,8 +28,6 @@ const fmt = (n: number | undefined) => (n ? String(n).replace(".", ",") : "");
 
 export function ProdutoForm({ produto, parametros }: { produto?: Produto; parametros: ParametrosImpressao }) {
   const [state, onSubmit, pending] = useFormAction(salvarProduto, null);
-  const [imagens, setImagens] = useState<string[]>(produto?.imagens ?? []);
-  const [previews, setPreviews] = useState<string[]>([]);
   const [filamentoG, setFilamentoG] = useState(produto?.filamentoG ?? 0);
   const [tempoMin, setTempoMin] = useState(produto?.tempoImpressaoMin ?? 0);
   const [custo, setCusto] = useState(fmt(produto?.custo));
@@ -85,48 +84,7 @@ export function ProdutoForm({ produto, parametros }: { produto?: Produto; parame
           </div>
         </Card>
 
-        <Card>
-          <CardHeader title="Imagens" description="JPG, PNG ou WEBP até 5 MB. A primeira é a capa do anúncio." />
-          <div className="grid gap-4 p-5">
-            <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
-              {imagens.map((url, i) => (
-                <div key={url} className="group relative aspect-square overflow-hidden rounded-xl border border-border bg-surface-2">
-                  <img src={url} alt="" className="size-full object-cover" />
-                  <input type="hidden" name="imagensExistentes" value={url} />
-                  {i === 0 ? (
-                    <span className="absolute left-1.5 top-1.5 rounded-md bg-gold px-1.5 text-[10px] font-bold text-[#0a1a33]">CAPA</span>
-                  ) : null}
-                  <button
-                    type="button"
-                    onClick={() => setImagens(imagens.filter((u) => u !== url))}
-                    className="absolute right-1.5 top-1.5 grid size-6 place-items-center rounded-full bg-black/60 text-white opacity-0 transition group-hover:opacity-100"
-                    aria-label="Remover imagem"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              ))}
-              {previews.map((src) => (
-                <div key={src} className="aspect-square overflow-hidden rounded-xl border border-dashed border-gold">
-                  <img src={src} alt="" className="size-full object-cover opacity-80" />
-                </div>
-              ))}
-              <label className="grid aspect-square cursor-pointer place-items-center rounded-xl border-2 border-dashed border-border text-muted transition hover:border-gold hover:text-gold">
-                <span className="grid justify-items-center gap-1 text-xs font-semibold">
-                  <ImagePlus className="size-6" /> Adicionar
-                </span>
-                <input
-                  type="file"
-                  name="novasImagens"
-                  accept="image/jpeg,image/png,image/webp"
-                  multiple
-                  className="sr-only"
-                  onChange={(e) => setPreviews([...(e.target.files ?? [])].map((f) => URL.createObjectURL(f)))}
-                />
-              </label>
-            </div>
-          </div>
-        </Card>
+        <ImagensField iniciais={produto?.imagens ?? []} />
         <VideosField iniciais={produto?.videos ?? []} />
       </div>
 
