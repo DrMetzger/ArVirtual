@@ -64,6 +64,13 @@
       "when": 1792952025537,
       "tag": "0008_vendas_estoque",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1792952844932,
+      "tag": "0009_compras_filamentos",
+      "breakpoints": true
     }
   ]
 }

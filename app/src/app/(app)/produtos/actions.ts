@@ -33,6 +33,7 @@ const ProdutoSchema = z.object({
   cor: str.default(""),
   filamentoG: z.coerce.number().int().min(0).default(0),
   tempoImpressaoMin: z.coerce.number().int().min(0).default(0),
+  filamentoId: z.preprocess((v) => (v ? Number(v) : null), z.number().int().nullable()),
 });
 
 async function origin() {

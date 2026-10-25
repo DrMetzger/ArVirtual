@@ -29,14 +29,34 @@ const ORIGENS = [
 const MATERIAIS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PLA Silk", "PLA Matte", "Outro"];
 const fmt = (n: number | undefined) => (n ? String(n).replace(".", ",") : "");
 
-export function ProdutoForm({ produto, parametros, precos }: { produto?: Produto; parametros: ParametrosImpressao; precos: ParametrosPreco }) {
+type FilamentoOpt = { id: number; material: string; cor: string; marca: string; custoKg: number; saldoG: number; corHex: string };
+
+export function ProdutoForm({
+  produto,
+  parametros,
+  precos,
+  filamentos = [],
+}: {
+  produto?: Produto;
+  parametros: ParametrosImpressao;
+  precos: ParametrosPreco;
+  filamentos?: FilamentoOpt[];
+}) {
+  const [filamentoId, setFilamentoId] = useState(produto?.filamentoId ? String(produto.filamentoId) : "");
+  const [material, setMaterial] = useState(produto?.material || "PLA");
+  const [cor, setCor] = useState(produto?.cor ?? "");
+  const fil = filamentos.find((f) => String(f.id) === filamentoId);
   const [state, onSubmit, pending] = useFormAction(salvarProduto, null);
   const [filamentoG, setFilamentoG] = useState(produto?.filamentoG ?? 0);
   const [tempoMin, setTempoMin] = useState(produto?.tempoImpressaoMin ?? 0);
   const [custo, setCusto] = useState(fmt(produto?.custo));
   const [preco, setPreco] = useState(fmt(produto?.preco));
 
-  const calc = useMemo(() => custoImpressao(filamentoG, tempoMin, parametros), [filamentoG, tempoMin, parametros]);
+  // Com filamento do estoque, o custo do material usa o custo médio dele.
+  const calc = useMemo(
+    () => custoImpressao(filamentoG, tempoMin, fil && fil.custoKg > 0 ? { ...parametros, custoFilamentoKg: fil.custoKg } : parametros),
+    [filamentoG, tempoMin, parametros, fil],
+  );
   const margemReal = parseDecimal(preco) > 0 && parseDecimal(custo) > 0 ? (parseDecimal(preco) / parseDecimal(custo) - 1) * 100 : null;
 
   return (
@@ -104,15 +124,37 @@ export function ProdutoForm({ produto, parametros, precos }: { produto?: Produto
         <Card className="overflow-hidden">
           <CardHeader title="Impressão 3D" description="Bambu Lab A1 mini" action={<Printer className="size-5 text-gold" />} />
           <div className="grid gap-4 p-5 sm:grid-cols-2">
+            <Field label="Filamento do estoque" className="sm:col-span-2" hint={fil ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg` : "Escolha para baixar na produção e usar o custo médio."}>
+              <Select
+                name="filamentoId"
+                value={filamentoId}
+                onChange={(e) => {
+                  setFilamentoId(e.target.value);
+                  const f = filamentos.find((x) => String(x.id) === e.target.value);
+                  if (f) {
+                    setMaterial(MATERIAIS.includes(f.material) ? f.material : "Outro");
+                    setCor(f.cor);
+                  }
+                }}
+              >
+                <option value="">Nenhum</option>
+                {filamentos.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.material} {f.cor}
+                    {f.marca ? ` (${f.marca})` : ""}
+                  </option>
+                ))}
+              </Select>
+            </Field>
             <Field label="Material">
-              <Select name="material" defaultValue={produto?.material || "PLA"}>
+              <Select name="material" value={material} onChange={(e) => setMaterial(e.target.value)}>
                 {MATERIAIS.map((m) => (
                   <option key={m}>{m}</option>
                 ))}
               </Select>
             </Field>
             <Field label="Cor">
-              <Input name="cor" defaultValue={produto?.cor} />
+              <Input name="cor" value={cor} onChange={(e) => setCor(e.target.value)} />
             </Field>
             <Field label="Filamento (g)">
               <Input name="filamentoG" type="number" min={0} value={filamentoG} onChange={(e) => setFilamentoG(Number(e.target.value))} />

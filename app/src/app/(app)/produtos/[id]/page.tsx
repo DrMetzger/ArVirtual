@@ -9,6 +9,7 @@ import { anuncios, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
+import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { excluirProduto } from "../actions";
@@ -61,7 +62,7 @@ export default async function ProdutoPage({
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
-        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} precos={precos} />
+        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} precos={precos} filamentos={await listaFilamentos()} />
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}
