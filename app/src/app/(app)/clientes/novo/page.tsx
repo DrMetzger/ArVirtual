@@ -9,7 +9,7 @@ export default async function NovoClientePage() {
   await requireUser();
   return (
     <>
-      <PageHeader title="Novo cliente" description="CNPJ: dados e endereço vêm direto da Receita. CPF: validação dos dígitos (nome via Serpro, se configurado)." />
+      <PageHeader title="Novo cliente" description="CNPJ: dados e endereço vêm direto da Receita. CPF: validação dos dígitos e nome pela APICPF." />
       <ClienteForm />
     </>
   );

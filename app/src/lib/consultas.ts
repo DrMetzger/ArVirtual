@@ -1,6 +1,6 @@
 import "server-only";
+import { consultarApicpf } from "./apicpf";
 import { isValidCnpj, isValidCpf } from "./documento";
-import { getSettings } from "./settings";
 import { onlyDigits } from "./utils";
 
 const TIMEOUT_MS = 8000;
@@ -160,36 +160,22 @@ async function consultarCnpj(cnpj: string): Promise<DadosReceita> {
   };
 }
 
-/** CPF: a Receita não tem consulta pública gratuita; usamos a API oficial do Serpro (paga) quando configurada. */
+/** CPF: a Receita não tem consulta pública gratuita; o nome vem da APICPF (com limite e cache). */
 async function consultarCpf(cpf: string): Promise<DadosReceita> {
-  const s = await getSettings(["serpro.consumerKey", "serpro.consumerSecret"]);
-  if (!s["serpro.consumerKey"] || !s["serpro.consumerSecret"]) {
-    throw new Error(
-      "CPF válido. Para buscar o nome na Receita, cadastre as credenciais do Serpro em Configurações › Integrações.",
-    );
-  }
-  const basic = Buffer.from(`${s["serpro.consumerKey"]}:${s["serpro.consumerSecret"]}`).toString("base64");
-  const token = await getJson<{ access_token: string }>("https://gateway.apiserpro.serpro.gov.br/token", {
-    method: "POST",
-    headers: { Authorization: `Basic ${basic}`, "Content-Type": "application/x-www-form-urlencoded" },
-    body: "grant_type=client_credentials",
-  });
-  const r = await getJson<{ ni: string; nome: string; situacao: { codigo: string; descricao: string } }>(
-    `https://gateway.apiserpro.serpro.gov.br/consulta-cpf-df/v1/cpf/${cpf}`,
-    { headers: { Authorization: `Bearer ${token.access_token}` } },
-  );
+  const p = await consultarApicpf(cpf);
+  if (!p) throw new Error("CPF válido, mas não encontrado na APICPF. Preencha o nome à mão.");
   return {
     tipo: "PF",
     documento: cpf,
-    nome: r.nome,
+    nome: p.nome,
     nomeFantasia: "",
-    situacao: r.situacao?.descricao ?? "",
+    situacao: "",
     inscricaoEstadual: "",
     email: "",
     telefone: "",
     endereco: null,
-    fonte: "Receita Federal (Serpro)",
-    bruto: r,
+    fonte: "APICPF",
+    bruto: p,
   };
 }
 

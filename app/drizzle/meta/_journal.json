@@ -50,6 +50,13 @@
       "when": 1792781493501,
       "tag": "0006_pedidos_detalhados",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1792943104735,
+      "tag": "0007_consultas_cpf",
+      "breakpoints": true
     }
   ]
 }
