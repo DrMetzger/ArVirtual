@@ -79,6 +79,7 @@ jobs:
           ADMIN_EMAIL: ${{ secrets.ADMIN_EMAIL }}
           ADMIN_PASSWORD: ${{ secrets.ADMIN_PASSWORD }}
           GEMINI_API_KEY: ${{ secrets.APP_GEMINI }}
+          APICPF_CHAVE: ${{ secrets.APICPF_CHAVE }}
           ADMIN_NAME: ${{ vars.ADMIN_NAME || 'Kleber Metzger de Farias' }}
         run: |
           $SSH "cat '$VM_DIR/.env' 2>/dev/null || true" > atual.env
@@ -107,6 +108,7 @@ jobs:
               "ADMIN_EMAIL": valor("ADMIN_EMAIL") or "kleber@arvirtual.com.br",
               "ADMIN_PASSWORD": admin_senha,
               "GEMINI_API_KEY": valor("GEMINI_API_KEY").strip(),
+              "APICPF_CHAVE": valor("APICPF_CHAVE").strip(),
           }
           with open("app/.env", "w") as f:
               for k, val in v.items():

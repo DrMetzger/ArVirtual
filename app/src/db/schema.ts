@@ -367,6 +367,20 @@ export const pedidosMarketplace = pgTable(
   ],
 );
 
+// Consultas de CPF na APICPF: controla os limites do plano (por dia e por minuto) e serve de cache.
+export const consultasCpf = pgTable(
+  "consultas_cpf",
+  {
+    id: serial("id").primaryKey(),
+    cpf: text("cpf").notNull(),
+    /** Status HTTP devolvido pela APICPF (0 = reservada, ainda sem resposta). */
+    status: integer("status").notNull().default(0),
+    resposta: jsonb("resposta"),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("consultas_cpf_cpf_idx").on(t.cpf), index("consultas_cpf_data_idx").on(t.criadoEm)],
+);
+
 // ---------- Relações ----------
 export const clientesRelations = relations(clientes, ({ many }) => ({ enderecos: many(enderecos) }));
 export const enderecosRelations = relations(enderecos, ({ one }) => ({

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Alert, PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { contasEmail, usuarios } from "@/db/schema";
+import { usoApicpf } from "@/lib/apicpf";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
 import { getSetting, getSettingsForDisplay } from "@/lib/settings";
@@ -30,11 +31,19 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   const h = await headers();
   const origin = `${h.get("x-forwarded-proto") ?? "http"}://${h.get("host")}`;
 
+  const [usoCpf, apicpfReserva] = await Promise.all([usoApicpf(), getSetting("apicpf.chave").then((c) => !c && Boolean(process.env.APICPF_CHAVE))]);
+
   const AJUDA: Record<string, React.ReactNode> = {
     "IA (Google Gemini)": "Gere a chave em aistudio.google.com › Get API key.",
     Fiscal: "Parâmetros do cálculo de impostos (a matriz fica em Matriz fiscal).",
     Segurança: "Com \"sim\", todos recebem um código por e-mail ao entrar. Precisa de uma conta de e-mail padrão (aba E-mails).",
-    "Consulta CPF (Serpro)": "Opcional e pago: loja.serpro.gov.br › Consulta CPF. Sem ele, o CPF é só validado.",
+    "Consulta de CPF (APICPF)": (
+      <>
+        Chave em apicpf.com › Minhas Chaves API. Cada CPF é consultado uma vez só (depois vem do cache). Hoje: {usoCpf.dia}/{usoCpf.limiteDia} consultas
+        {usoCpf.creditos !== null ? ` · ${usoCpf.creditos} crédito(s) da base externa` : ""}
+        {apicpfReserva ? " · usando a chave do servidor (segredo APICPF_CHAVE)" : ""}.
+      </>
+    ),
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
     Magalu: <>Redirect URI: <code className="break-all">{callbackUrl(origin, "magalu")}</code></>,

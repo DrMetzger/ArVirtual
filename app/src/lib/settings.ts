@@ -15,8 +15,9 @@ export const SETTINGS = {
   "fiscal.difalSimples": { label: "Calcular DIFAL no Simples (venda interestadual a consumidor)", secret: false, group: "Fiscal", options: ["nao", "sim"] },
   "fiscal.aproximadoPadrao": { label: "% aproximado de tributos (Lei 12.741) quando o NCM não tiver", secret: false, group: "Fiscal", placeholder: "0" },
 
-  "serpro.consumerKey": { label: "Consumer Key", secret: true, group: "Consulta CPF (Serpro)" },
-  "serpro.consumerSecret": { label: "Consumer Secret", secret: true, group: "Consulta CPF (Serpro)" },
+  "apicpf.chave": { label: "Chave da API (X-API-KEY)", secret: true, group: "Consulta de CPF (APICPF)" },
+  "apicpf.limiteDia": { label: "Limite de consultas por dia", secret: false, group: "Consulta de CPF (APICPF)", placeholder: "100" },
+  "apicpf.limiteMinuto": { label: "Limite de consultas por minuto", secret: false, group: "Consulta de CPF (APICPF)", placeholder: "6" },
 
   "mercadolivre.clientId": { label: "App ID (client_id)", secret: false, group: "Mercado Livre" },
   "mercadolivre.clientSecret": { label: "Secret Key", secret: true, group: "Mercado Livre" },
