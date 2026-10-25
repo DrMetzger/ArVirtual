@@ -4,14 +4,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
-import { clientes, pedidosMarketplace, produtos } from "@/db/schema";
+import { clientes, contasMarketplace, movimentosEstoque, pedidosMarketplace, produtos, vinculosSku } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { z } from "zod";
-import { atualizarEstoqueDoPedido } from "@/lib/estoque";
+import { atualizarEstoqueDoPedido, movimentar } from "@/lib/estoque";
 import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
 import { sincronizarPedidos } from "@/lib/marketplaces";
 import type { Situacao } from "@/lib/marketplaces/situacao";
-import { cadastrarClienteDoPedido } from "@/lib/pedidos";
+import { cadastrarClienteDoPedido, garantirEnderecoEntrega } from "@/lib/pedidos";
 
 export async function sincronizarAgora(dias: number) {
   await requireUser();
@@ -33,12 +33,41 @@ export async function faturarPedido(id: number) {
   if (!pedido) redirect("/pedidos");
   if (pedido.notaId) redirect(`/notas/${pedido.notaId}`);
   let erro = "";
+  let endereco: string | null = null;
   try {
-    await cadastrarClienteDoPedido(pedido);
+    const clienteId = await cadastrarClienteDoPedido(pedido);
+    endereco = await garantirEnderecoEntrega(clienteId, pedido);
   } catch (e) {
     erro = (e as Error).message;
   }
-  redirect(`/notas/nova?pedido=${id}${erro ? `&aviso=${encodeURIComponent(erro)}` : ""}`);
+  redirect(`/notas/nova?pedido=${id}${endereco ? `&endereco=${endereco}` : ""}${erro ? `&aviso=${encodeURIComponent(erro)}` : ""}`);
+}
+
+/** Liga o item do pedido a um produto do cadastro; vale para os próximos pedidos com o mesmo SKU/anúncio. */
+export async function vincularProduto(pedidoId: number, chaves: string[], _: unknown, form: FormData) {
+  await requireUser();
+  const produtoId = String(form.get("produtoId") ?? "");
+  const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, pedidoId) });
+  if (!pedido || !/^[0-9a-f-]{36}$/.test(produtoId)) return { erro: "Escolha o produto." };
+  for (const chave of chaves.filter(Boolean)) {
+    await db
+      .insert(vinculosSku)
+      .values({ canal: pedido.marketplace, chave, produtoId })
+      .onConflictDoUpdate({ target: [vinculosSku.canal, vinculosSku.chave], set: { produtoId } });
+  }
+  // Pedido recente já vendido: o item que estava sem produto agora sai do estoque (histórico não mexe).
+  const conta = pedido.contaId ? await db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId) }) : undefined;
+  const historico = conta ? pedido.data.getTime() < conta.criadoEm.getTime() - 86400_000 : false;
+  if (pedido.estoqueBaixado && !historico) {
+    const ja = await db.query.movimentosEstoque.findFirst({ where: and(eq(movimentosEstoque.origem, `pedido:${pedido.id}`), eq(movimentosEstoque.produtoId, produtoId)) });
+    const qtd = pedido.itens.filter((i) => chaves.includes(i.sku) || chaves.includes(i.idAnuncio)).reduce((s, i) => s + i.quantidade, 0);
+    if (!ja && qtd) {
+      await db.transaction((tx) => movimentar(tx, { produtoId, quantidade: -qtd, tipo: "venda", origem: `pedido:${pedido.id}`, observacao: `Venda ${pedido.idExterno}` }));
+    }
+  }
+  revalidatePath(`/pedidos/${pedidoId}`);
+  revalidatePath("/estoque");
+  return { ok: "Vinculado." };
 }
 
 // ---------- Pedido manual (loja própria) ----------

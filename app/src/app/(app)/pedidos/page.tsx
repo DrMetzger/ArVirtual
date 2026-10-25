@@ -201,7 +201,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                             {numeroPedido(p.marketplace, p.idExterno)}
                           </Link>
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">
-                            <MarcaIcone canal={p.marketplace} className="size-4" />
+                            <MarcaIcone canal={p.marketplace} className="size-5" />
                             {p.conta ?? "Loja própria"}
                           </p>
                         </td>

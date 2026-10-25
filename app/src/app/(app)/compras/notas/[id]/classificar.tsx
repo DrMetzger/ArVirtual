@@ -1,5 +1,6 @@
 "use client";
 
+import { formatValor } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { Alert, Badge, Button, Card, CardHeader, Input, Select } from "@/components/ui";
@@ -124,7 +125,7 @@ export function Classificar({
           {parcelas.map((p, n) => (
             <div key={p.k} className="grid grid-cols-[1fr_1fr_auto] items-center gap-2">
               <Input type="date" name="parcelaVencimento" defaultValue={p.vencimento} disabled={!editavel} />
-              <Input name="parcelaValor" inputMode="decimal" defaultValue={String(p.valor).replace(".", ",")} disabled={!editavel} />
+              <Input name="parcelaValor" inputMode="decimal" defaultValue={formatValor(p.valor)} disabled={!editavel} />
               {editavel ? (
                 <button type="button" onClick={() => setParcelas(parcelas.filter((x) => x.k !== p.k))} className="text-muted hover:text-red" aria-label={`Remover parcela ${n + 1}`}>
                   <Trash2 className="size-4" />

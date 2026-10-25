@@ -12,10 +12,14 @@ export const CANAIS: Record<Canal, { nome: string; logo: string; logoEscuro?: st
   loja: { nome: "Sincrolab", logo: "/marcas/sincrolab.png", logoClaro: "/marcas/sincrolab-claro.png", icone: "/marcas/sincrolab-icone.png" },
 };
 
-/** Ícone quadrado do canal (listas, tabelas, badges). */
+/** Ícone do canal num quadradinho branco (como ícone de app): fica legível no tema claro e no escuro. */
 export function MarcaIcone({ canal, className }: { canal: Canal; className?: string }) {
   const c = CANAIS[canal];
-  return <img src={c.icone} alt={c.nome} title={c.nome} className={cn("size-5 shrink-0 object-contain", className)} />;
+  return (
+    <span title={c.nome} className={cn("grid size-6 shrink-0 place-items-center rounded-md bg-white p-[3px] shadow-sm ring-1 ring-black/10", className)}>
+      <img src={c.icone} alt={c.nome} className="size-full object-contain" />
+    </span>
+  );
 }
 
 /** Logo completo do canal, com a versão certa para o tema claro/escuro. */

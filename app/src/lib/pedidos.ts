@@ -1,7 +1,7 @@
 import "server-only";
 import { and, eq, inArray } from "drizzle-orm";
 import { db } from "@/db";
-import { anuncios, clientes, enderecos, produtos, type Marketplace, type PedidoMarketplace } from "@/db/schema";
+import { anuncios, clientes, enderecos, produtos, vinculosSku, type Marketplace, type PedidoMarketplace } from "@/db/schema";
 import { consultarCep } from "@/lib/consultas";
 import { isValidCnpj, isValidCpf } from "@/lib/documento";
 import { onlyDigits } from "@/lib/utils";
@@ -12,7 +12,8 @@ export type ItemVinculado = PedidoMarketplace["itens"][number] & { produto: { id
 export async function vincularItens(pedido: PedidoMarketplace): Promise<ItemVinculado[]> {
   const ids = pedido.itens.map((i) => i.idAnuncio).filter(Boolean);
   const skus = pedido.itens.map((i) => i.sku).filter(Boolean);
-  const [porAnuncio, porSku] = await Promise.all([
+  const chaves = [...new Set([...ids, ...skus])];
+  const [porAnuncio, porSku, porVinculo] = await Promise.all([
     ids.length && pedido.marketplace !== "loja"
       ? db
           .select({ idExterno: anuncios.idExterno, id: produtos.id, nome: produtos.nome, sku: produtos.sku })
@@ -21,10 +22,19 @@ export async function vincularItens(pedido: PedidoMarketplace): Promise<ItemVinc
           .where(and(eq(anuncios.marketplace, pedido.marketplace as Marketplace), inArray(anuncios.idExterno, ids)))
       : [],
     skus.length ? db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(inArray(produtos.sku, skus)) : [],
+    // Vínculo feito na tela do pedido (SKU do anúncio diferente do SKU do cadastro).
+    chaves.length
+      ? db
+          .select({ chave: vinculosSku.chave, id: produtos.id, nome: produtos.nome, sku: produtos.sku })
+          .from(vinculosSku)
+          .innerJoin(produtos, eq(produtos.id, vinculosSku.produtoId))
+          .where(and(eq(vinculosSku.canal, pedido.marketplace), inArray(vinculosSku.chave, chaves)))
+      : [],
   ]);
   return pedido.itens.map((i) => {
     const a = porAnuncio.find((x) => x.idExterno === i.idAnuncio);
-    const p = a ?? porSku.find((x) => x.sku === i.sku);
+    const v = porVinculo.find((x) => x.chave === i.sku) ?? porVinculo.find((x) => x.chave === i.idAnuncio);
+    const p = a ?? v ?? porSku.find((x) => x.sku === i.sku);
     return { ...i, produto: p ? { id: p.id, nome: p.nome, sku: p.sku } : null };
   });
 }
@@ -86,4 +96,33 @@ export async function cadastrarClienteDoPedido(pedido: PedidoMarketplace) {
     });
     return c!.id;
   });
+}
+
+/** Endereço de entrega do pedido no cadastro do cliente (cria se ainda não existir), para a NF-e sair com ele. */
+export async function garantirEnderecoEntrega(clienteId: string, pedido: PedidoMarketplace): Promise<string | null> {
+  const e = pedido.entrega;
+  const cep = onlyDigits(e?.cep ?? "");
+  const lista = await db.select().from(enderecos).where(eq(enderecos.clienteId, clienteId));
+  if (!e || cep.length !== 8) return lista.find((x) => x.principal)?.id ?? lista[0]?.id ?? null;
+  const numero = e.numero || e.endereco.match(/,\s*(\d+[A-Za-z]?)\b/)?.[1] || "S/N";
+  const igual = lista.find((x) => onlyDigits(x.cep) === cep && x.numero.trim().toUpperCase() === numero.trim().toUpperCase());
+  if (igual) return igual.id;
+  const viaCep = await consultarCep(cep).catch(() => null);
+  const [novo] = await db
+    .insert(enderecos)
+    .values({
+      clienteId,
+      apelido: `Entrega ${pedido.idExterno}`.slice(0, 40),
+      cep,
+      logradouro: e.logradouro || viaCep?.logradouro || e.endereco.split(",")[0] || e.endereco,
+      numero,
+      complemento: e.complemento && e.complemento !== "N/A" ? e.complemento : "",
+      bairro: e.bairro || viaCep?.bairro || "",
+      cidade: viaCep?.cidade || e.cidade,
+      uf: (viaCep?.uf || e.uf).toUpperCase().slice(0, 2),
+      codigoIbge: viaCep?.codigoIbge ?? "",
+      principal: lista.length === 0,
+    })
+    .returning({ id: enderecos.id });
+  return novo!.id;
 }

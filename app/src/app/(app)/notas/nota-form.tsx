@@ -3,7 +3,7 @@
 import { Calculator, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import { useMemo, useState, useTransition } from "react";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select } from "@/components/ui";
-import { formatBRL, formatDocumento, parseDecimal } from "@/lib/utils";
+import { formatBRL, formatDocumento, formatValor, parseDecimal } from "@/lib/utils";
 import { criarNota, previsualizarNota, type Preview } from "./actions";
 
 type ClienteOpt = {
@@ -21,7 +21,7 @@ type Iniciais = {
   itens: { produtoId: string; quantidade: number; valorUnitario: number }[];
 };
 
-const decimal = (n: number) => String(n).replace(".", ",");
+const decimal = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
 
 export function NotaForm({
   clientes,
@@ -39,7 +39,7 @@ export function NotaForm({
   const [enderecoId, setEnderecoId] = useState(iniciais?.enderecoId ?? "");
   const [linhas, setLinhas] = useState<Linha[]>(() =>
     iniciais?.itens.length
-      ? iniciais.itens.map((i, n) => ({ key: n + 1, produtoId: i.produtoId, quantidade: decimal(i.quantidade), valorUnitario: decimal(i.valorUnitario) }))
+      ? iniciais.itens.map((i, n) => ({ key: n + 1, produtoId: i.produtoId, quantidade: decimal(i.quantidade), valorUnitario: formatValor(i.valorUnitario) }))
       : [{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }],
   );
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -130,7 +130,7 @@ export function NotaForm({
                   value={l.produtoId}
                   onChange={(e) => {
                     const p = produtos.find((x) => x.id === e.target.value);
-                    atualizar(l.key, { produtoId: e.target.value, valorUnitario: p ? String(p.preco).replace(".", ",") : "" });
+                    atualizar(l.key, { produtoId: e.target.value, valorUnitario: p ? formatValor(p.preco) : "" });
                   }}
                 >
                   <option value="">Selecione...</option>
@@ -145,7 +145,12 @@ export function NotaForm({
                 <Input inputMode="decimal" value={l.quantidade} onChange={(e) => atualizar(l.key, { quantidade: e.target.value })} />
               </Field>
               <Field label="Valor unit. (R$)">
-                <Input inputMode="decimal" value={l.valorUnitario} onChange={(e) => atualizar(l.key, { valorUnitario: e.target.value })} />
+                <Input
+                  inputMode="decimal"
+                  value={l.valorUnitario}
+                  onChange={(e) => atualizar(l.key, { valorUnitario: e.target.value })}
+                  onBlur={() => l.valorUnitario.trim() && atualizar(l.key, { valorUnitario: formatValor(parseDecimal(l.valorUnitario)) })}
+                />
               </Field>
               <div className="pb-2.5 text-right text-sm font-semibold">
                 {formatBRL(parseDecimal(l.quantidade) * parseDecimal(l.valorUnitario))}

@@ -12,7 +12,7 @@ import { NotaForm } from "../nota-form";
 
 export const metadata: Metadata = { title: "Nova nota fiscal" };
 
-export default async function NovaNotaPage({ searchParams }: { searchParams: Promise<{ pedido?: string; aviso?: string }> }) {
+export default async function NovaNotaPage({ searchParams }: { searchParams: Promise<{ pedido?: string; aviso?: string; endereco?: string }> }) {
   await requireUser();
   const sp = await searchParams;
   const pedido = sp.pedido ? await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, Number(sp.pedido) || 0) }) : undefined;
@@ -37,7 +37,12 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
     iniciais = {
       pedidoId: pedido.id,
       clienteId: cliente?.id ?? "",
-      enderecoId: cliente?.enderecos.find((e) => e.principal)?.id ?? cliente?.enderecos[0]?.id ?? "",
+      // Endereço de entrega do pedido (garantido no cadastro ao clicar Emitir NF-e).
+      enderecoId:
+        (sp.endereco && cliente?.enderecos.some((e) => e.id === sp.endereco) ? sp.endereco : undefined) ??
+        cliente?.enderecos.find((e) => e.principal)?.id ??
+        cliente?.enderecos[0]?.id ??
+        "",
       itens: itens.map((i) => ({ produtoId: i.produto?.id ?? "", quantidade: i.quantidade, valorUnitario: i.valorUnitario })),
     };
   }

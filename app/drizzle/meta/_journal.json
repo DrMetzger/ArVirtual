@@ -78,6 +78,13 @@
       "when": 1792953443017,
       "tag": "0010_financeiro",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1792954432467,
+      "tag": "0011_vinculos_sku",
+      "breakpoints": true
     }
   ]
 }

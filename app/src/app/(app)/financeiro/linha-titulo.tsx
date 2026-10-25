@@ -1,5 +1,6 @@
 "use client";
 
+import { formatValor } from "@/lib/utils";
 import { Check } from "lucide-react";
 import { useState } from "react";
 import { Button, Input, Select } from "@/components/ui";
@@ -22,7 +23,7 @@ export function Baixar({ id, valor, tipo, contas }: { id: number; valor: number;
     <form onSubmit={onSubmit} className="grid min-w-72 gap-2 rounded-xl border border-border bg-surface-2 p-3">
       <div className="grid grid-cols-2 gap-2">
         <Input type="date" name="data" defaultValue={hoje()} required />
-        <Input name="valor" inputMode="decimal" defaultValue={String(valor).replace(".", ",")} title={tipo === "receber" ? "Valor que entrou (já sem taxas)" : "Valor pago"} />
+        <Input name="valor" inputMode="decimal" defaultValue={formatValor(valor)} title={tipo === "receber" ? "Valor que entrou (já sem taxas)" : "Valor pago"} />
       </div>
       <div className="grid grid-cols-2 gap-2">
         <Select name="conta" defaultValue={contas[0]?.id}>
