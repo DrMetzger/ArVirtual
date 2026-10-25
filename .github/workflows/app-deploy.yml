@@ -124,7 +124,7 @@ jobs:
         run: |
           $SSH "mkdir -p '$VM_DIR'"
           rsync -az --delete \
-            --exclude node_modules --exclude .next --exclude uploads --exclude .env.local \
+            --exclude node_modules --exclude .next --exclude /uploads --exclude .env.local \
             -e "sshpass -e ssh -p $VM_PORT -o StrictHostKeyChecking=accept-new" \
             app/ "$VM_USER@$VM_HOST:$VM_DIR/"
           $SSH "chmod 600 '$VM_DIR/.env'"
