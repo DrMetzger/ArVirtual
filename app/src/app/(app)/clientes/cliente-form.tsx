@@ -32,9 +32,9 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
     cliente ? { ...cliente, documento: formatDocumento(cliente.documento), telefone: formatTelefone(cliente.telefone) } : vazio,
   );
   const [endereco, setEndereco] = useState<AddressValues>(emptyAddress);
-  const [receita, setReceita] = useState<{ fonte: string; json: string } | null>(null);
+  const [receita, setReceita] = useState<{ fonte: string; json: string; tipo: string; nascimento?: string } | null>(null);
   const [consultando, setConsultando] = useState(false);
-  const [aviso, setAviso] = useState<{ tone: "red" | "gold"; msg: string } | null>(null);
+  const [aviso, setAviso] = useState<{ tone: "red" | "gold" | "blue"; msg: string } | null>(null);
 
   const doc = onlyDigits(dados.documento);
   const tipo = doc.length === 14 ? "PJ" : doc.length === 11 ? "PF" : null;
@@ -61,9 +61,18 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
       if (r.endereco && !cliente) {
         setEndereco({ ...emptyAddress, ...r.endereco, cep: formatCep(r.endereco.cep), apelido: "Principal" });
       }
-      setReceita({ fonte: r.fonte, json: JSON.stringify(r) });
+      setReceita({ fonte: r.fonte, json: JSON.stringify(r), tipo: r.tipo, nascimento: r.nascimento });
       if (r.situacao && !/ativa|regular/i.test(r.situacao)) {
         setAviso({ tone: "gold", msg: `Atenção: situação cadastral "${r.situacao}".` });
+      }
+      // CPF não tem endereço em base pública: o CEP completa rua, bairro, cidade e IBGE.
+      if (r.tipo === "PF" && !cliente) {
+        setAviso({ tone: "blue", msg: "Nome encontrado. Para pessoa física não existe base pública de endereço pelo CPF: digite o CEP abaixo que rua, bairro e cidade vêm sozinhos." });
+        requestAnimationFrame(() => {
+          const cep = document.querySelector<HTMLInputElement>('input[name="cep"]');
+          cep?.scrollIntoView({ behavior: "smooth", block: "center" });
+          cep?.focus({ preventScroll: true });
+        });
       }
     } catch (e) {
       setAviso({ tone: "red", msg: (e as Error).message });
@@ -96,16 +105,22 @@ export function ClienteForm({ cliente }: { cliente?: Cliente }) {
               />
               <Button type="button" variant="gold" onClick={consultarReceita} disabled={!tipo || consultando}>
                 {consultando ? <Loader2 className="animate-spin" /> : <Search />}
-                Receita
+                {tipo === "PF" ? "Buscar nome" : "Receita"}
               </Button>
             </div>
           </Field>
-          <Field label="Situação cadastral" className="sm:col-span-3">
+          <Field label={tipo === "PF" ? "Consulta do CPF" : "Situação cadastral"} className="sm:col-span-3">
             <div className="flex h-10 items-center gap-2">
               {dados.situacaoCadastral ? (
                 <Badge tone={/ativa|regular/i.test(dados.situacaoCadastral) ? "green" : "red"}>
                   <BadgeCheck className="size-3.5" />
                   {dados.situacaoCadastral}
+                </Badge>
+              ) : receita?.tipo === "PF" ? (
+                <Badge tone="green">
+                  <BadgeCheck className="size-3.5" />
+                  CPF encontrado
+                  {receita.nascimento ? ` · nasc. ${receita.nascimento.split("-").reverse().join("/")}` : ""}
                 </Badge>
               ) : (
                 <span className="text-sm text-muted">Não consultada</span>
