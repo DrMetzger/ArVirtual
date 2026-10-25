@@ -595,6 +595,59 @@ export const consultasCpf = pgTable(
   (t) => [index("consultas_cpf_cpf_idx").on(t.cpf), index("consultas_cpf_data_idx").on(t.criadoEm)],
 );
 
+// ---------- Assistente de IA ----------
+/** Arquivo enviado na conversa (fica em UPLOAD_DIR/ia, acesso só com login) ou imagem gerada pela IA. */
+export type AnexoIa = {
+  nome: string;
+  tipo: string;
+  arquivo: string;
+  tamanho: number;
+  /** Conteúdo em texto para a IA (planilhas, XML, resumo do STL/G-code); imagens e PDF vão como arquivo. */
+  texto?: string;
+};
+export type FonteIa = { titulo: string; url: string };
+
+export const conversasIa = pgTable(
+  "conversas_ia",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    usuarioId: uuid("usuario_id")
+      .notNull()
+      .references(() => usuarios.id, { onDelete: "cascade" }),
+    titulo: text("titulo").notNull().default("Nova conversa"),
+    pasta: text("pasta").notNull().default(""),
+    fixada: boolean("fixada").notNull().default(false),
+    ...timestamps,
+  },
+  (t) => [index("conversas_ia_usuario_idx").on(t.usuarioId, t.atualizadoEm)],
+);
+
+export const mensagensIa = pgTable(
+  "mensagens_ia",
+  {
+    id: serial("id").primaryKey(),
+    conversaId: uuid("conversa_id")
+      .notNull()
+      .references(() => conversasIa.id, { onDelete: "cascade" }),
+    papel: text("papel", { enum: ["user", "model"] }).notNull(),
+    texto: text("texto").notNull().default(""),
+    anexos: jsonb("anexos").$type<AnexoIa[]>().notNull().default([]),
+    fontes: jsonb("fontes").$type<FonteIa[]>().notNull().default([]),
+    modelo: text("modelo").notNull().default(""),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("mensagens_ia_conversa_idx").on(t.conversaId, t.id)],
+);
+
+/** O que a IA aprendeu sobre a empresa (vale para todas as conversas). */
+export const memoriasIa = pgTable("memorias_ia", {
+  id: serial("id").primaryKey(),
+  texto: text("texto").notNull(),
+  conversaId: uuid("conversa_id").references(() => conversasIa.id, { onDelete: "set null" }),
+  ativo: boolean("ativo").notNull().default(true),
+  ...timestamps,
+});
+
 // ---------- Relações ----------
 export const clientesRelations = relations(clientes, ({ many }) => ({ enderecos: many(enderecos) }));
 export const enderecosRelations = relations(enderecos, ({ one }) => ({
@@ -637,3 +690,6 @@ export type Lancamento = typeof lancamentos.$inferSelect;
 export type ContaCaixa = typeof contasCaixa.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
 export type Ncm = typeof ncms.$inferSelect;
+export type ConversaIa = typeof conversasIa.$inferSelect;
+export type MensagemIa = typeof mensagensIa.$inferSelect;
+export type MemoriaIa = typeof memoriasIa.$inferSelect;

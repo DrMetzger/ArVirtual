@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { codigosVerificacao, contasEmail, usuarios } from "@/db/schema";
 import { enviarEmail } from "./mail";
 import { getSetting } from "./settings";
+import { blocoCodigo, escaparHtml, layoutEmail, paragrafo } from "./email-layout";
 
 // Verificação em duas etapas por e-mail: código de 6 dígitos, válido por 10 minutos, até 5 tentativas.
 // O banco guarda só o HMAC do código.
@@ -59,20 +60,20 @@ export async function enviarCodigo(user: Pick<Usuario, "id" | "nome" | "email">,
     });
   });
 
-  const titulo = finalidade === "login" ? "Seu código de acesso" : "Confirme a verificação em duas etapas";
+  const titulo = finalidade === "login" ? "Seu código de acesso" : "Verificação em duas etapas";
   await enviarEmail({
     para: user.email,
     assunto: `${codigo} é o seu código ArVirtual`,
-    html: `<div style="font-family:Arial,sans-serif;max-width:480px;margin:auto;color:#10223a">
-<div style="background:#0c2748;padding:20px 24px;border-radius:12px 12px 0 0">
-<p style="margin:0;color:#fff;font-size:18px;font-weight:800;letter-spacing:1px">ARVIRTUAL</p>
-<p style="margin:2px 0 0;color:#e6c158;font-size:11px;letter-spacing:2px">PESQUISA &amp; DESENVOLVIMENTO</p></div>
-<div style="border:1px solid #dbe4ef;border-top:0;padding:24px;border-radius:0 0 12px 12px">
-<p style="margin-top:0">Olá, ${user.nome.split(" ")[0]}!</p>
-<p>${titulo}:</p>
-<p style="font-size:34px;font-weight:800;letter-spacing:10px;margin:16px 0;color:#1a5f9e">${codigo}</p>
-<p style="color:#5a6b82;font-size:13px">Vale por ${VALIDADE_MIN} minutos. Se não foi você, troque sua senha: alguém pode ter descoberto.</p>
-</div></div>`,
+    html: layoutEmail({
+      titulo,
+      resumo: `${codigo} é o seu código. Vale por ${VALIDADE_MIN} minutos.`,
+      corpo:
+        paragrafo(`Olá, <strong>${escaparHtml(user.nome.split(" ")[0] ?? "")}</strong>!`) +
+        paragrafo(finalidade === "login" ? "Use o código abaixo para entrar no sistema ArVirtual:" : "Use o código abaixo para ativar a verificação em duas etapas:") +
+        blocoCodigo(codigo) +
+        paragrafo(`O código vale por <strong>${VALIDADE_MIN} minutos</strong> e só pode ser usado uma vez.`, "text-align:center;color:#5a6b82;font-size:13px;margin-top:10px") +
+        paragrafo("Se não foi você quem pediu, ignore este e-mail e troque sua senha: alguém pode tê-la descoberto.", "color:#5a6b82;font-size:13px"),
+    }),
   });
 }
 

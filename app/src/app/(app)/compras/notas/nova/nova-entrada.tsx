@@ -1,5 +1,6 @@
 "use client";
 
+import { BuscaSelect } from "@/components/busca-select";
 import { FileUp, Loader2, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
@@ -45,14 +46,16 @@ export function NovaEntrada({ fornecedores }: { fornecedores: { id: string; nome
         <div className="grid gap-4 p-5">
           <Field label="Fornecedor">
             <div className="flex gap-2">
-              <Select value={fornecedorId} onChange={(e) => setFornecedorId(e.target.value)}>
-                <option value="">Selecione...</option>
-                {fornecedores.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.nome}
-                  </option>
-                ))}
-              </Select>
+              <BuscaSelect
+                className="flex-1"
+                valor={(() => {
+                  const f = fornecedores.find((x) => x.id === fornecedorId);
+                  return f ? { id: f.id, titulo: f.nome } : null;
+                })()}
+                opcoes={fornecedores.map((f) => ({ id: f.id, titulo: f.nome }))}
+                onChange={(o) => setFornecedorId(o?.id ?? "")}
+                placeholder="Buscar fornecedor"
+              />
               <Link href="/compras/fornecedores/novo" className="self-center text-xs font-semibold whitespace-nowrap text-gold underline">
                 Novo
               </Link>

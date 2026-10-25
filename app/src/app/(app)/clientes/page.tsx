@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { clientes, enderecos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { formatDocumento, formatTelefone, onlyDigits } from "@/lib/utils";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Clientes" };
 
@@ -86,7 +87,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
               </thead>
               <tbody>
                 {lista.map((c) => (
-                  <tr key={c.id}>
+                  <LinhaLink key={c.id} href={`/clientes/${c.id}`}>
                     <td className="min-w-52">
                       <Link href={`/clientes/${c.id}`} className="font-semibold hover:text-gold">
                         {c.nome}
@@ -104,7 +105,7 @@ export default async function ClientesPage({ searchParams }: { searchParams: Pro
                       {c.telefone ? <p>{formatTelefone(c.telefone)}</p> : null}
                       {c.email ? <p className="text-xs">{c.email}</p> : null}
                     </td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

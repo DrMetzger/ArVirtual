@@ -1,5 +1,6 @@
 "use client";
 
+import { BuscaSelectCampo } from "@/components/busca-select";
 import { formatValor } from "@/lib/utils";
 import { Plus, Trash2 } from "lucide-react";
 import { useState } from "react";
@@ -86,14 +87,15 @@ export function Classificar({
                             </div>
                           ) : null}
                           {d === "produto" ? (
-                            <Select name={`produto-${i.id}`} defaultValue={i.produtoId ?? ""} required>
-                              <option value="">Qual produto?</option>
-                              {produtos.map((p) => (
-                                <option key={p.id} value={p.id}>
-                                  {p.nome}
-                                </option>
-                              ))}
-                            </Select>
+                            <div className="relative">
+                              <BuscaSelectCampo
+                                name={`produto-${i.id}`}
+                                required
+                                defaultId={i.produtoId ? String(i.produtoId) : null}
+                                opcoes={produtos.map((p) => ({ id: String(p.id), titulo: p.nome }))}
+                                placeholder="Qual produto?"
+                              />
+                            </div>
                           ) : null}
                         </div>
                       ) : (

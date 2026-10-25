@@ -48,6 +48,25 @@ const SUL_SUDESTE = ["SP", "RJ", "MG", "PR", "SC", "RS"];
 const IMPORTADO = [1, 2, 3, 8];
 const CST_ST = ["10", "30", "70", "201", "202", "203"];
 
+// MEI (CRT 4): validações da SEFAZ (rejeição 337 "CFOP inválido para emitente MEI").
+export const MEI_CSOSN = ["102", "103", "300", "900"];
+/** CSOSN 102 só com CFOP 5102/6102 (venda). */
+export const MEI_CFOP_VENDA = ["5102", "6102"];
+/** CSOSN 900: só estes CFOPs. */
+export const MEI_CFOP_900 = [
+  "1202", "1904", "2202", "2904", "5202", "5904", "6202", "6904", "1501", "1503", "1504", "1505", "1506", "1553", "2501", "2503", "2504",
+  "2505", "2506", "2553", "5501", "5502", "5504", "5505", "5551", "5933", "6501", "6502", "6504", "6505", "6551", "6933",
+];
+/** Devolução/estorno com CSOSN 103, 300 ou 900. */
+export const MEI_CFOP_DEVOLUCAO = ["1202", "1553", "2202", "2553", "5202", "6202"];
+/** Venda (de produção, revenda, a consumidor, com ST...): 51xx, 61xx, 54xx, 64xx. */
+const ehCfopVenda = (cfop: string) => /^[56][14]\d\d$/.test(cfop);
+
+/** Regra de venda que a SEFAZ rejeitaria para MEI (CFOP diferente de 5102/6102 ou CSOSN fora da lista). */
+export const regraMeiErrada = (r: Pick<RegraFiscal, "cfopInterno" | "cfopInterestadual" | "csosn">) =>
+  (ehCfopVenda(r.cfopInterno) || ehCfopVenda(r.cfopInterestadual)) &&
+  (r.cfopInterno !== "5102" || r.cfopInterestadual !== "6102" || !["102", "103", "300"].includes(r.csosn));
+
 /** Alíquota interestadual: 4% importado; 7% de Sul/Sudeste para N/NE/CO e ES; 12% nos demais. */
 export function aliquotaInterestadual(ufOrigem: string, ufDestino: string, origem: number) {
   if (IMPORTADO.includes(origem)) return 4;
@@ -104,7 +123,29 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
     }
 
     // ICMS próprio
-    const cst = (simples ? regra.csosn : regra.cstIcms) || (simples ? "102" : "00");
+    let cst = (simples ? regra.csosn : regra.cstIcms) || (simples ? "102" : "00");
+    let cfop = interna ? regra.cfopInterno : regra.cfopInterestadual;
+
+    // MEI: a SEFAZ rejeita CFOP/CSOSN fora da lista. Venda sai sempre 5102/6102 com CSOSN 102.
+    if (ctx.regime === 4) {
+      if (ehCfopVenda(cfop)) {
+        const certo = interna ? "5102" : "6102";
+        if (cfop !== certo) avisos.push(`Item ${n + 1}: CFOP ${cfop} trocado por ${certo} (MEI só vende com 5102/6102).`);
+        cfop = certo;
+        if (!["102", "103", "300"].includes(cst)) {
+          avisos.push(`Item ${n + 1}: CSOSN ${cst} trocado por 102 (MEI em venda).`);
+          cst = "102";
+        }
+      } else if (!MEI_CSOSN.includes(cst)) {
+        erros.push(`Item ${n + 1}: MEI só pode usar CSOSN 102, 103, 300 ou 900 (a regra "${regra.nome}" usa ${cst}).`);
+      } else if (cst === "102") {
+        erros.push(`Item ${n + 1}: MEI com CSOSN 102 só pode usar CFOP 5102 ou 6102 (regra "${regra.nome}" usa ${cfop}).`);
+      } else if (cst === "900" && !MEI_CFOP_900.includes(cfop)) {
+        erros.push(`Item ${n + 1}: MEI com CSOSN 900 não pode usar o CFOP ${cfop}. Permitidos: ${MEI_CFOP_900.join(", ")}.`);
+      } else if (/^[1256]2\d\d$|^[1256]553$/.test(cfop) && !MEI_CFOP_DEVOLUCAO.includes(cfop)) {
+        erros.push(`Item ${n + 1}: devolução de MEI só com CFOP ${MEI_CFOP_DEVOLUCAO.join(", ")}.`);
+      }
+    }
     const inter = aliquotaInterestadual(ctx.ufEmitente, ctx.ufDestino, item.origem);
     const aliq = regra.aliqIcms || (interna ? ufOrigem.interna : inter);
     const tributado = simples ? cst === "900" : ["00", "10", "20", "70", "90"].includes(cst);
@@ -146,20 +187,13 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
     const pis = pisCofins(regra.cstPis, regra.aliqPis);
     const cofins = pisCofins(regra.cstCofins, regra.aliqCofins);
 
-    // Regras do MEI (NT 2024.001)
-    if (ctx.regime === 4) {
-      if (!["102", "300", "400", "900"].includes(cst)) avisos.push(`Item ${n + 1}: MEI só pode usar CSOSN 102, 300, 400 ou 900.`);
-      const cfop = interna ? regra.cfopInterno : regra.cfopInterestadual;
-      if (cst === "102" && !["5102", "6102"].includes(cfop)) avisos.push(`Item ${n + 1}: MEI com CSOSN 102 só pode usar CFOP 5102 ou 6102.`);
-    }
-
     const aproximado = ctx.ncmAproximado.get(item.ncm) ?? ctx.aproximadoPadrao;
     calculados.push({
       ...item,
       valorBruto: valor,
       regraId: regra.id,
       regraNome: regra.nome,
-      cfop: interna ? regra.cfopInterno : regra.cfopInterestadual,
+      cfop,
       taxes: {
         icms,
         st: null,
@@ -186,6 +220,21 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
 
   return { itens: calculados, erros, avisos, interna, totalProdutos, totalImpostos, totalNota };
 }
+
+/** Regras iniciais para MEI: venda sempre 5102/6102 com CSOSN 102 (exigência da SEFAZ para CRT 4). */
+export const REGRAS_PADRAO_MEI = [
+  {
+    nome: "MEI · venda",
+    prioridade: 0,
+    destinatario: "qualquer" as const,
+    naturezaOperacao: "Venda de mercadoria",
+    cfopInterno: "5102",
+    cfopInterestadual: "6102",
+    csosn: "102",
+    cstPis: "49",
+    cstCofins: "49",
+  },
+];
 
 /** Regras iniciais para quem está no Simples Nacional vendendo produto fabricado (impressão 3D). */
 export const REGRAS_PADRAO_SIMPLES = [

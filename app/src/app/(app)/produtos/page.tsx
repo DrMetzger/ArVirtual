@@ -8,6 +8,7 @@ import { db } from "@/db";
 import { produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Produtos" };
 
@@ -111,7 +112,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
             </thead>
             <tbody>
               {lista.map((p) => (
-                <tr key={p.id} className={p.ativo ? "" : "opacity-60"}>
+                <LinhaLink key={p.id} href={`/produtos/${p.id}`} className={p.ativo ? "" : "opacity-60"}>
                   <td>
                     <div className="grid size-10 place-items-center overflow-hidden rounded-lg bg-surface-2">
                       {p.capa ? <img src={p.capa} alt="" className="size-full object-cover" /> : <Package className="size-5 text-muted opacity-50" />}
@@ -130,7 +131,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   <td className="text-right whitespace-nowrap">{p.custo && p.preco ? `${Math.round((p.preco / p.custo - 1) * 100)}%` : "—"}</td>
                   <td className={cn("text-right", p.estoque <= 0 && "font-semibold text-red")}>{p.estoque}</td>
                   <td>{p.anuncios > 0 ? <Badge tone="gold">{p.anuncios}</Badge> : <span className="text-muted">—</span>}</td>
-                </tr>
+                </LinhaLink>
               ))}
             </tbody>
           </table>

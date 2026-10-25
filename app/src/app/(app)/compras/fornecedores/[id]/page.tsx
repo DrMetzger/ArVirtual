@@ -9,6 +9,7 @@ import { fornecedores, notasEntrada } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { FornecedorForm } from "../fornecedor-form";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Fornecedor" };
 
@@ -38,7 +39,7 @@ export default async function FornecedorPage({ params, searchParams }: { params:
                 <table className="table-base">
                   <tbody>
                     {notas.map((n) => (
-                      <tr key={n.id}>
+                      <LinhaLink key={n.id} href={`/compras/notas/${n.id}`}>
                         <td>
                           <Link href={`/compras/notas/${n.id}`} className="font-semibold hover:text-gold">
                             NF {n.numero || `#${n.id}`}
@@ -47,7 +48,7 @@ export default async function FornecedorPage({ params, searchParams }: { params:
                         <td className="text-muted">{formatDate(n.emissao ?? n.entrada)}</td>
                         <td className="text-muted">{n.status}</td>
                         <td className="text-right font-semibold">{formatBRL(n.valorTotal)}</td>
-                      </tr>
+                      </LinhaLink>
                     ))}
                   </tbody>
                 </table>

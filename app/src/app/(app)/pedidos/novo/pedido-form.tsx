@@ -3,20 +3,22 @@
 import { Loader2, Plus, Save, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
+import { BuscaSelect, buscarClientes, type ClienteBusca, type Opcao } from "@/components/busca-select";
 import { MarcaLogo } from "@/components/marca";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import { cn, formatBRL, formatDocumento, formatValor, parseDecimal } from "@/lib/utils";
 import { criarPedidoManual } from "../actions";
 
-type ClienteOpt = { id: string; nome: string; documento: string };
 type ProdutoOpt = { id: string; sku: string; nome: string; preco: number; estoque: number };
 type Linha = { key: number; produtoId: string; quantidade: string; valorUnitario: string };
 
 const hoje = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
 const fmt = (n: number) => formatValor(n);
 
-export function PedidoForm({ clientes, produtos }: { clientes: ClienteOpt[]; produtos: ProdutoOpt[] }) {
-  const [clienteId, setClienteId] = useState("");
+export function PedidoForm({ produtos }: { produtos: ProdutoOpt[] }) {
+  const [cliente, setCliente] = useState<Opcao<ClienteBusca> | null>(null);
+  const clienteId = cliente?.id ?? "";
+  const opcoesProduto = produtos.map((x) => ({ id: x.id, titulo: x.nome, detalhe: `${x.sku} · ${formatBRL(x.preco)} · ${x.estoque} em estoque`, dados: x }));
   const [linhas, setLinhas] = useState<Linha[]>([{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }]);
   const [desconto, setDesconto] = useState("");
   const [frete, setFrete] = useState("");
@@ -40,14 +42,13 @@ export function PedidoForm({ clientes, produtos }: { clientes: ClienteOpt[]; pro
           <CardHeader title="Cliente" description="Opcional para venda no balcão. Para emitir NF-e, o cliente precisa estar cadastrado." action={<MarcaLogo canal="loja" className="h-8" />} />
           <div className="grid gap-4 p-5 sm:grid-cols-[1fr_auto]">
             <Field label="Cliente">
-              <Select value={clienteId} onChange={(e) => setClienteId(e.target.value)}>
-                <option value="">Consumidor final (sem cadastro)</option>
-                {clientes.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome} · {formatDocumento(c.documento)}
-                  </option>
-                ))}
-              </Select>
+              <BuscaSelect
+                valor={cliente}
+                onChange={setCliente}
+                buscar={(q) => buscarClientes(q, formatDocumento)}
+                vazio="Consumidor final (sem cadastro)"
+                placeholder="Buscar por nome, CPF/CNPJ, e-mail ou telefone"
+              />
             </Field>
             <Link href="/clientes/novo" className="self-end text-sm font-semibold text-gold underline sm:pb-2.5">
               Cadastrar cliente
@@ -71,20 +72,12 @@ export function PedidoForm({ clientes, produtos }: { clientes: ClienteOpt[]; pro
               return (
                 <div key={l.key} className="grid items-end gap-3 sm:grid-cols-[1fr_90px_130px_110px_auto]">
                   <Field label="Produto" hint={p ? `${p.estoque} em estoque` : undefined}>
-                    <Select
-                      value={l.produtoId}
-                      onChange={(e) => {
-                        const np = produtos.find((x) => x.id === e.target.value);
-                        atualizar(l.key, { produtoId: e.target.value, valorUnitario: np ? fmt(np.preco) : "" });
-                      }}
-                    >
-                      <option value="">Selecione...</option>
-                      {produtos.map((x) => (
-                        <option key={x.id} value={x.id}>
-                          {x.sku} · {x.nome}
-                        </option>
-                      ))}
-                    </Select>
+                    <BuscaSelect
+                      valor={opcoesProduto.find((o) => o.id === l.produtoId) ?? null}
+                      opcoes={opcoesProduto}
+                      onChange={(o) => atualizar(l.key, { produtoId: o?.id ?? "", valorUnitario: o?.dados ? fmt(o.dados.preco) : "" })}
+                      placeholder="Buscar produto por nome ou SKU"
+                    />
                   </Field>
                   <Field label="Qtd.">
                     <Input inputMode="numeric" value={l.quantidade} onChange={(e) => atualizar(l.key, { quantidade: e.target.value })} />

@@ -12,6 +12,7 @@ import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { StatusNota } from "./notas/status";
+import { LinhaLink } from "@/components/linha-link";
 
 const DIAS = 30;
 // Pedidos cancelados não entram no faturamento.
@@ -230,7 +231,7 @@ export default async function Dashboard() {
             <table className="table-base">
               <tbody>
                 {ultimasNotas.map((n) => (
-                  <tr key={n.id}>
+                  <LinhaLink key={n.id} href={`/notas/${n.id}`}>
                     <td>
                       <Link href={`/notas/${n.id}`} className="font-semibold hover:text-gold">
                         {n.numero ? `NF-e ${n.numero}` : "Rascunho"}
@@ -242,7 +243,7 @@ export default async function Dashboard() {
                       <StatusNota status={n.status} />
                     </td>
                     <td className="text-right font-semibold">{formatBRL(n.totalNota)}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

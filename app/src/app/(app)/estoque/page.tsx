@@ -7,6 +7,7 @@ import { db } from "@/db";
 import { produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Estoque" };
 
@@ -89,7 +90,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
               </thead>
               <tbody>
                 {visiveis.map((p) => (
-                  <tr key={p.id}>
+                  <LinhaLink key={p.id} href={`/estoque/${p.id}`}>
                     <td>
                       <div className="grid size-10 place-items-center overflow-hidden rounded-lg bg-surface-2">
                         {p.capa[0] ? <img src={p.capa[0]} alt="" className="size-full object-cover" /> : <Package className="size-5 text-muted opacity-50" />}
@@ -107,7 +108,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
                       <Badge tone={SITUACAO[p.situacao].tom}>{SITUACAO[p.situacao].nome}</Badge>
                     </td>
                     <td className="text-right whitespace-nowrap text-muted">{formatBRL(Math.max(0, p.estoque) * p.custo)}</td>
-                  </tr>
+                  </LinhaLink>
                 ))}
               </tbody>
             </table>

@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { ADAPTERS, callbackUrl, MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { desconectar, sincronizar } from "./actions";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Marketplaces" };
 
@@ -144,7 +145,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                 </thead>
                 <tbody>
                   {pedidos.map((p) => (
-                    <tr key={p.id}>
+                    <LinhaLink key={p.id} href={`/pedidos/${p.id}`}>
                       <td>
                         <span className="inline-flex items-center gap-2">
                           <MarcaIcone canal={p.marketplace} />
@@ -163,7 +164,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                         <Badge>{p.status}</Badge>
                       </td>
                       <td className="text-right font-semibold">{formatBRL(p.total)}</td>
-                    </tr>
+                    </LinhaLink>
                   ))}
                 </tbody>
               </table>

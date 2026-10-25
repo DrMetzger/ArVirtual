@@ -9,6 +9,7 @@ import { requireUser } from "@/lib/auth";
 import { capacidadeProducao } from "@/lib/filamentos";
 import { formatDate } from "@/lib/utils";
 import { ProducaoForm } from "./producao-form";
+import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Produção" };
 
@@ -58,7 +59,7 @@ export default async function ProducaoPage() {
                 </thead>
                 <tbody>
                   {capacidade.map((c) => (
-                    <tr key={c.id}>
+                    <LinhaLink key={c.id} href={`/produtos/${c.id}`}>
                       <td>
                         <Link href={`/produtos/${c.id}`} className="font-semibold hover:text-gold">
                           {c.nome}
@@ -80,7 +81,7 @@ export default async function ProducaoPage() {
                       <td className="text-right">{c.estoque}</td>
                       <td className="text-right text-lg font-extrabold">{c.pecas ?? "—"}</td>
                       <td className="text-right text-muted">{c.horas !== null ? `${c.horas.toFixed(1)} h` : "—"}</td>
-                    </tr>
+                    </LinhaLink>
                   ))}
                 </tbody>
               </table>

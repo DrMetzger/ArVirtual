@@ -8,6 +8,7 @@ import { clientes, contasCaixa, fornecedores, lancamentos } from "@/db/schema";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
 import { cancelarLancamento, estornarBaixa, reabrirLancamento } from "./actions";
 import { Baixar } from "./linha-titulo";
+import { LinhaLink } from "@/components/linha-link";
 
 const FILTROS = [
   ["abertos", "Em aberto"],
@@ -110,7 +111,7 @@ export async function ListaTitulos({ tipo, f = "abertos", q = "" }: { tipo: "rec
                   const link = linkOrigem(l.origem);
                   const atrasado = l.status === "aberto" && vencido(l.vencimento);
                   return (
-                    <tr key={l.id} className={l.status === "cancelado" ? "opacity-50" : ""}>
+                    <Linha key={l.id} href={link} className={l.status === "cancelado" ? "opacity-50" : ""}>
                       <td className={cn("whitespace-nowrap", atrasado ? "font-semibold text-red" : "text-muted")}>{formatDate(l.vencimento).slice(0, 10)}</td>
                       <td>
                         {link ? (
@@ -168,7 +169,7 @@ export async function ListaTitulos({ tipo, f = "abertos", q = "" }: { tipo: "rec
                           )}
                         </div>
                       </td>
-                    </tr>
+                    </Linha>
                   );
                 })}
               </tbody>
@@ -178,4 +179,9 @@ export async function ListaTitulos({ tipo, f = "abertos", q = "" }: { tipo: "rec
       </Card>
     </>
   );
+}
+
+/** Título com origem (pedido, nota de entrada) abre o documento ao clicar na linha. */
+function Linha({ href, ...props }: React.ComponentProps<"tr"> & { href: string | null }) {
+  return href ? <LinhaLink href={href} {...props} /> : <tr {...props} />;
 }
