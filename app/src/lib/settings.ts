@@ -26,8 +26,8 @@ export const SETTINGS = {
   "shopee.partnerKey": { label: "Partner Key", secret: true, group: "Shopee" },
   "shopee.ambiente": { label: "Ambiente", secret: false, group: "Shopee", options: ["producao", "sandbox"] },
 
-  "magalu.clientId": { label: "Client ID", secret: false, group: "Magalu" },
-  "magalu.clientSecret": { label: "Client Secret", secret: true, group: "Magalu" },
+  "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
+  "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
 
   "impressao.custoFilamentoKg": { label: "Custo do filamento (R$/kg)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "120" },
   "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D (Bambu Lab A1 mini)", placeholder: "95" },

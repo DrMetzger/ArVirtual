@@ -11,6 +11,7 @@ import { callbackUrl } from "@/lib/marketplaces";
 import { getSetting, getSettingsForDisplay } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
+import { MagaluGuia } from "./magalu-guia";
 import { CertificadoA1, ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -46,7 +47,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     ),
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
-    Magalu: <>Redirect URI: <code className="break-all">{callbackUrl(origin, "magalu")}</code></>,
+    Magalu: <MagaluGuia base={process.env.APP_URL ?? origin} clientId={(await getSetting("magalu.clientId")) ?? ""} />,
     "Impressão 3D (Bambu Lab A1 mini)": "Usado no cálculo de custo e preço sugerido dos produtos.",
   };
 
