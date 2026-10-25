@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Alert, Badge, Button, buttonClass, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { CANAIS_VENDA, contasMarketplace, pedidosMarketplace, type CanalVenda } from "@/db/schema";
+import { CANAIS_VENDA, contasMarketplace, notas, pedidosMarketplace, type CanalVenda } from "@/db/schema";
+import { notaVale } from "@/lib/nota-pedido";
+import { StatusNota } from "../notas/status";
 import { requireUser } from "@/lib/auth";
 import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
@@ -51,10 +53,13 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         data: pedidosMarketplace.data,
         itens: pedidosMarketplace.itens,
         notaId: pedidosMarketplace.notaId,
+        notaStatus: notas.status,
+        notaNumero: notas.numero,
         conta: contasMarketplace.nome,
       })
       .from(pedidosMarketplace)
       .leftJoin(contasMarketplace, eq(contasMarketplace.id, pedidosMarketplace.contaId))
+      .leftJoin(notas, eq(notas.id, pedidosMarketplace.notaId))
       .where(and(...filtros))
       .orderBy(desc(pedidosMarketplace.data))
       .limit(5000),
@@ -67,7 +72,8 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   const validos = pedidos.filter((p) => p.situacao !== "cancelado" && p.situacao !== "aguardando");
   const faturamento = validos.reduce((s, p) => s + p.total, 0);
   const aEnviar = todos.filter((p) => p.situacao === "pago").length;
-  const semNota = validos.filter((p) => !p.notaId).length;
+  // Nota cancelada/rejeitada não conta: o pedido continua sem nota válida.
+  const semNota = validos.filter((p) => !notaVale(p.notaStatus)).length;
 
   const pagina = Math.max(1, Number(f.pagina) || 1);
   const paginas = Math.max(1, Math.ceil(pedidos.length / POR_PAGINA));
@@ -220,9 +226,10 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                           <Badge tone={SITUACOES[p.situacao].tom}>{SITUACOES[p.situacao].nome}</Badge>
                         </td>
                         <td>
-                          {p.notaId ? (
-                            <Link href={`/notas/${p.notaId}`} className="inline-flex items-center gap-1 text-xs font-semibold text-green">
-                              <FileCheck2 className="size-3.5" /> Emitida
+                          {p.notaId && p.notaStatus ? (
+                            <Link href={`/notas/${p.notaId}`} className="inline-flex flex-col items-start gap-0.5 text-xs" title="Abrir a nota">
+                              <StatusNota status={p.notaStatus} />
+                              {p.notaNumero ? <span className="text-muted">NF {p.notaNumero}</span> : null}
                             </Link>
                           ) : (
                             <span className="text-xs text-muted">—</span>

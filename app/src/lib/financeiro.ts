@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { contasCaixa, lancamentos, pedidosMarketplace, type NotaEntrada, type PedidoMarketplace } from "@/db/schema";
 import { CANAIS } from "@/components/marca";
@@ -35,7 +35,15 @@ export async function atualizarFinanceiroDoPedido(pedido: PedidoMarketplace) {
   const origem = `pedido:${pedido.id}`;
 
   if (situacao === "cancelado" && pedido.financeiroGerado) {
-    await db.update(lancamentos).set({ status: "cancelado", atualizadoEm: new Date() }).where(and(eq(lancamentos.origem, origem), eq(lancamentos.status, "aberto")));
+    // Venda cancelada: o título sai do financeiro, inclusive o já recebido (loja própria entra recebida
+    // no caixa; no marketplace o dinheiro volta ao comprador). Se o pedido voltar a ser pago, gera outro.
+    await db.transaction(async (tx) => {
+      await tx
+        .update(lancamentos)
+        .set({ status: "cancelado", observacoes: sql`trim(${lancamentos.observacoes} || ' Estornado: pedido cancelado.')`, atualizadoEm: new Date() })
+        .where(and(eq(lancamentos.origem, origem), inArray(lancamentos.status, ["aberto", "pago"])));
+      await tx.update(pedidosMarketplace).set({ financeiroGerado: false }).where(eq(pedidosMarketplace.id, pedido.id));
+    });
     return;
   }
   if (!vendido || pedido.financeiroGerado || pedido.total <= 0) return;
