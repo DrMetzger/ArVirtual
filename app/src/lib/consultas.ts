@@ -62,6 +62,8 @@ export type DadosReceita = {
   email: string;
   telefone: string;
   endereco: Omit<EnderecoCep, "fonte"> & { numero: string; complemento: string } | null;
+  /** Só CPF (APICPF): data de nascimento AAAA-MM-DD. */
+  nascimento?: string;
   fonte: string;
   bruto: unknown;
 };
@@ -174,6 +176,7 @@ async function consultarCpf(cpf: string): Promise<DadosReceita> {
     email: "",
     telefone: "",
     endereco: null,
+    nascimento: p.dataNascimento,
     fonte: "APICPF",
     bruto: p,
   };
