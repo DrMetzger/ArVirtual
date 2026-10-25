@@ -84,7 +84,7 @@ jobs:
         run: |
           $SSH "cat '$VM_DIR/.env' 2>/dev/null || true" > atual.env
           python3 - <<'PY'
-          import os, re, secrets
+          import base64, os, re, secrets
           from urllib.parse import quote
           atual = {}
           for linha in open("atual.env"):
@@ -109,6 +109,8 @@ jobs:
               "ADMIN_PASSWORD": admin_senha,
               "GEMINI_API_KEY": valor("GEMINI_API_KEY").strip(),
               "APICPF_CHAVE": valor("APICPF_CHAVE").strip(),
+              # Fixa os IDs das Server Actions entre deploys (gerada uma vez e mantida na VM).
+              "NEXT_SERVER_ACTIONS_ENCRYPTION_KEY": valor("NEXT_SERVER_ACTIONS_ENCRYPTION_KEY", lambda: base64.b64encode(secrets.token_bytes(32)).decode()),
           }
           with open("app/.env", "w") as f:
               for k, val in v.items():
@@ -135,7 +137,12 @@ jobs:
       # A imagem é montada aqui no GitHub e só carregada na VM: o build do Next.js pesa (CPU e disco)
       # e a VM é compartilhada com o outro sistema.
       - name: Montar a imagem
-        run: docker build -t arvirtual-app:latest app
+        run: |
+          grep '^NEXT_SERVER_ACTIONS_ENCRYPTION_KEY=' app/.env | cut -d= -f2- | tr -d "'" > "$RUNNER_TEMP/actions_key"
+          [ -s "$RUNNER_TEMP/actions_key" ] || { echo "::error::Chave das Server Actions ausente no .env"; exit 1; }
+          DOCKER_BUILDKIT=1 docker build --secret id=actions_key,src="$RUNNER_TEMP/actions_key" \
+            --build-arg DEPLOY_ID="${GITHUB_SHA::12}" -t arvirtual-app:latest app
+          rm -f "$RUNNER_TEMP/actions_key"
 
       - name: Enviar a imagem para a VM
         run: docker save arvirtual-app:latest | gzip -1 | $SSH "gunzip | docker load"

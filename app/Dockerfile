@@ -8,7 +8,14 @@ RUN npm ci
 FROM deps AS build
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
-RUN npm run build && npm prune --omit=dev
+# Versão do deploy (commit): o navegador com uma versão antiga recarrega a página em vez de falhar.
+ARG DEPLOY_ID=""
+ENV DEPLOY_ID=$DEPLOY_ID
+# Chave fixa das Server Actions (vem do .env da VM): sem ela cada build gera IDs novos e páginas
+# abertas antes do deploy quebram ao salvar. Vai como secret do BuildKit, fora do histórico da imagem.
+RUN --mount=type=secret,id=actions_key,required=false \
+    if [ -s /run/secrets/actions_key ]; then export NEXT_SERVER_ACTIONS_ENCRYPTION_KEY="$(cat /run/secrets/actions_key)"; fi; \
+    npm run build && npm prune --omit=dev
 
 # ---------- execução ----------
 FROM node:22-alpine
