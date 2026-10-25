@@ -9,6 +9,8 @@ export const onlyDigits = (v: string) => v.replace(/\D/g, "");
 
 const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 export const formatBRL = (v: number) => brl.format(v || 0);
+/** Valor em reais para campos de digitação: sempre 2 casas, vírgula decimal (49,90). */
+export const formatValor = (v: number | null | undefined) => (v || v === 0 ? Number(v).toFixed(2).replace(".", ",") : "");
 
 export const formatDate = (d: Date | string) =>
   new Intl.DateTimeFormat("pt-BR", { dateStyle: "short", timeStyle: "short", timeZone: "America/Sao_Paulo" }).format(

@@ -1,4 +1,4 @@
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
 import { CANAIS, MarcaLogo } from "@/components/marca";
 import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, User } from "lucide-react";
 import type { Metadata } from "next";
@@ -7,12 +7,13 @@ import { notFound } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { contasMarketplace, pedidosMarketplace } from "@/db/schema";
+import { contasMarketplace, pedidosMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { linkPedido, numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
 import { alterarSituacao, faturarPedido } from "../actions";
+import { Vincular } from "./vincular";
 
 export const metadata: Metadata = { title: "Pedido" };
 
@@ -22,10 +23,11 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
   if (!Number.isInteger(id)) notFound();
   const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id) });
   if (!pedido) notFound();
-  const [conta, itens, cliente] = await Promise.all([
+  const [conta, itens, cliente, listaProdutos] = await Promise.all([
     pedido.contaId ? db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId), columns: { nome: true } }) : undefined,
     vincularItens(pedido),
     clienteDoPedido(pedido),
+    db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(eq(produtos.ativo, true)).orderBy(asc(produtos.nome)),
   ]);
   const situacao = situacaoPedido(pedido.marketplace, pedido.status);
   const info = CANAIS[pedido.marketplace];
@@ -43,6 +45,8 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
   const doc = documentoDoPedido(pedido);
   const subtotal = itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
   const semProduto = itens.filter((i) => !i.produto).length;
+  // Marketplace não manda o desconto separado: é a diferença entre itens + frete e o total pago.
+  const desconto = pedido.desconto || Math.max(0, Math.round((subtotal + pedido.frete - pedido.total) * 100) / 100);
   const podeFaturar = situacao !== "cancelado" && situacao !== "aguardando";
 
   return (
@@ -100,8 +104,8 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
           ) : null}
           {semProduto && podeFaturar ? (
             <Alert tone="gold">
-              {semProduto} item(ns) não ligado(s) a um produto do cadastro. Use o mesmo SKU do anúncio no produto (ou publique pelo sistema) para a nota sair
-              preenchida.
+              {semProduto} item(ns) sem produto do cadastro: escolha o produto em cada item e clique em Vincular. Os próximos pedidos com o mesmo SKU já
+              vêm ligados, e a nota sai com os itens.
             </Alert>
           ) : null}
 
@@ -131,9 +135,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
                             <Package className="size-3.5" /> {i.produto.nome}
                           </Link>
                         ) : (
-                          <Badge tone="gold" className="mt-1">
-                            sem produto no cadastro
-                          </Badge>
+                          <Vincular pedidoId={pedido.id} chaves={[i.sku, i.idAnuncio]} produtos={listaProdutos} />
                         )}
                       </td>
                       <td className="text-right">{i.quantidade}</td>
@@ -159,14 +161,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
               <p className="p-5 text-sm whitespace-pre-wrap">{pedido.observacoes}</p>
             </Card>
           ) : null}
-          {loja ? null : (
-            <Card>
-              <details>
-                <summary className="cursor-pointer p-5 text-sm font-semibold text-muted hover:text-gold">Dados originais do {info.nome}</summary>
-                <pre className="max-h-96 overflow-auto border-t border-border p-5 text-xs">{JSON.stringify(pedido.dados, null, 2)}</pre>
-              </details>
-            </Card>
-          )}
+
         </div>
 
         <div className="grid content-start gap-6">
@@ -174,7 +169,7 @@ export default async function PedidoPage({ params }: { params: Promise<{ id: str
             <CardHeader title="Valores" />
             <dl className="grid gap-2 p-5 text-sm">
               <Linha nome="Produtos" valor={formatBRL(subtotal)} />
-              {pedido.desconto ? <Linha nome="Desconto" valor={`− ${formatBRL(pedido.desconto)}`} /> : null}
+              {desconto > 0.009 ? <Linha nome="Desconto / cupom" valor={`− ${formatBRL(desconto)}`} /> : null}
               <Linha nome="Frete" valor={formatBRL(pedido.frete)} />
               <div className="mt-1 flex justify-between border-t border-border pt-3 text-base font-bold">
                 <dt>Total do pedido</dt>

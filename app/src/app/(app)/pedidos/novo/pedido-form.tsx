@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { MarcaLogo } from "@/components/marca";
 import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
-import { cn, formatBRL, formatDocumento, parseDecimal } from "@/lib/utils";
+import { cn, formatBRL, formatDocumento, formatValor, parseDecimal } from "@/lib/utils";
 import { criarPedidoManual } from "../actions";
 
 type ClienteOpt = { id: string; nome: string; documento: string };
@@ -13,7 +13,7 @@ type ProdutoOpt = { id: string; sku: string; nome: string; preco: number; estoqu
 type Linha = { key: number; produtoId: string; quantidade: string; valorUnitario: string };
 
 const hoje = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" }).format(new Date());
-const fmt = (n: number) => String(n).replace(".", ",");
+const fmt = (n: number) => formatValor(n);
 
 export function PedidoForm({ clientes, produtos }: { clientes: ClienteOpt[]; produtos: ProdutoOpt[] }) {
   const [clienteId, setClienteId] = useState("");
@@ -90,7 +90,12 @@ export function PedidoForm({ clientes, produtos }: { clientes: ClienteOpt[]; pro
                     <Input inputMode="numeric" value={l.quantidade} onChange={(e) => atualizar(l.key, { quantidade: e.target.value })} />
                   </Field>
                   <Field label="Valor unit. (R$)">
-                    <Input inputMode="decimal" value={l.valorUnitario} onChange={(e) => atualizar(l.key, { valorUnitario: e.target.value })} />
+                    <Input
+                      inputMode="decimal"
+                      value={l.valorUnitario}
+                      onChange={(e) => atualizar(l.key, { valorUnitario: e.target.value })}
+                      onBlur={() => l.valorUnitario.trim() && atualizar(l.key, { valorUnitario: fmt(parseDecimal(l.valorUnitario)) })}
+                    />
                   </Field>
                   <div className="pb-2.5 text-right text-sm font-semibold">
                     {formatBRL(qtd * parseDecimal(l.valorUnitario))}

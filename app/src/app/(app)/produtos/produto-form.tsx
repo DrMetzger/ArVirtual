@@ -8,7 +8,7 @@ import { SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Produto } from "@/db/schema";
 import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
 import type { ParametrosPreco } from "@/lib/precificacao";
-import { formatBRL, parseDecimal } from "@/lib/utils";
+import { formatBRL, formatValor, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { NcmField } from "./ncm-field";
 import { ImagensField } from "./imagens-field";
@@ -49,8 +49,10 @@ export function ProdutoForm({
   const [state, onSubmit, pending] = useFormAction(salvarProduto, null);
   const [filamentoG, setFilamentoG] = useState(produto?.filamentoG ?? 0);
   const [tempoMin, setTempoMin] = useState(produto?.tempoImpressaoMin ?? 0);
-  const [custo, setCusto] = useState(fmt(produto?.custo));
-  const [preco, setPreco] = useState(fmt(produto?.preco));
+  const [custo, setCusto] = useState(produto?.custo ? formatValor(produto.custo) : "");
+  const [preco, setPreco] = useState(produto?.preco ? formatValor(produto.preco) : "");
+  // Ao sair do campo, o valor fica com 2 casas (49,9 → 49,90).
+  const normalizar = (v: string) => (v.trim() ? formatValor(parseDecimal(v)) : "");
 
   // Com filamento do estoque, o custo do material usa o custo médio dele.
   const calc = useMemo(
@@ -176,7 +178,7 @@ export function ProdutoForm({
               <span>Custo de produção</span>
               <span>{formatBRL(calc.custo)}</span>
             </div>
-            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={!calc.custo} onClick={() => setCusto(fmt(calc.custo))}>
+            <Button type="button" variant="outline" size="sm" className="mt-2" disabled={!calc.custo} onClick={() => setCusto(formatValor(calc.custo))}>
               <Calculator /> Usar como custo
             </Button>
           </div>
@@ -186,10 +188,10 @@ export function ProdutoForm({
           <CardHeader title="Preço e envio" />
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Custo (R$)">
-              <Input name="custo" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} />
+              <Input name="custo" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={() => setCusto(normalizar(custo))} />
             </Field>
             <Field label="Preço de venda (R$)" hint={margemReal !== null ? `Margem bruta (sem taxas): ${margemReal.toFixed(0)}%` : undefined}>
-              <Input name="preco" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} required />
+              <Input name="preco" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} onBlur={() => setPreco(normalizar(preco))} required />
             </Field>
             <Field label="Peso c/ embalagem (g)">
               <Input name="pesoG" type="number" min={0} defaultValue={produto?.pesoG ?? 0} />
@@ -210,7 +212,7 @@ export function ProdutoForm({
           </div>
         </Card>
 
-        <PrecosCanal custo={parseDecimal(custo) || calc.custo} preco={parseDecimal(preco)} parametros={precos} usar={(v) => setPreco(fmt(v))} />
+        <PrecosCanal custo={parseDecimal(custo) || calc.custo} preco={parseDecimal(preco)} parametros={precos} usar={(v) => setPreco(formatValor(v))} />
 
         {state?.erro ? <Alert>{state.erro}</Alert> : null}
         <SubmitButton pending={pending} size="lg" pendingText="Salvando...">

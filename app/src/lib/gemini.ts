@@ -26,8 +26,10 @@ function pensamento(model: string) {
 // Padrão e reservas: modelos que respondem no plano gratuito. Se o modelo escolhido estiver
 // sobrecarregado (503), sem cota (429) ou demorar demais, o próximo da lista responde.
 export const MODELO_PADRAO = "gemini-3.6-flash";
-const RESERVAS = [MODELO_PADRAO, "gemini-3.5-flash", "gemini-3.1-flash-lite"];
-const TEMPO_LIMITE_MS = 30_000;
+// Em ordem: os que responderam com a chave gratuita no teste (25/10/2026). Os "-latest" apontam para a versão estável do Google.
+const RESERVAS = [MODELO_PADRAO, "gemini-3.5-flash", "gemini-3-flash-preview", "gemini-flash-lite-latest", "gemini-3.5-flash-lite", "gemini-3.1-flash-lite", "gemini-flash-latest"];
+const TEMPO_LIMITE_MS = 20_000;
+const ORCAMENTO_MS = 60_000; // tempo máximo somando todas as tentativas
 
 class Indisponivel extends Error {}
 
@@ -74,15 +76,24 @@ export async function gerarComGeminiDetalhado(
   if (!apiKey) throw new Error("Cadastre a chave da API Gemini em Configurações › Integrações.");
   const modelos = [...new Set([s["gemini.model"] || MODELO_PADRAO, ...RESERVAS])];
   const falhas: string[] = [];
-  for (const modelo of modelos) {
-    try {
-      return { texto: await chamar(modelo, apiKey, messages, opts), modelo };
-    } catch (e) {
-      if (!(e instanceof Indisponivel)) throw e;
-      falhas.push(e.message);
+  const limite = Date.now() + ORCAMENTO_MS;
+  // Duas voltas pela lista: picos de "high demand" do plano gratuito costumam passar em poucos segundos.
+  for (let volta = 0; volta < 2; volta++) {
+    if (volta) await new Promise((r) => setTimeout(r, 3000));
+    for (const modelo of modelos) {
+      if (Date.now() > limite) break;
+      try {
+        return { texto: await chamar(modelo, apiKey, messages, opts), modelo };
+      } catch (e) {
+        if (!(e instanceof Indisponivel)) throw e;
+        falhas.push(e.message);
+      }
     }
   }
-  throw new Error(`Gemini indisponível no momento. ${falhas.join(" · ")}`);
+  console.warn(`[gemini] todos os modelos indisponíveis: ${falhas.join(" · ")}`);
+  throw new Error(
+    "O Google Gemini está sobrecarregado agora (plano gratuito) e nenhum dos modelos respondeu. Tente de novo em 1 ou 2 minutos.",
+  );
 }
 
 export async function gerarComGemini(

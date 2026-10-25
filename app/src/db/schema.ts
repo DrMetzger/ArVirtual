@@ -381,6 +381,22 @@ export const pedidosMarketplace = pgTable(
   ],
 );
 
+/** SKU/anúncio do marketplace ligado a um produto do cadastro (quando o SKU do anúncio é diferente). */
+export const vinculosSku = pgTable(
+  "vinculos_sku",
+  {
+    id: serial("id").primaryKey(),
+    canal: text("canal", { enum: CANAIS_VENDA }).notNull(),
+    /** SKU do anúncio ou id do anúncio no marketplace. */
+    chave: text("chave").notNull(),
+    produtoId: uuid("produto_id")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("vinculos_sku_canal_chave_idx").on(t.canal, t.chave)],
+);
+
 // ---------- Estoque ----------
 export const TIPOS_MOVIMENTO = ["entrada", "saida", "ajuste", "producao", "venda", "estorno"] as const;
 /** Kardex dos produtos: cada linha muda o saldo (quantidade positiva entra, negativa sai). */

@@ -1,5 +1,6 @@
 "use client";
 
+import { formatValor } from "@/lib/utils";
 import { Input } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import { salvarConta } from "../actions";
@@ -9,7 +10,7 @@ export function ContaForm({ conta }: { conta?: { id: number; nome: string; saldo
   return (
     <form onSubmit={onSubmit} className="grid items-center gap-2 sm:grid-cols-[1fr_160px_auto_auto]">
       <Input name="nome" defaultValue={conta?.nome} placeholder="Ex.: Banco Inter, Mercado Pago" required />
-      <Input name="saldoInicial" inputMode="decimal" defaultValue={conta ? String(conta.saldoInicial).replace(".", ",") : ""} placeholder="Saldo inicial" title="Saldo no dia em que começou a usar o sistema" />
+      <Input name="saldoInicial" inputMode="decimal" defaultValue={conta ? formatValor(conta.saldoInicial) : ""} placeholder="Saldo inicial" title="Saldo no dia em que começou a usar o sistema" />
       {conta ? (
         <label className="flex items-center gap-1.5 text-xs">
           <input type="checkbox" name="ativo" defaultChecked={conta.ativo} className="accent-[var(--gold)]" /> Ativa

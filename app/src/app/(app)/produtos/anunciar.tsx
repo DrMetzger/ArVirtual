@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Textarea } from "@/components/ui";
 import type { Marketplace } from "@/db/schema";
+import { formatValor, parseDecimal } from "@/lib/utils";
 import { gerarAnuncioIA, publicarAnuncio, type ResultadoPublicacao } from "./actions";
 
 type Conta = { id: number; nome: string; marketplace: Marketplace; marketplaceNome: string; cor: string };
@@ -86,7 +87,7 @@ export function Anunciar({
             <Textarea name="descricao" value={texto} rows={7} onChange={(e) => setTexto(e.target.value)} />
           </Field>
           <Field label="Preço no anúncio (R$)">
-            <Input name="preco" inputMode="decimal" defaultValue={String(preco).replace(".", ",")} />
+            <Input name="preco" inputMode="decimal" defaultValue={formatValor(preco)} onBlur={(e) => e.target.value.trim() && (e.target.value = formatValor(parseDecimal(e.target.value)))} />
           </Field>
 
           <div className="grid gap-2">
