@@ -2,6 +2,10 @@
 
 import {
   Boxes,
+  FileInput,
+  Printer,
+  Spool,
+  Truck,
   ChevronDown,
   FileText,
   FolderOpen,
@@ -55,7 +59,19 @@ const NAV: (Item | Grupo)[] = [
   {
     label: "Estoque",
     icon: Boxes,
-    itens: [{ href: "/estoque", label: "Produtos acabados", icon: Package }],
+    itens: [
+      { href: "/estoque", label: "Produtos acabados", icon: Package },
+      { href: "/estoque/filamentos", label: "Filamentos", icon: Spool },
+      { href: "/estoque/producao", label: "Produção", icon: Printer },
+    ],
+  },
+  {
+    label: "Compras",
+    icon: Truck,
+    itens: [
+      { href: "/compras/notas", label: "Notas de entrada", icon: FileInput },
+      { href: "/compras/fornecedores", label: "Fornecedores", icon: Truck },
+    ],
   },
   { href: "/marketplaces", label: "Marketplaces", icon: Store },
   { href: "/assistente", label: "Assistente IA", icon: Sparkles },
@@ -64,7 +80,10 @@ const CONFIGURACOES: Item = { href: "/configuracoes", label: "Configurações", 
 
 export type Usuario = { nome: string; papel: string; iniciais: string };
 
-const ativo = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+const TODOS = NAV.flatMap((n) => ("itens" in n ? n.itens : [n])).map((i) => i.href);
+const casa = (pathname: string, href: string) => (href === "/" ? pathname === "/" : pathname === href || pathname.startsWith(`${href}/`));
+// O item mais específico vence: em /estoque/filamentos, "Filamentos" fica ativo e "Produtos acabados" não.
+const ativo = (pathname: string, href: string) => casa(pathname, href) && !TODOS.some((h) => h.length > href.length && h.startsWith(href) && casa(pathname, h));
 
 function Brand({ recolhido }: { recolhido?: boolean }) {
   return (

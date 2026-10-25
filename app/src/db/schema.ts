@@ -193,6 +193,8 @@ export const produtos = pgTable(
     cor: text("cor").notNull().default(""),
     filamentoG: integer("filamento_g").notNull().default(0),
     tempoImpressaoMin: integer("tempo_impressao_min").notNull().default(0),
+    /** Filamento usado na impressão (custo e "quanto dá para imprimir"). */
+    filamentoId: integer("filamento_id"),
     imagens: text("imagens").array().notNull().default([]),
     /** Vídeos MP4 (URLs públicas na pasta de uploads); a Shopee recebe o primeiro. */
     videos: text("videos").array().notNull().default([]),
@@ -399,6 +401,131 @@ export const movimentosEstoque = pgTable(
   (t) => [index("movimentos_estoque_produto_idx").on(t.produtoId, t.criadoEm)],
 );
 
+// ---------- Compras ----------
+export const fornecedores = pgTable(
+  "fornecedores",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    tipo: text("tipo", { enum: ["PF", "PJ"] }).notNull(),
+    documento: text("documento").notNull(),
+    nome: text("nome").notNull(),
+    nomeFantasia: text("nome_fantasia").notNull().default(""),
+    inscricaoEstadual: text("inscricao_estadual").notNull().default(""),
+    email: text("email").notNull().default(""),
+    telefone: text("telefone").notNull().default(""),
+    cidade: text("cidade").notNull().default(""),
+    uf: text("uf").notNull().default(""),
+    observacoes: text("observacoes").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("fornecedores_documento_idx").on(t.documento)],
+);
+
+// ---------- Filamentos (matéria-prima) ----------
+export const filamentos = pgTable(
+  "filamentos",
+  {
+    id: serial("id").primaryKey(),
+    material: text("material").notNull(),
+    cor: text("cor").notNull(),
+    /** Cor para a amostra na tela (#rrggbb). */
+    corHex: text("cor_hex").notNull().default("#888888"),
+    marca: text("marca").notNull().default(""),
+    /** Custo médio ponderado por kg (recalculado a cada entrada). */
+    custoKg: money("custo_kg").notNull().default(0),
+    saldoG: integer("saldo_g").notNull().default(0),
+    minimoG: integer("minimo_g").notNull().default(0),
+    ativo: boolean("ativo").notNull().default(true),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("filamentos_material_cor_marca_idx").on(t.material, t.cor, t.marca)],
+);
+
+export const TIPOS_MOV_FILAMENTO = ["entrada", "consumo", "ajuste", "estorno"] as const;
+export const movimentosFilamento = pgTable(
+  "movimentos_filamento",
+  {
+    id: serial("id").primaryKey(),
+    filamentoId: integer("filamento_id")
+      .notNull()
+      .references(() => filamentos.id, { onDelete: "cascade" }),
+    tipo: text("tipo", { enum: TIPOS_MOV_FILAMENTO }).notNull(),
+    gramas: integer("gramas").notNull(),
+    saldoG: integer("saldo_g").notNull(),
+    /** Custo/kg desta entrada (nas entradas). */
+    custoKg: money("custo_kg").notNull().default(0),
+    origem: text("origem").notNull().default(""),
+    observacao: text("observacao").notNull().default(""),
+    usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("movimentos_filamento_idx").on(t.filamentoId, t.criadoEm)],
+);
+
+/** Ordem de produção concluída: entra peça no estoque e sai filamento. */
+export const producoes = pgTable("producoes", {
+  id: serial("id").primaryKey(),
+  produtoId: uuid("produto_id")
+    .notNull()
+    .references(() => produtos.id, { onDelete: "cascade" }),
+  filamentoId: integer("filamento_id").references(() => filamentos.id, { onDelete: "set null" }),
+  quantidade: integer("quantidade").notNull(),
+  gramas: integer("gramas").notNull(),
+  /** Filamento perdido (impressão que falhou, purga...). */
+  perdaG: integer("perda_g").notNull().default(0),
+  tempoMin: integer("tempo_min").notNull().default(0),
+  observacao: text("observacao").notNull().default(""),
+  usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const notasEntrada = pgTable(
+  "notas_entrada",
+  {
+    id: serial("id").primaryKey(),
+    fornecedorId: uuid("fornecedor_id").references(() => fornecedores.id, { onDelete: "restrict" }),
+    numero: text("numero").notNull().default(""),
+    serie: text("serie").notNull().default(""),
+    chave: text("chave"),
+    emissao: timestamp("emissao", { withTimezone: true }),
+    entrada: timestamp("entrada", { withTimezone: true }).notNull().defaultNow(),
+    valorProdutos: money("valor_produtos").notNull().default(0),
+    frete: money("frete").notNull().default(0),
+    outras: money("outras").notNull().default(0),
+    desconto: money("desconto").notNull().default(0),
+    valorTotal: money("valor_total").notNull().default(0),
+    /** Parcelas a pagar (da NF-e ou digitadas): [{ vencimento: "AAAA-MM-DD", valor }]. */
+    parcelas: jsonb("parcelas").$type<{ vencimento: string; valor: number }[]>().notNull().default([]),
+    status: text("status", { enum: ["rascunho", "lancada", "cancelada"] }).notNull().default("rascunho"),
+    xml: text("xml"),
+    observacoes: text("observacoes").notNull().default(""),
+    lancadaEm: timestamp("lancada_em", { withTimezone: true }),
+    ...timestamps,
+  },
+  (t) => [uniqueIndex("notas_entrada_chave_idx").on(t.chave)],
+);
+
+export const itensNotaEntrada = pgTable("itens_nota_entrada", {
+  id: serial("id").primaryKey(),
+  notaId: integer("nota_id")
+    .notNull()
+    .references(() => notasEntrada.id, { onDelete: "cascade" }),
+  codigo: text("codigo").notNull().default(""),
+  descricao: text("descricao").notNull(),
+  ncm: text("ncm").notNull().default(""),
+  cfop: text("cfop").notNull().default(""),
+  unidade: text("unidade").notNull().default("UN"),
+  quantidade: numeric("quantidade", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  valorUnitario: numeric("valor_unitario", { precision: 14, scale: 4, mode: "number" }).notNull(),
+  valorTotal: money("valor_total").notNull(),
+  /** O que o item vira ao lançar: filamento (gramas), produto (peças no estoque) ou despesa (só financeiro). */
+  destino: text("destino", { enum: ["filamento", "produto", "despesa"] }).notNull().default("despesa"),
+  filamentoId: integer("filamento_id").references(() => filamentos.id, { onDelete: "set null" }),
+  produtoId: uuid("produto_id").references(() => produtos.id, { onDelete: "set null" }),
+  /** Filamento: gramas por unidade comprada (1 rolo = 1000 g). */
+  gramasPorUnidade: integer("gramas_por_unidade").notNull().default(1000),
+});
+
 // Consultas de CPF na APICPF: controla os limites do plano (por dia e por minuto) e serve de cache.
 export const consultasCpf = pgTable(
   "consultas_cpf",
@@ -422,6 +549,13 @@ export const anunciosRelations = relations(anuncios, ({ one }) => ({
   produto: one(produtos, { fields: [anuncios.produtoId], references: [produtos.id] }),
   conta: one(contasMarketplace, { fields: [anuncios.contaId], references: [contasMarketplace.id] }),
 }));
+export const notasEntradaRelations = relations(notasEntrada, ({ one, many }) => ({
+  fornecedor: one(fornecedores, { fields: [notasEntrada.fornecedorId], references: [fornecedores.id] }),
+  itens: many(itensNotaEntrada),
+}));
+export const itensNotaEntradaRelations = relations(itensNotaEntrada, ({ one }) => ({
+  nota: one(notasEntrada, { fields: [itensNotaEntrada.notaId], references: [notasEntrada.id] }),
+}));
 export const notasRelations = relations(notas, ({ one, many }) => ({
   cliente: one(clientes, { fields: [notas.clienteId], references: [clientes.id] }),
   endereco: one(enderecos, { fields: [notas.enderecoId], references: [enderecos.id] }),
@@ -440,5 +574,9 @@ export type ContaMarketplace = typeof contasMarketplace.$inferSelect;
 export type Nota = typeof notas.$inferSelect;
 export type PedidoMarketplace = typeof pedidosMarketplace.$inferSelect;
 export type MovimentoEstoque = typeof movimentosEstoque.$inferSelect;
+export type Filamento = typeof filamentos.$inferSelect;
+export type Fornecedor = typeof fornecedores.$inferSelect;
+export type NotaEntrada = typeof notasEntrada.$inferSelect;
+export type ItemNotaEntrada = typeof itensNotaEntrada.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
 export type Ncm = typeof ncms.$inferSelect;
