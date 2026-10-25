@@ -370,6 +370,8 @@ export const pedidosMarketplace = pgTable(
     observacoes: text("observacoes").notNull().default(""),
     /** A venda já saiu do estoque (volta se o pedido for cancelado). */
     estoqueBaixado: boolean("estoque_baixado").notNull().default(false),
+    /** O título a receber deste pedido já foi gerado. */
+    financeiroGerado: boolean("financeiro_gerado").notNull().default(false),
     dados: jsonb("dados"),
     ...timestamps,
   },
@@ -526,6 +528,43 @@ export const itensNotaEntrada = pgTable("itens_nota_entrada", {
   gramasPorUnidade: integer("gramas_por_unidade").notNull().default(1000),
 });
 
+// ---------- Financeiro ----------
+/** Onde o dinheiro está: caixa, conta bancária, saldo no Mercado Pago... */
+export const contasCaixa = pgTable("contas_caixa", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  saldoInicial: money("saldo_inicial").notNull().default(0),
+  ativo: boolean("ativo").notNull().default(true),
+  ...timestamps,
+});
+
+/** Títulos a receber e a pagar (gerados por pedidos e notas de entrada, ou lançados na mão). */
+export const lancamentos = pgTable(
+  "lancamentos",
+  {
+    id: serial("id").primaryKey(),
+    tipo: text("tipo", { enum: ["receber", "pagar"] }).notNull(),
+    descricao: text("descricao").notNull(),
+    categoria: text("categoria").notNull().default(""),
+    valor: money("valor").notNull(),
+    vencimento: timestamp("vencimento", { withTimezone: true }).notNull(),
+    status: text("status", { enum: ["aberto", "pago", "cancelado"] }).notNull().default("aberto"),
+    pagoEm: timestamp("pago_em", { withTimezone: true }),
+    valorPago: money("valor_pago"),
+    contaCaixaId: integer("conta_caixa_id").references(() => contasCaixa.id, { onDelete: "set null" }),
+    formaPagamento: text("forma_pagamento").notNull().default(""),
+    /** Parcela "1/3" quando vem de uma nota com várias duplicatas. */
+    parcela: text("parcela").notNull().default(""),
+    /** De onde veio: "pedido:12", "nota-entrada:3" ou vazio (manual). */
+    origem: text("origem").notNull().default(""),
+    clienteId: uuid("cliente_id").references(() => clientes.id, { onDelete: "set null" }),
+    fornecedorId: uuid("fornecedor_id").references(() => fornecedores.id, { onDelete: "set null" }),
+    observacoes: text("observacoes").notNull().default(""),
+    ...timestamps,
+  },
+  (t) => [index("lancamentos_tipo_venc_idx").on(t.tipo, t.status, t.vencimento), index("lancamentos_origem_idx").on(t.origem)],
+);
+
 // Consultas de CPF na APICPF: controla os limites do plano (por dia e por minuto) e serve de cache.
 export const consultasCpf = pgTable(
   "consultas_cpf",
@@ -578,5 +617,7 @@ export type Filamento = typeof filamentos.$inferSelect;
 export type Fornecedor = typeof fornecedores.$inferSelect;
 export type NotaEntrada = typeof notasEntrada.$inferSelect;
 export type ItemNotaEntrada = typeof itensNotaEntrada.$inferSelect;
+export type Lancamento = typeof lancamentos.$inferSelect;
+export type ContaCaixa = typeof contasCaixa.$inferSelect;
 export type CertificadoDigital = typeof certificadoDigital.$inferSelect;
 export type Ncm = typeof ncms.$inferSelect;

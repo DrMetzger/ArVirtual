@@ -5,6 +5,7 @@ import { db } from "@/db";
 import { filamentos, fornecedores, itensNotaEntrada, movimentosEstoque, movimentosFilamento, notasEntrada } from "@/db/schema";
 import { movimentar } from "@/lib/estoque";
 import { movimentarFilamento } from "@/lib/filamentos";
+import { cancelarTitulosDaOrigem, gerarPagarDaNota } from "@/lib/financeiro";
 import { onlyDigits, round2 } from "@/lib/utils";
 
 const num = (v: string | undefined) => Number(String(v ?? "0").replace(",", ".")) || 0;
@@ -129,6 +130,7 @@ export async function lancarNotaEntrada(notaId: number, usuarioId: string) {
       }
     }
     await tx.update(notasEntrada).set({ status: "lancada", lancadaEm: new Date(), atualizadoEm: new Date() }).where(eq(notasEntrada.id, nota.id));
+    await gerarPagarDaNota(tx, nota);
   });
 }
 
@@ -149,5 +151,6 @@ export async function cancelarNotaEntrada(notaId: number, usuarioId: string) {
       }
     }
     await tx.update(notasEntrada).set({ status: "cancelada", atualizadoEm: new Date() }).where(eq(notasEntrada.id, nota.id));
+    await cancelarTitulosDaOrigem(tx, origem);
   });
 }

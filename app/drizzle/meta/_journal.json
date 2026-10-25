@@ -71,6 +71,13 @@
       "when": 1792952844932,
       "tag": "0009_compras_filamentos",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1792953443017,
+      "tag": "0010_financeiro",
+      "breakpoints": true
     }
   ]
 }

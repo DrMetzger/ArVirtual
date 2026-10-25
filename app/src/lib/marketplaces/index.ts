@@ -4,6 +4,8 @@ import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace, type ContaMarketplace, type Marketplace } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
 import { atualizarEstoqueDoPedido } from "@/lib/estoque";
+import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
+import { situacaoPedido } from "./situacao";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
 import { shopee } from "./shopee";
@@ -67,6 +69,7 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
   for (const conta of contas) {
     try {
       const pedidos = await adapter(conta.marketplace).pedidos(await contaComToken(conta), desde, porAtualizacao);
+      const historico = (data: Date) => data.getTime() < conta.criadoEm.getTime() - 86400_000;
       // Conta com nome genérico ganha o nome da loja que vem nos pedidos.
       const loja = pedidos.find((p) => p.loja)?.loja;
       if (loja && /^(Loja|Seller) Magalu\b/.test(conta.nome)) {
@@ -85,11 +88,23 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
         };
         const [salvo] = await db
           .insert(pedidosMarketplace)
-          .values({ contaId: conta.id, marketplace: conta.marketplace, idExterno: p.idExterno, ...valores })
+          // Pedido de antes de conectar a conta é histórico: já saiu do estoque e já foi recebido.
+          .values({
+            contaId: conta.id,
+            marketplace: conta.marketplace,
+            idExterno: p.idExterno,
+            ...valores,
+            // Só conta como já baixado o que foi venda (cancelado histórico nunca saiu do estoque).
+            estoqueBaixado: historico(p.data) && ["pago", "enviado", "entregue"].includes(situacaoPedido(conta.marketplace, p.status)),
+            financeiroGerado: historico(p.data),
+          })
           .onConflictDoUpdate({ target: [pedidosMarketplace.marketplace, pedidosMarketplace.idExterno], set: { ...valores, atualizadoEm: new Date() } })
           .returning();
         // Pago sai do estoque; cancelado depois de baixado volta.
-        if (salvo) await atualizarEstoqueDoPedido(salvo).catch((e: Error) => console.warn(`[estoque] pedido ${p.idExterno}: ${e.message}`));
+        if (salvo) {
+          await atualizarEstoqueDoPedido(salvo).catch((e: Error) => console.warn(`[estoque] pedido ${p.idExterno}: ${e.message}`));
+          await atualizarFinanceiroDoPedido(salvo).catch((e: Error) => console.warn(`[financeiro] pedido ${p.idExterno}: ${e.message}`));
+        }
       }
       await db.update(contasMarketplace).set({ ultimaSincronizacao: new Date() }).where(eq(contasMarketplace.id, conta.id));
       resultado.push({ conta: conta.nome, marketplace: conta.marketplace, pedidos: pedidos.length });
