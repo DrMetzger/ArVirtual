@@ -102,10 +102,13 @@ export async function POST(req: Request) {
   historico.reverse();
 
   const enc = new TextEncoder();
+  // Se o navegador desconectar (parar/fechar a aba), a resposta continua e é salva, mas não escreve mais no stream.
+  let aberto = true;
   const stream = new ReadableStream<Uint8Array>({
+    cancel() {
+      aberto = false;
+    },
     async start(controller) {
-      // Se o usuário parar (fecha a conexão), a resposta continua e é salva; só deixa de ser enviada.
-      let aberto = true;
       const enviar = (ev: Record<string, unknown>) => {
         if (!aberto) return;
         try {

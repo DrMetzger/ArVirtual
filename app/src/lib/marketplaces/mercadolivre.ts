@@ -23,6 +23,7 @@ async function token(body: Record<string, string>) {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
     body: new URLSearchParams(body),
+    signal: AbortSignal.timeout(30_000),
   });
   return lerResposta<TokenResp>(res, "Mercado Livre");
 }

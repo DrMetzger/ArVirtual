@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Textarea } from "@/components/ui";
 import type { Marketplace } from "@/db/schema";
 import { formatValor, parseDecimal } from "@/lib/utils";
-import { gerarAnuncioIA, publicarAnuncio, type ResultadoPublicacao } from "./actions";
+import { gerarAnuncioIA, type ResultadoPublicacao } from "./actions";
 
 type Conta = { id: number; nome: string; marketplace: Marketplace; marketplaceNome: string; cor: string };
 
@@ -54,7 +54,20 @@ export function Anunciar({
         </div>
       ) : (
         <form
-          action={(fd) => startPub(async () => setResultados(await publicarAnuncio(produtoId, fd)))}
+          onSubmit={(e) => {
+            e.preventDefault();
+            const fd = new FormData(e.currentTarget);
+            setResultados(null);
+            startPub(async () => {
+              try {
+                const res = await fetch(`/api/produtos/${produtoId}/publicar`, { method: "POST", body: fd });
+                const dados = (await res.json().catch(() => null)) as ResultadoPublicacao[] | null;
+                setResultados(dados ?? [{ conta: "-", ok: false, mensagem: `Erro ${res.status} ao publicar. Recarregue a página e tente de novo.` }]);
+              } catch {
+                setResultados([{ conta: "-", ok: false, mensagem: "Sem conexão com o servidor. Verifique a internet e tente de novo." }]);
+              }
+            });
+          }}
           className="grid gap-4 p-5"
         >
           {!temImagem ? <Alert tone="gold">Adicione ao menos uma imagem: os marketplaces exigem foto.</Alert> : null}
