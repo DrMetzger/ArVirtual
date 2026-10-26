@@ -32,6 +32,7 @@ async function publicCall<T extends ShopeeBase>(path: string, body: unknown) {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    signal: AbortSignal.timeout(30_000),
   });
   return checar(await lerResposta<T>(res, "Shopee"), path);
 }
