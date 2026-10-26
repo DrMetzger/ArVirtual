@@ -22,16 +22,15 @@ export function MarcaIcone({ canal, className }: { canal: Canal; className?: str
   );
 }
 
-/** Logo completo do canal, com a versão certa para o tema claro/escuro. */
+/**
+ * Logo completo do canal numa plaquinha branca, com as cores originais da marca:
+ * fica igual e legível no tema claro e no escuro (o mesmo critério do ícone).
+ */
 export function MarcaLogo({ canal, className }: { canal: Canal; className?: string }) {
   const c = CANAIS[canal];
-  const claro = c.logoClaro ?? c.logo;
-  const escuro = c.logoEscuro ?? c.logo;
-  if (claro === escuro) return <img src={c.logo} alt={c.nome} className={cn("h-6 w-auto object-contain", className)} />;
   return (
-    <>
-      <img src={claro} alt={c.nome} className={cn("h-6 w-auto object-contain dark:hidden", className)} />
-      <img src={escuro} alt={c.nome} className={cn("hidden h-6 w-auto object-contain dark:block", className)} />
-    </>
+    <span title={c.nome} className="inline-flex shrink-0 items-center rounded-lg bg-white px-2.5 py-1.5 align-middle shadow-sm ring-1 ring-black/10">
+      <img src={c.logoClaro ?? c.logo} alt={c.nome} className={cn("h-6 w-auto object-contain", className)} />
+    </span>
   );
 }
