@@ -4,7 +4,7 @@ import { db } from "@/db";
 import { configuracoes } from "@/db/schema";
 import { decrypt, encrypt, mask } from "./crypto";
 import { PARAMETROS_PADRAO, type ParametrosImpressao } from "./impressao";
-import { FAIXAS_PADRAO, lerFaixas, type ParametrosPreco } from "./precificacao";
+import { FAIXAS_PADRAO, FAIXAS_PREMIUM_ML, lerFaixas, type ParametrosPreco } from "./precificacao";
 
 /** Todas as chaves configuráveis pela tela de Configurações › Integrações. */
 export const SETTINGS = {
@@ -71,9 +71,13 @@ export const SETTINGS = {
   "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
   "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
 
-  "mercadolivre.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Mercado Livre", placeholder: "78.99:14%+6.5; *:14%" },
+  "mercadolivre.tipoAnuncio": { label: "Tipo de anúncio", secret: false, group: "Precificação: Mercado Livre", options: ["classico", "premium"] },
+  "mercadolivre.faixas": { label: "Clássico: comissão e taxa fixa por faixa", secret: false, group: "Precificação: Mercado Livre", placeholder: "78.99:14%+6.5; *:14%" },
+  "mercadolivre.faixasPremium": { label: "Premium: comissão e taxa fixa por faixa", secret: false, group: "Precificação: Mercado Livre", placeholder: "78.99:19%+6.5; *:19%" },
+  "mercadolivre.freteGratis": { label: "Frete grátis nos anúncios", secret: false, group: "Precificação: Mercado Livre", options: ["automatico", "sempre", "nunca"] },
+  "mercadolivre.freteAcima": { label: "Frete grátis obrigatório a partir de (R$)", secret: false, group: "Precificação: Mercado Livre", placeholder: "79" },
   "mercadolivre.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Mercado Livre", placeholder: "10" },
-  "mercadolivre.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Mercado Livre", placeholder: "0" },
+  "mercadolivre.frete": { label: "Sua parte do frete grátis (R$ por venda)", secret: false, group: "Precificação: Mercado Livre", placeholder: "0" },
   "mercadolivre.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: Mercado Livre", placeholder: "30" },
   "shopee.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Shopee", placeholder: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26" },
   "shopee.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Shopee", placeholder: "10" },
@@ -146,7 +150,8 @@ export async function setSetting(key: SettingKey, value: string) {
 export async function getParametrosPreco(): Promise<ParametrosPreco> {
   const chaves = [
     "impressao.margem", "precificacao.imposto", "precificacao.embalagem",
-    "mercadolivre.faixas", "mercadolivre.campanha", "mercadolivre.frete",
+    "mercadolivre.faixas", "mercadolivre.faixasPremium", "mercadolivre.tipoAnuncio", "mercadolivre.freteGratis", "mercadolivre.freteAcima",
+    "mercadolivre.campanha", "mercadolivre.frete",
     "shopee.faixas", "shopee.campanha", "shopee.frete",
     "magalu.faixas", "magalu.campanha", "magalu.frete",
     "loja.faixas", "loja.frete",
@@ -168,7 +173,16 @@ export async function getParametrosPreco(): Promise<ParametrosPreco> {
     imposto: num(s["precificacao.imposto"], 6),
     embalagem: num(s["precificacao.embalagem"], 0),
     canais: {
-      mercadolivre: { faixas: faixas(s["mercadolivre.faixas"], FAIXAS_PADRAO.mercadolivre), campanha: num(s["mercadolivre.campanha"], 10), frete: num(s["mercadolivre.frete"], 0) },
+      mercadolivre: {
+        faixas:
+          s["mercadolivre.tipoAnuncio"] === "premium"
+            ? faixas(s["mercadolivre.faixasPremium"], FAIXAS_PREMIUM_ML)
+            : faixas(s["mercadolivre.faixas"], FAIXAS_PADRAO.mercadolivre),
+        campanha: num(s["mercadolivre.campanha"], 10),
+        // Frete grátis: "sempre" = a sua parte entra em toda venda; "nunca" = não entra; automático = a partir do limite.
+        frete: s["mercadolivre.freteGratis"] === "nunca" ? 0 : num(s["mercadolivre.frete"], 0),
+        freteAcima: s["mercadolivre.freteGratis"] === "sempre" ? 0 : num(s["mercadolivre.freteAcima"], 79),
+      },
       shopee: { faixas: faixas(s["shopee.faixas"], FAIXAS_PADRAO.shopee), campanha: num(s["shopee.campanha"], 10), frete: num(s["shopee.frete"], 0) },
       magalu: { faixas: faixas(s["magalu.faixas"], FAIXAS_PADRAO.magalu), campanha: num(s["magalu.campanha"], 10), frete: num(s["magalu.frete"], 0) },
       loja: { faixas: faixas(s["loja.faixas"], "*:0%"), campanha: 0, frete: num(s["loja.frete"], 0) },

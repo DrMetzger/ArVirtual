@@ -63,6 +63,11 @@ const ROTULOS: Record<string, string> = {
   sandbox: "Sandbox (testes)",
   sim: "Sim",
   nao: "Não",
+  classico: "Clássico",
+  premium: "Premium (parcelado sem juros)",
+  automatico: "Automático (grátis a partir do limite)",
+  sempre: "Sempre grátis",
+  nunca: "Nunca (comprador paga)",
 };
 
 // ---------- Empresa ----------

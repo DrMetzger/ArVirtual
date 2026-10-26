@@ -8,7 +8,8 @@ import { round2 } from "./utils";
 
 export type Faixa = { ate: number; comissao: number; fixa: number }; // ate = Infinity na última faixa
 export type CanalPreco = "mercadolivre" | "shopee" | "magalu" | "loja";
-export type TaxasCanal = { faixas: Faixa[]; campanha: number; frete: number };
+/** freteAcima: o frete pago pelo vendedor só entra quando a venda chega nesse valor (0 = sempre). */
+export type TaxasCanal = { faixas: Faixa[]; campanha: number; frete: number; freteAcima?: number };
 export type ParametrosPreco = {
   imposto: number; // % sobre a venda (Simples Nacional)
   embalagem: number; // R$ por pedido
@@ -31,6 +32,9 @@ export function lerFaixas(texto: string): Faixa[] {
   if (!faixas.length || faixas[faixas.length - 1]!.ate !== Infinity) faixas.push({ ate: Infinity, comissao: faixas.at(-1)?.comissao ?? 0, fixa: faixas.at(-1)?.fixa ?? 0 });
   return faixas;
 }
+
+/** Premium do Mercado Livre (parcelado sem juros, mais exposição): comissão maior. Confira a da sua categoria. */
+export const FAIXAS_PREMIUM_ML = "78.99:19%+6.5; *:19%";
 
 export const FAIXAS_PADRAO: Record<Exclude<CanalPreco, "loja">, string> = {
   // Clássico: comissão média; abaixo de R$ 79 há custo fixo por unidade. Confira na central do vendedor.
@@ -58,7 +62,8 @@ function faixaDe(faixas: Faixa[], precoVenda: number) {
 export function liquido(preco: number, custo: number, t: TaxasCanal, p: ParametrosPreco) {
   const venda = preco * (1 - t.campanha / 100);
   const f = faixaDe(t.faixas, venda);
-  const taxas = venda * (f.comissao / 100) + f.fixa + t.frete;
+  const frete = venda >= (t.freteAcima ?? 0) ? t.frete : 0;
+  const taxas = venda * (f.comissao / 100) + f.fixa + frete;
   const imposto = venda * (p.imposto / 100);
   const recebe = venda - taxas - imposto - p.embalagem;
   const lucro = recebe - custo;
@@ -72,7 +77,9 @@ function precoPara(alvo: number, t: TaxasCanal, p: ParametrosPreco) {
   for (const f of t.faixas) {
     const fator = 1 - f.comissao / 100 - p.imposto / 100;
     if (fator > 0) {
-      const venda = (alvo + f.fixa + t.frete + p.embalagem) / fator;
+      // Sem frete grátis abaixo do limite: tenta primeiro sem o frete; se o preço passar do limite, inclui.
+      const semFrete = (alvo + f.fixa + p.embalagem) / fator;
+      const venda = t.frete && semFrete < (t.freteAcima ?? 0) ? semFrete : (alvo + f.fixa + t.frete + p.embalagem) / fator;
       if (venda > anterior && venda <= f.ate) return round2(venda / (1 - t.campanha / 100));
       // Caiu abaixo da faixa (a taxa fixa da faixa anterior era maior): o início desta faixa já serve.
       if (venda <= anterior && liquido((anterior + 0.01) / (1 - t.campanha / 100), 0, t, p).recebe >= alvo) {

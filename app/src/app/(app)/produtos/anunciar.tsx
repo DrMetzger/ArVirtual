@@ -3,7 +3,7 @@
 import { CheckCircle2, ExternalLink, Loader2, Megaphone, Sparkles, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
-import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Textarea } from "@/components/ui";
+import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import type { Marketplace } from "@/db/schema";
 import { formatValor, parseDecimal } from "@/lib/utils";
 import { gerarAnuncioIA, type ResultadoPublicacao } from "./actions";
@@ -19,6 +19,7 @@ export function Anunciar({
   contas,
   temImagem,
   iaConfigurada,
+  ml = { tipo: "classico", frete: "automatico" },
 }: {
   produtoId: string;
   nome: string;
@@ -28,6 +29,8 @@ export function Anunciar({
   contas: Conta[];
   temImagem: boolean;
   iaConfigurada: boolean;
+  /** Padrões de Configurações › Precificação: Mercado Livre. */
+  ml?: { tipo: string; frete: string };
 }) {
   const [titulo, setTitulo] = useState(nome.slice(0, 60));
   const [texto, setTexto] = useState(descricao);
@@ -128,6 +131,24 @@ export function Anunciar({
               </label>
             ))}
           </div>
+
+          {mps.includes("mercadolivre") ? (
+            <div className="grid gap-3 rounded-xl border border-border p-3 sm:grid-cols-2">
+              <Field label="Mercado Livre · tipo de anúncio">
+                <Select name="ml_tipo" defaultValue={ml.tipo}>
+                  <option value="classico">Clássico</option>
+                  <option value="premium">Premium (parcelado sem juros)</option>
+                </Select>
+              </Field>
+              <Field label="Mercado Livre · frete grátis">
+                <Select name="ml_frete" defaultValue={ml.frete}>
+                  <option value="automatico">Automático (regra do ML: grátis a partir de R$ 79)</option>
+                  <option value="sempre">Sempre grátis</option>
+                  <option value="nunca">Comprador paga (só abaixo de R$ 79)</option>
+                </Select>
+              </Field>
+            </div>
+          ) : null}
 
           {mps.length ? (
             <details className="rounded-xl border border-border px-3 py-2 text-sm">

@@ -8,6 +8,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { anuncios, contasMarketplace, movimentosEstoque, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
@@ -278,10 +279,15 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
   if (!contaIds.length) return [{ conta: "-", ok: false, mensagem: "Selecione ao menos uma conta de marketplace." }];
   const contas = await db.select().from(contasMarketplace).where(inArray(contasMarketplace.id, contaIds));
 
+  const cfgMl = await getSettings(["mercadolivre.tipoAnuncio", "mercadolivre.freteGratis"]);
+  const tipo = String(form.get("ml_tipo") || cfgMl["mercadolivre.tipoAnuncio"] || "classico");
+  const frete = String(form.get("ml_frete") || cfgMl["mercadolivre.freteGratis"] || "automatico");
   const dados = {
     titulo: String(form.get("titulo") ?? p.nome).trim() || p.nome,
     descricao: String(form.get("descricao") ?? p.descricao).trim(),
     preco: parseDecimal(form.get("preco")),
+    tipoAnuncio: (tipo === "premium" ? "premium" : "classico") as "classico" | "premium",
+    freteGratis: (["sempre", "nunca"].includes(frete) ? frete : "automatico") as "automatico" | "sempre" | "nunca",
   };
   // Produto com variações: um anúncio por cor, no mesmo grupo (Magalu) / família (Mercado Livre).
   const itens = p.temVariacoes
@@ -305,6 +311,8 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
           descricao: dados.descricao,
           preco,
           estoque: item.estoque,
+          tipoAnuncio: dados.tipoAnuncio,
+          freteGratis: dados.freteGratis,
           categoria,
           ...(p.temVariacoes ? { grupo: p.sku, principal: i === 0, familia: dados.titulo } : {}),
         });
