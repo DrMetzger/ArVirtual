@@ -53,10 +53,14 @@ const CANAIS_PRECO = ["mercadolivre", "shopee", "magalu", "loja"] as const;
 /** Filamentos da peça: [{ filamentoId, gramas }] vindos da tela (ignora linhas vazias). */
 function lerComposicao(raw: FormDataEntryValue | null) {
   try {
-    const lista = JSON.parse(String(raw ?? "[]")) as { filamentoId?: unknown; gramas?: unknown }[];
+    const lista = JSON.parse(String(raw ?? "[]")) as { filamentoId?: unknown; gramas?: unknown; tempoMin?: unknown }[];
     return lista
-      .map((c) => ({ filamentoId: Number(c.filamentoId) > 0 ? Math.trunc(Number(c.filamentoId)) : null, gramas: Math.max(0, Math.round(Number(c.gramas) || 0)) }))
-      .filter((c) => c.filamentoId || c.gramas)
+      .map((c) => ({
+        filamentoId: Number(c.filamentoId) > 0 ? Math.trunc(Number(c.filamentoId)) : null,
+        gramas: Math.max(0, Math.round(Number(c.gramas) || 0)),
+        tempoMin: Math.max(0, Math.round(Number(c.tempoMin) || 0)),
+      }))
+      .filter((c) => c.filamentoId || c.gramas || c.tempoMin)
       .slice(0, 16);
   } catch {
     return [];

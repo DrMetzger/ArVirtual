@@ -83,6 +83,12 @@
   body {
     @apply font-sans antialiased;
     transition: background-color 0.25s, color 0.25s;
+    /* A página nunca rola para o lado: o que for largo (tabelas) rola dentro do próprio quadro. */
+    overflow-x: clip;
+  }
+  /* Colunas de grid não crescem além do espaço disponível por causa de conteúdo largo (tabela, texto sem espaço). */
+  .grid > * {
+    min-width: 0;
   }
   h1, h2, h3 {
     @apply font-display tracking-tight;

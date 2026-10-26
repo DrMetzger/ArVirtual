@@ -1,13 +1,13 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Film, Upload, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, Film, Upload, X } from "lucide-react";
 import { useState } from "react";
-import { Alert, Card, CardHeader } from "@/components/ui";
+import { Alert, buttonClass, Card, CardHeader } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useMidias } from "./midias";
 
 /** Vídeos do produto (MP4). A Shopee aceita vídeo direto no anúncio: 10 a 60 s, até 30 MB. Arraste para reordenar. */
-export function VideosField({ iniciais }: { iniciais: string[] }) {
+export function VideosField({ iniciais, produtoId, sku }: { iniciais: string[]; produtoId?: string; sku?: string }) {
   const m = useMidias(iniciais, "novosVideos");
   const [duracoes, setDuracoes] = useState<Record<string, number>>({});
 
@@ -28,7 +28,15 @@ export function VideosField({ iniciais }: { iniciais: string[] }) {
       <CardHeader
         title="Vídeos"
         description="MP4 de 10 a 60 segundos, até 30 MB. Arraste para mudar a ordem; o primeiro vai para o anúncio da Shopee."
-        action={<Film className="size-5 text-gold" />}
+        action={
+          produtoId && iniciais.length ? (
+            <a href={`/api/produtos/${produtoId}/midias?tipo=videos`} className={buttonClass("outline", "sm")} title="Baixar todos os vídeos (.zip)">
+              <Download /> Baixar todos
+            </a>
+          ) : (
+            <Film className="size-5 text-gold" />
+          )
+        }
       />
       <div className="grid gap-4 p-5">
         <input type="hidden" name="ordemVideos" value={m.ordem} />
@@ -59,6 +67,17 @@ export function VideosField({ iniciais }: { iniciais: string[] }) {
                 <button type="button" onClick={() => m.remover(i)} className={cn(botao, "absolute top-1.5 right-1.5")} aria-label="Remover vídeo">
                   <X className="size-3.5" />
                 </button>
+                {v.arquivo ? null : (
+                  <a
+                    href={`${v.url}?baixar=${encodeURIComponent(`${sku || "video"}-${i + 1}.mp4`)}`}
+                    className={cn(botao, "absolute top-1.5 right-9")}
+                    title="Baixar vídeo"
+                    aria-label="Baixar vídeo"
+                    draggable={false}
+                  >
+                    <Download className="size-3.5" />
+                  </a>
+                )}
                 <div className="flex items-center gap-2 px-2 py-1 text-xs text-white/80">
                   <button type="button" onClick={() => m.mover(i, i - 1)} disabled={i === 0} className={botao} aria-label="Mover para a esquerda">
                     <ChevronLeft className="size-4" />

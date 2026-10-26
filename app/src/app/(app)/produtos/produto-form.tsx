@@ -50,23 +50,33 @@ export function ProdutoForm({
   const [precosCanal, setPrecosCanal] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(produto?.precosCanal ?? {}).map(([k, v]) => [k, v ? formatValor(v) : ""])),
   );
-  // Filamentos da peça (multicor/AMS): cada linha é um filamento com as gramas por peça.
-  const [composicao, setComposicao] = useState<{ key: number; filamentoId: string; gramas: number }[]>(() => {
+  // Partes da peça: cada linha é um filamento com as gramas e o tempo de impressão daquela parte
+  // (peça impressa em partes e encaixada; sem AMS). Material, cor, total de gramas e tempo saem daqui.
+  const [composicao, setComposicao] = useState<{ key: number; filamentoId: string; gramas: number; tempoMin: number }[]>(() => {
     const base = produto?.composicao?.length
       ? produto.composicao
       : [{ filamentoId: produto?.filamentoId ?? null, gramas: produto?.filamentoG ?? 0 }];
-    return base.map((c, i) => ({ key: i, filamentoId: c.filamentoId ? String(c.filamentoId) : "", gramas: c.gramas }));
+    // Cadastro antigo (tempo só no total): o tempo fica na 1ª parte.
+    const semTempo = base.every((c) => !c.tempoMin);
+    return base.map((c, i) => ({
+      key: i,
+      filamentoId: c.filamentoId ? String(c.filamentoId) : "",
+      gramas: c.gramas,
+      tempoMin: semTempo ? (i === 0 ? (produto?.tempoImpressaoMin ?? 0) : 0) : (c.tempoMin ?? 0),
+    }));
   });
-  const [material, setMaterial] = useState(produto?.material || "PLA");
-  const [cor, setCor] = useState(produto?.cor ?? "");
   const filamentoId = composicao[0]?.filamentoId ?? "";
   const fil = filamentos.find((f) => String(f.id) === filamentoId);
   const [state, onSubmit, pending] = useFormAction(salvarProduto, null);
-  const comp = composicao.map((c) => ({ filamentoId: c.filamentoId ? Number(c.filamentoId) : null, gramas: c.gramas || 0 }));
+  const comp = composicao.map((c) => ({ filamentoId: c.filamentoId ? Number(c.filamentoId) : null, gramas: c.gramas || 0, tempoMin: c.tempoMin || 0 }));
   const filamentoG = gramasTotais(comp);
-  const alterarComp = (key: number, patch: Partial<{ filamentoId: string; gramas: number }>) =>
+  const tempoMin = comp.reduce((s, c) => s + c.tempoMin, 0);
+  const usados = composicao.map((c) => filamentos.find((f) => String(f.id) === c.filamentoId)).filter((f): f is FilamentoOpt => Boolean(f));
+  // Material e cor do cadastro: os dos filamentos usados (sem filamento do estoque, mantém o que já estava).
+  const material = usados[0] ? (MATERIAIS.includes(usados[0].material) ? usados[0].material : "Outro") : produto?.material || "PLA";
+  const cor = usados.length ? [...new Set(usados.map((f) => f.cor))].join(", ") : (produto?.cor ?? "");
+  const alterarComp = (key: number, patch: Partial<{ filamentoId: string; gramas: number; tempoMin: number }>) =>
     setComposicao((cs) => cs.map((c) => (c.key === key ? { ...c, ...patch } : c)));
-  const [tempoMin, setTempoMin] = useState(produto?.tempoImpressaoMin ?? 0);
   const [custo, setCusto] = useState(produto?.custo ? formatValor(produto.custo) : "");
   const [preco, setPreco] = useState(produto?.preco ? formatValor(produto.preco) : "");
   // Ao sair do campo, o valor fica com 2 casas (49,9 → 49,90).
@@ -180,110 +190,98 @@ export function ProdutoForm({
           </div>
         </Card>
 
-        <ImagensField iniciais={produto?.imagens ?? []} />
-        <VideosField iniciais={produto?.videos ?? []} />
+        <ImagensField iniciais={produto?.imagens ?? []} produtoId={produto?.id} sku={produto?.sku} />
+        <VideosField iniciais={produto?.videos ?? []} produtoId={produto?.id} sku={produto?.sku} />
       </div>
 
       <div className="grid content-start gap-6">
         <Card className="overflow-hidden">
           <CardHeader title="Impressão 3D" description="Bambu Lab A1 mini" action={<Printer className="size-5 text-gold" />} />
-          <div className="grid gap-4 p-5 sm:grid-cols-2">
-            <input type="hidden" name="composicao" value={JSON.stringify(comp.filter((c) => c.filamentoId || c.gramas))} />
+          <div className="grid gap-2 p-5">
+            <input type="hidden" name="composicao" value={JSON.stringify(comp.filter((c) => c.filamentoId || c.gramas || c.tempoMin))} />
             <input type="hidden" name="filamentoId" value={filamentoId} />
             <input type="hidden" name="filamentoG" value={filamentoG} />
-            <div className="grid gap-2 sm:col-span-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-semibold tracking-wide text-muted uppercase">Filamentos da peça</span>
-                <Button
-                  type="button"
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setComposicao((cs) => [...cs, { key: Date.now(), filamentoId: "", gramas: 0 }])}
-                  title="Peça com mais de uma cor/material (AMS)"
-                >
-                  <Plus /> Filamento
-                </Button>
-              </div>
-              {composicao.map((c, i) => {
-                const f = filamentos.find((x) => String(x.id) === c.filamentoId);
-                return (
-                  <div key={c.key} className="grid grid-cols-[1fr_88px_auto] items-center gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="size-4 shrink-0 rounded-full ring-1 ring-black/20" style={{ background: f?.corHex ?? "transparent" }} />
-                      <Select
-                        value={c.filamentoId}
-                        onChange={(e) => {
-                          alterarComp(c.key, { filamentoId: e.target.value });
-                          const nf = filamentos.find((x) => String(x.id) === e.target.value);
-                          if (nf && i === 0) {
-                            setMaterial(MATERIAIS.includes(nf.material) ? nf.material : "Outro");
-                            setCor(nf.cor);
-                          }
-                        }}
-                        className="h-9 text-sm"
-                        aria-label={`Filamento ${i + 1}`}
-                      >
-                        <option value="">{i === 0 && temVariacoes ? "Cor da variação" : "Sem filamento do estoque"}</option>
-                        {filamentos.map((x) => (
-                          <option key={x.id} value={x.id}>
-                            {x.material} {x.cor}
-                            {x.marca ? ` (${x.marca})` : ""} · {(x.saldoG / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg
-                          </option>
-                        ))}
-                      </Select>
-                    </div>
-                    <div className="relative">
-                      <Input
-                        type="number"
-                        min={0}
-                        value={c.gramas || ""}
-                        onChange={(e) => alterarComp(c.key, { gramas: Number(e.target.value) })}
-                        placeholder="0"
-                        className="h-9 pr-6"
-                        aria-label={`Gramas do filamento ${i + 1}`}
-                      />
-                      <span className="pointer-events-none absolute top-1/2 right-2 -translate-y-1/2 text-xs text-muted">g</span>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="hover:text-red"
-                      disabled={composicao.length === 1}
-                      onClick={() => setComposicao((cs) => cs.filter((x) => x.key !== c.key))}
-                      title="Remover filamento"
+            <input type="hidden" name="tempoImpressaoMin" value={tempoMin} />
+            <input type="hidden" name="material" value={material} />
+            <input type="hidden" name="cor" value={cor} />
+            <span className="text-[11px] font-semibold tracking-wide text-muted uppercase">Filamento de cada parte</span>
+            {composicao.map((c, i) => {
+              const f = filamentos.find((x) => String(x.id) === c.filamentoId);
+              return (
+                <div key={c.key} className="grid grid-cols-[1fr_1fr_36px] items-center gap-2 rounded-xl border border-border p-2">
+                  <div className="col-span-3 flex min-w-0 items-center gap-2">
+                    <span className="size-4 shrink-0 rounded-full ring-1 ring-black/20" style={{ background: f?.corHex ?? "transparent" }} />
+                    <Select
+                      value={c.filamentoId}
+                      onChange={(e) => alterarComp(c.key, { filamentoId: e.target.value })}
+                      className="h-9 min-w-0 text-sm"
+                      aria-label={`Filamento ${i + 1}`}
                     >
-                      <Trash2 />
-                    </Button>
+                      <option value="">{i === 0 && temVariacoes ? "Cor da variação" : "Sem filamento do estoque"}</option>
+                      {filamentos.map((x) => (
+                        <option key={x.id} value={x.id}>
+                          {x.material} {x.cor}
+                          {x.marca ? ` (${x.marca})` : ""} · {(x.saldoG / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg
+                        </option>
+                      ))}
+                    </Select>
                   </div>
-                );
-              })}
-              <p className="text-xs text-muted">
-                {temVariacoes
-                  ? "O 1º filamento muda conforme a cor de cada variação; os demais são iguais em todas."
-                  : composicao.length > 1
-                    ? `Peça multicor: ${filamentoG} g no total. A produção baixa cada filamento.`
-                    : fil
-                      ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg`
-                      : "Escolha o filamento para baixar na produção e usar o custo médio. Use + Filamento para peças de várias cores."}
-              </p>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={c.gramas || ""}
+                      onChange={(e) => alterarComp(c.key, { gramas: Number(e.target.value) })}
+                      placeholder="0"
+                      className="h-9 pr-14 pl-3"
+                      aria-label={`Gramas do filamento ${i + 1}`}
+                    />
+                    <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted">gramas</span>
+                  </div>
+                  <div className="relative">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={c.tempoMin || ""}
+                      onChange={(e) => alterarComp(c.key, { tempoMin: Number(e.target.value) })}
+                      placeholder="0"
+                      className="h-9 pr-12 pl-3"
+                      aria-label={`Tempo do filamento ${i + 1}`}
+                      title="Tempo de impressão desta parte (minutos)"
+                    />
+                    <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2 text-xs text-muted">min</span>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="hover:text-red"
+                    disabled={composicao.length === 1}
+                    onClick={() => setComposicao((cs) => cs.filter((x) => x.key !== c.key))}
+                    title="Remover"
+                  >
+                    <Trash2 />
+                  </Button>
+                </div>
+              );
+            })}
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
+              <Button type="button" variant="outline" size="sm" onClick={() => setComposicao((cs) => [...cs, { key: Date.now(), filamentoId: "", gramas: 0, tempoMin: 0 }])}>
+                <Plus /> Filamento
+              </Button>
+              <span className="text-sm">
+                Total: <strong>{filamentoG} g</strong> · <strong>{Math.floor(tempoMin / 60)}h{String(tempoMin % 60).padStart(2, "0")}</strong>
+              </span>
             </div>
-            <Field label="Material">
-              <Select name="material" value={material} onChange={(e) => setMaterial(e.target.value)}>
-                {MATERIAIS.map((m) => (
-                  <option key={m}>{m}</option>
-                ))}
-              </Select>
-            </Field>
-            <Field label="Cor">
-              <Input name="cor" value={cor} onChange={(e) => setCor(e.target.value)} />
-            </Field>
-            <Field label="Total de filamento">
-              <div className="flex h-10 items-center rounded-xl border border-border px-3 text-sm font-semibold">{filamentoG} g</div>
-            </Field>
-            <Field label="Tempo (min)">
-              <Input name="tempoImpressaoMin" type="number" min={0} value={tempoMin} onChange={(e) => setTempoMin(Number(e.target.value))} />
-            </Field>
+            <p className="text-xs text-muted">
+              {temVariacoes
+                ? "O 1º filamento muda conforme a cor de cada variação; os demais são iguais em todas."
+                : composicao.length > 1
+                  ? "Cada parte com o seu filamento e tempo. A produção baixa cada filamento."
+                  : fil
+                    ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg`
+                    : "Escolha o filamento para baixar na produção e usar o custo médio. Peça em várias cores: + Filamento."}
+            </p>
           </div>
           <div className="grid gap-1.5 border-t border-border bg-surface-2 p-5 text-sm">
             <div className="flex justify-between text-muted">
