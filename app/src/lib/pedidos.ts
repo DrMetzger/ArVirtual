@@ -21,7 +21,7 @@ export async function vincularItens(pedido: PedidoMarketplace): Promise<ItemVinc
           .innerJoin(produtos, eq(produtos.id, anuncios.produtoId))
           .where(and(eq(anuncios.marketplace, pedido.marketplace as Marketplace), inArray(anuncios.idExterno, ids)))
       : [],
-    skus.length ? db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(inArray(produtos.sku, skus)) : [],
+    skus.length ? db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(and(inArray(produtos.sku, skus), eq(produtos.temVariacoes, false))) : [],
     // Vínculo feito na tela do pedido (SKU do anúncio diferente do SKU do cadastro).
     chaves.length
       ? db

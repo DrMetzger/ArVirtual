@@ -42,7 +42,7 @@ export async function montarSistema() {
         estoque: produtos.estoque, filamentoG: produtos.filamentoG, tempo: produtos.tempoImpressaoMin, a: produtos.alturaCm, l: produtos.larguraCm, c: produtos.comprimentoCm,
       })
       .from(produtos)
-      .where(eq(produtos.ativo, true))
+      .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false)))
       .orderBy(desc(produtos.atualizadoEm))
       .limit(60),
     db.select({ texto: memoriasIa.texto }).from(memoriasIa).where(eq(memoriasIa.ativo, true)).orderBy(desc(memoriasIa.id)).limit(100),

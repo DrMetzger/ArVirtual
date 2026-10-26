@@ -2,13 +2,29 @@
 
 import Link from "next/link";
 import { CANAIS, MarcaIcone } from "@/components/marca";
-import { Card, CardHeader } from "@/components/ui";
-import { precosPorCanal, type ParametrosPreco } from "@/lib/precificacao";
-import { cn, formatBRL } from "@/lib/utils";
+import { Card, CardHeader, Input } from "@/components/ui";
+import { precosPorCanal, type CanalPreco, type ParametrosPreco } from "@/lib/precificacao";
+import { cn, formatBRL, formatValor, parseDecimal } from "@/lib/utils";
 
-/** Preço por canal: sugerido (lucro desejado depois de taxas, campanha, imposto e embalagem), mínimo e o resultado do preço atual. */
-export function PrecosCanal({ custo, preco, parametros, usar }: { custo: number; preco: number; parametros: ParametrosPreco; usar: (v: number) => void }) {
-  const linhas = precosPorCanal(custo, preco, parametros);
+/**
+ * Preço por canal: mínimo (lucro zero), sugerido (lucro desejado depois de taxas, campanha, imposto e embalagem)
+ * e o preço de cada canal, que fica salvo no produto (vazio = usa o preço de venda).
+ */
+export function PrecosCanal({
+  custo,
+  preco,
+  parametros,
+  precosCanal,
+  alterar,
+}: {
+  custo: number;
+  preco: number;
+  parametros: ParametrosPreco;
+  precosCanal: Record<string, string>;
+  alterar: (canal: CanalPreco, valor: string) => void;
+}) {
+  const numeros = Object.fromEntries(Object.entries(precosCanal).map(([k, v]) => [k, parseDecimal(v)]));
+  const linhas = precosPorCanal(custo, preco, parametros, numeros);
   return (
     <Card>
       <CardHeader
@@ -31,7 +47,8 @@ export function PrecosCanal({ custo, preco, parametros, usar }: { custo: number;
                 <th>Canal</th>
                 <th className="text-right">Mínimo</th>
                 <th className="text-right">Sugerido</th>
-                <th className="text-right">A {formatBRL(preco)}</th>
+                <th>Preço no canal</th>
+                <th className="text-right">Lucro</th>
               </tr>
             </thead>
             <tbody>
@@ -49,12 +66,23 @@ export function PrecosCanal({ custo, preco, parametros, usar }: { custo: number;
                   <td className="text-right">
                     <button
                       type="button"
-                      onClick={() => usar(l.sugerido)}
+                      onClick={() => alterar(l.canal, formatValor(l.sugerido))}
                       className="font-semibold whitespace-nowrap text-gold hover:underline"
-                      title="Usar como preço de venda"
+                      title={`Usar como preço no ${CANAIS[l.canal].nome}`}
                     >
                       {formatBRL(l.sugerido)}
                     </button>
+                  </td>
+                  <td className="min-w-28">
+                    <Input
+                      inputMode="decimal"
+                      value={precosCanal[l.canal] ?? ""}
+                      onChange={(e) => alterar(l.canal, e.target.value)}
+                      onBlur={(e) => e.target.value.trim() && alterar(l.canal, formatValor(parseDecimal(e.target.value)))}
+                      placeholder={preco ? formatValor(preco) : "—"}
+                      title="Vazio = usa o preço de venda"
+                      className="h-9"
+                    />
                   </td>
                   <td className="text-right whitespace-nowrap">
                     {l.atual ? (
@@ -75,7 +103,8 @@ export function PrecosCanal({ custo, preco, parametros, usar }: { custo: number;
         <p className="p-5 text-sm text-muted">Informe o custo (ou o filamento e o tempo de impressão) para ver os preços.</p>
       )}
       <p className="border-t border-border px-5 py-3 text-xs text-muted">
-        Clique no preço sugerido para usar. A última coluna mostra quanto sobra de lucro com o preço de venda atual.
+        Clique no sugerido para usar no canal. Cada canal guarda o seu preço (vazio = preço de venda); o lucro é calculado com ele e ele é o preço usado ao
+        anunciar.
       </p>
     </Card>
   );

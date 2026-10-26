@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { CANAIS, MarcaLogo } from "@/components/marca";
 import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, RefreshCw, User } from "lucide-react";
 import type { Metadata } from "next";
@@ -32,7 +32,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
     pedido.contaId ? db.query.contasMarketplace.findFirst({ where: eq(contasMarketplace.id, pedido.contaId), columns: { nome: true } }) : undefined,
     vincularItens(pedido),
     clienteDoPedido(pedido),
-    db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(eq(produtos.ativo, true)).orderBy(asc(produtos.nome)),
+    db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false))).orderBy(asc(produtos.nome)),
     pedido.notaId ? db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { id: true, status: true, numero: true } }) : undefined,
   ]);
   const notaValida = nota && notaVale(nota.status) ? nota : null;

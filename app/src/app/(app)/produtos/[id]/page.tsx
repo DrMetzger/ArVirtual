@@ -1,8 +1,8 @@
-import { desc, eq } from "drizzle-orm";
+import { asc, desc, eq } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { anuncios, contasMarketplace, produtos } from "@/db/schema";
@@ -29,6 +29,9 @@ export default async function ProdutoPage({
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const produto = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
   if (!produto) notFound();
+  // Variação é editada no produto principal.
+  if (produto.paiId) redirect(`/produtos/${produto.paiId}`);
+  const variacoes = produto.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)).orderBy(asc(produtos.cor)) : [];
 
   const [contas, historico, parametros, ia, precos] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
@@ -50,7 +53,7 @@ export default async function ProdutoPage({
       </Link>
       <PageHeader
         title={produto.nome}
-        description={`SKU ${produto.sku} · NCM ${produto.ncm}`}
+        description={`SKU ${produto.sku} · NCM ${produto.ncm}${variacoes.length ? ` · ${variacoes.filter((v) => v.ativo).length} variação(ões)` : ""}`}
         actions={
           <form action={excluirProduto.bind(null, id)}>
             <button type="submit" className={buttonClass("outline", "md", "hover:border-red hover:text-red")}>
@@ -62,13 +65,17 @@ export default async function ProdutoPage({
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
-        <ProdutoForm key={[...produto.imagens, ...produto.videos].join("|")} produto={produto} parametros={parametros} precos={precos} filamentos={await listaFilamentos()} />
+        <ProdutoForm
+          key={[...produto.imagens, ...produto.videos, ...variacoes.map((v) => `${v.id}${v.estoque}`)].join("|")}
+          variacoes={variacoes.map((v) => ({ id: v.id, sku: v.sku, cor: v.cor, material: v.material, filamentoId: v.filamentoId, preco: v.preco, gtin: v.gtin, estoque: v.estoque, ativo: v.ativo }))}
+          produto={produto} parametros={parametros} precos={precos} filamentos={await listaFilamentos()} />
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}
             nome={produto.nome}
             descricao={produto.descricao}
             preco={produto.preco}
+            precosCanal={produto.precosCanal}
             temImagem={produto.imagens.length > 0}
             iaConfigurada={ia}
             contas={contas.map((c) => ({

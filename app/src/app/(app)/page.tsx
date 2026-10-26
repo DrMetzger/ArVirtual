@@ -67,7 +67,7 @@ export default async function Dashboard() {
     db
       .select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku, estoque: produtos.estoque })
       .from(produtos)
-      .where(and(eq(produtos.ativo, true), lte(produtos.estoque, 2)))
+      .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false), lte(produtos.estoque, 2)))
       .orderBy(produtos.estoque)
       .limit(5),
     Promise.all([

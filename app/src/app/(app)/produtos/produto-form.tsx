@@ -13,6 +13,7 @@ import { salvarProduto } from "./actions";
 import { NcmField } from "./ncm-field";
 import { ImagensField } from "./imagens-field";
 import { PrecosCanal } from "./precos-canal";
+import { VariacoesField, type VariacaoInicial } from "./variacoes-field";
 import { VideosField } from "./videos-field";
 
 const ORIGENS = [
@@ -36,12 +37,19 @@ export function ProdutoForm({
   parametros,
   precos,
   filamentos = [],
+  variacoes = [],
 }: {
   produto?: Produto;
   parametros: ParametrosImpressao;
   precos: ParametrosPreco;
   filamentos?: FilamentoOpt[];
+  variacoes?: VariacaoInicial[];
 }) {
+  const [temVariacoes, setTemVariacoes] = useState(produto?.temVariacoes ?? false);
+  const [sku, setSku] = useState(produto?.sku ?? "");
+  const [precosCanal, setPrecosCanal] = useState<Record<string, string>>(() =>
+    Object.fromEntries(Object.entries(produto?.precosCanal ?? {}).map(([k, v]) => [k, v ? formatValor(v) : ""])),
+  );
   const [filamentoId, setFilamentoId] = useState(produto?.filamentoId ? String(produto.filamentoId) : "");
   const [material, setMaterial] = useState(produto?.material || "PLA");
   const [cor, setCor] = useState(produto?.cor ?? "");
@@ -64,13 +72,41 @@ export function ProdutoForm({
   return (
     <form onSubmit={onSubmit} className="grid gap-6 xl:grid-cols-3">
       {produto ? <input type="hidden" name="id" value={produto.id} /> : null}
+      <input type="hidden" name="temVariacoes" value={temVariacoes ? "1" : ""} />
+      <input
+        type="hidden"
+        name="precosCanal"
+        value={JSON.stringify(Object.fromEntries(Object.entries(precosCanal).filter(([, v]) => v.trim()).map(([k, v]) => [k, parseDecimal(v)])))}
+      />
 
-      <div className="grid gap-6 xl:col-span-2">
+      <div className="grid min-w-0 content-start gap-6 xl:col-span-2 [&>*]:min-w-0">
         <Card>
-          <CardHeader title="Identificação" />
+          <CardHeader
+            title="Identificação"
+            action={
+              <div className="flex items-center gap-2 text-sm">
+                <span className="font-semibold">Tem variações?</span>
+                <div className="flex rounded-xl border border-border bg-surface p-0.5">
+                  {[
+                    [false, "Não"],
+                    [true, "Sim"],
+                  ].map(([v, rotulo]) => (
+                    <button
+                      key={String(v)}
+                      type="button"
+                      onClick={() => setTemVariacoes(v as boolean)}
+                      className={`rounded-lg px-3 py-1 text-xs font-semibold transition ${temVariacoes === v ? "bg-primary text-primary-fg" : "text-muted hover:text-foreground"}`}
+                    >
+                      {rotulo as string}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            }
+          />
           <div className="grid gap-4 p-5 sm:grid-cols-6">
-            <Field label="SKU" className="sm:col-span-2">
-              <Input name="sku" defaultValue={produto?.sku} required placeholder="ARV-0001" />
+            <Field label={temVariacoes ? "SKU base" : "SKU"} className="sm:col-span-2" hint={temVariacoes ? "As variações usam SKU-COR" : undefined}>
+              <Input name="sku" value={sku} onChange={(e) => setSku(e.target.value)} required placeholder="ARV-0001" />
             </Field>
             <Field label="Nome do produto" className="sm:col-span-4">
               <Input name="nome" defaultValue={produto?.nome} required />
@@ -81,7 +117,13 @@ export function ProdutoForm({
             <Field label="GTIN / EAN" className="sm:col-span-2" hint="Deixe vazio se não tiver">
               <Input name="gtin" defaultValue={produto?.gtin} inputMode="numeric" />
             </Field>
-            {produto ? (
+            {temVariacoes ? (
+              <Field label="Estoque" className="sm:col-span-2" hint="Fica em cada variação.">
+                <div className="flex h-10 items-center rounded-xl border border-border px-3 text-sm font-semibold">
+                  {variacoes.reduce((s, v) => s + v.estoque, 0)} un. no total
+                </div>
+              </Field>
+            ) : produto ? (
               <Field label="Estoque" className="sm:col-span-2" hint="Entradas, saídas e contagens ficam no Estoque.">
                 <Link href={`/estoque/${produto.id}`} className="flex h-10 items-center justify-between rounded-xl border border-border px-3 text-sm hover:border-gold">
                   <span className="font-semibold">{produto.estoque} un.</span>
@@ -98,6 +140,19 @@ export function ProdutoForm({
             </Field>
           </div>
         </Card>
+
+        {temVariacoes ? (
+          <VariacoesField
+            iniciais={variacoes}
+            filamentos={filamentos}
+            parametros={parametros}
+            skuPai={sku}
+            precoPai={parseDecimal(preco)}
+            filamentoG={filamentoG}
+            tempoMin={tempoMin}
+            materialPai={material}
+          />
+        ) : null}
 
         <Card>
           <CardHeader title="Fiscal" description="O NCM define a regra da matriz fiscal, o IPI e os tributos aproximados da nota." />
@@ -126,7 +181,7 @@ export function ProdutoForm({
         <Card className="overflow-hidden">
           <CardHeader title="Impressão 3D" description="Bambu Lab A1 mini" action={<Printer className="size-5 text-gold" />} />
           <div className="grid gap-4 p-5 sm:grid-cols-2">
-            <Field label="Filamento do estoque" className="sm:col-span-2" hint={fil ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg` : "Escolha para baixar na produção e usar o custo médio."}>
+            <Field label={temVariacoes ? "Filamento padrão" : "Filamento do estoque"} className="sm:col-span-2" hint={temVariacoes ? "Cada variação tem o seu filamento (no quadro Variações)." : fil ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg` : "Escolha para baixar na produção e usar o custo médio."}>
               <Select
                 name="filamentoId"
                 value={filamentoId}
@@ -212,7 +267,13 @@ export function ProdutoForm({
           </div>
         </Card>
 
-        <PrecosCanal custo={parseDecimal(custo) || calc.custo} preco={parseDecimal(preco)} parametros={precos} usar={(v) => setPreco(formatValor(v))} />
+        <PrecosCanal
+          custo={parseDecimal(custo) || calc.custo}
+          preco={parseDecimal(preco)}
+          parametros={precos}
+          precosCanal={precosCanal}
+          alterar={(canal, v) => setPrecosCanal((p) => ({ ...p, [canal]: v }))}
+        />
 
         {state?.erro ? <Alert>{state.erro}</Alert> : null}
         <SubmitButton pending={pending} size="lg" pendingText="Salvando...">

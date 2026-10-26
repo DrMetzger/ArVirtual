@@ -15,6 +15,7 @@ export function Anunciar({
   nome,
   descricao,
   preco,
+  precosCanal = {},
   contas,
   temImagem,
   iaConfigurada,
@@ -23,6 +24,7 @@ export function Anunciar({
   nome: string;
   descricao: string;
   preco: number;
+  precosCanal?: Partial<Record<"mercadolivre" | "shopee" | "magalu" | "loja", number>>;
   contas: Conta[];
   temImagem: boolean;
   iaConfigurada: boolean;
@@ -86,8 +88,13 @@ export function Anunciar({
           <Field label="Descrição">
             <Textarea name="descricao" value={texto} rows={7} onChange={(e) => setTexto(e.target.value)} />
           </Field>
-          <Field label="Preço no anúncio (R$)">
-            <Input name="preco" inputMode="decimal" defaultValue={formatValor(preco)} onBlur={(e) => e.target.value.trim() && (e.target.value = formatValor(parseDecimal(e.target.value)))} />
+          <Field
+            label="Preço no anúncio (R$)"
+            hint={`Vazio = preço de cada canal (${Object.entries({ mercadolivre: "ML", shopee: "Shopee", magalu: "Magalu" })
+              .map(([k, n]) => `${n} ${formatValor(precosCanal[k as keyof typeof precosCanal] || preco)}`)
+              .join(" · ")}).`}
+          >
+            <Input name="preco" inputMode="decimal" placeholder="preço do canal" onBlur={(e) => e.target.value.trim() && (e.target.value = formatValor(parseDecimal(e.target.value)))} />
           </Field>
 
           <div className="grid gap-2">
