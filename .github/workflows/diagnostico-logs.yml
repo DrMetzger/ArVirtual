@@ -1,0 +1,20 @@
+name: Diagnóstico logs do app (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-logs.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Erros recentes
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose logs app --since 6h 2>/dev/null | grep -iE "error|⨯|failed|exception|unhandled|anunc|publicar" | grep -viE "pedidos\]|notas\]" | cut -c1-400 | tail -40
+          echo "== anúncios recentes (status/mensagem)"
+          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select criado_em, marketplace, status, left(coalesce(mensagem,''), 300) from anuncios order by criado_em desc limit 12"
+          REMOTO
