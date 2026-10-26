@@ -7,104 +7,100 @@ import { precosPorCanal, type CanalPreco, type ParametrosPreco } from "@/lib/pre
 import { cn, formatBRL, formatValor, parseDecimal } from "@/lib/utils";
 
 /**
- * Preço por canal: mínimo (lucro zero), sugerido (lucro desejado depois de taxas, campanha, imposto e embalagem)
- * e o preço de cada canal, que fica salvo no produto (vazio = usa o preço de venda).
+ * Preço de cada plataforma. A loja própria (Sincrolab) usa o preço de venda do produto (campo "preco", também usado
+ * em pedidos e notas); Mercado Livre, Shopee e Magalu têm o seu (vazio = igual ao da loja).
+ * Cada linha mostra o sugerido (lucro desejado depois de taxas), o mínimo (lucro zero) e o lucro com o preço informado.
  */
 export function PrecosCanal({
   custo,
   preco,
+  setPreco,
   parametros,
   precosCanal,
   alterar,
 }: {
   custo: number;
-  preco: number;
+  preco: string;
+  setPreco: (v: string) => void;
   parametros: ParametrosPreco;
   precosCanal: Record<string, string>;
   alterar: (canal: CanalPreco, valor: string) => void;
 }) {
+  const base = parseDecimal(preco);
   const numeros = Object.fromEntries(Object.entries(precosCanal).map(([k, v]) => [k, parseDecimal(v)]));
-  const linhas = precosPorCanal(custo, preco, parametros, numeros);
+  const linhas = precosPorCanal(custo, base, parametros, numeros);
+  const ordem: CanalPreco[] = ["mercadolivre", "shopee", "magalu", "loja"];
+  const normalizar = (v: string) => (v.trim() ? formatValor(parseDecimal(v)) : "");
+
   return (
     <Card>
       <CardHeader
-        title="Preço por canal"
+        title="Preço por plataforma"
         description={
           <>
-            Lucro de {parametros.margem}% sobre o custo, já descontando comissão, taxa fixa, campanha, {parametros.imposto}% de imposto
-            {parametros.embalagem ? ` e ${formatBRL(parametros.embalagem)} de embalagem` : ""}.{" "}
+            Cada plataforma com o seu preço. O sugerido deixa {parametros.margem}% de lucro sobre o custo depois de comissão, taxa fixa, campanha,{" "}
+            {parametros.imposto}% de imposto{parametros.embalagem ? ` e ${formatBRL(parametros.embalagem)} de embalagem` : ""}.{" "}
             <Link href="/configuracoes?aba=precificacao" className="text-gold underline">
               Ajustar taxas
             </Link>
           </>
         }
       />
-      {custo > 0 ? (
-        <div className="overflow-x-auto">
-          <table className="table-base">
-            <thead>
-              <tr>
-                <th>Canal</th>
-                <th className="text-right">Mínimo</th>
-                <th className="text-right">Sugerido</th>
-                <th>Preço no canal</th>
-                <th className="text-right">Lucro</th>
-              </tr>
-            </thead>
-            <tbody>
-              {linhas.map((l) => (
-                <tr key={l.canal}>
-                  <td>
-                    <span className="flex items-center gap-2 whitespace-nowrap">
-                      <MarcaIcone canal={l.canal} />
-                      {CANAIS[l.canal].nome}
-                    </span>
-                  </td>
-                  <td className="text-right whitespace-nowrap text-muted" title="Preço anunciado que só empata (lucro zero)">
-                    {formatBRL(l.minimo)}
-                  </td>
-                  <td className="text-right">
+      <div className="divide-y divide-border">
+        {ordem.map((canal) => {
+          const l = linhas.find((x) => x.canal === canal)!;
+          const loja = canal === "loja";
+          const valor = loja ? preco : (precosCanal[canal] ?? "");
+          const usandoPadrao = !loja && !valor.trim();
+          return (
+            <div key={canal} className="grid gap-1.5 px-5 py-3">
+              <div className="flex items-center gap-3">
+                <MarcaIcone canal={canal} />
+                <span className="min-w-0 flex-1 truncate text-sm font-semibold">{loja ? "Sincrolab (loja)" : CANAIS[canal].nome}</span>
+                <div className="relative w-32 shrink-0">
+                  <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-muted">R$</span>
+                  <Input
+                    name={loja ? "preco" : undefined}
+                    inputMode="decimal"
+                    value={valor}
+                    onChange={(e) => (loja ? setPreco(e.target.value) : alterar(canal, e.target.value))}
+                    onBlur={(e) => (loja ? setPreco(normalizar(e.target.value)) : alterar(canal, normalizar(e.target.value)))}
+                    placeholder={loja ? "0,00" : base ? formatValor(base) : "0,00"}
+                    required={loja}
+                    className="h-9 pl-9 text-right font-semibold"
+                    aria-label={`Preço ${loja ? "loja própria" : CANAIS[canal].nome}`}
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 pl-9 text-xs text-muted">
+                {custo > 0 ? (
+                  <>
                     <button
                       type="button"
-                      onClick={() => alterar(l.canal, formatValor(l.sugerido))}
-                      className="font-semibold whitespace-nowrap text-gold hover:underline"
-                      title={`Usar como preço no ${CANAIS[l.canal].nome}`}
+                      onClick={() => (loja ? setPreco(formatValor(l.sugerido)) : alterar(canal, formatValor(l.sugerido)))}
+                      className="font-semibold text-gold hover:underline"
+                      title="Usar o preço sugerido"
                     >
-                      {formatBRL(l.sugerido)}
+                      sugerido {formatBRL(l.sugerido)}
                     </button>
-                  </td>
-                  <td className="min-w-28">
-                    <Input
-                      inputMode="decimal"
-                      value={precosCanal[l.canal] ?? ""}
-                      onChange={(e) => alterar(l.canal, e.target.value)}
-                      onBlur={(e) => e.target.value.trim() && alterar(l.canal, formatValor(parseDecimal(e.target.value)))}
-                      placeholder={preco ? formatValor(preco) : "—"}
-                      title="Vazio = usa o preço de venda"
-                      className="h-9"
-                    />
-                  </td>
-                  <td className="text-right whitespace-nowrap">
+                    <span title="Preço que só empata (lucro zero)">mínimo {formatBRL(l.minimo)}</span>
                     {l.atual ? (
                       <span className={cn("font-semibold", l.atual.lucro < 0 ? "text-red" : l.atual.margem < parametros.margem ? "text-gold" : "text-green")}>
-                        {formatBRL(l.atual.lucro)}
-                        <span className="ml-1 text-xs font-normal opacity-80">({l.atual.margem.toFixed(0)}%)</span>
+                        lucro {formatBRL(l.atual.lucro)} ({l.atual.margem.toFixed(0)}%)
                       </span>
-                    ) : (
-                      "—"
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      ) : (
-        <p className="p-5 text-sm text-muted">Informe o custo (ou o filamento e o tempo de impressão) para ver os preços.</p>
-      )}
+                    ) : null}
+                  </>
+                ) : (
+                  <span>Informe o custo para ver o sugerido.</span>
+                )}
+                {usandoPadrao ? <span className="italic">usando o preço da loja</span> : null}
+              </div>
+            </div>
+          );
+        })}
+      </div>
       <p className="border-t border-border px-5 py-3 text-xs text-muted">
-        Clique no sugerido para usar no canal. Cada canal guarda o seu preço (vazio = preço de venda); o lucro é calculado com ele e ele é o preço usado ao
-        anunciar.
+        O preço de cada plataforma é o usado ao anunciar. O da loja própria vale para pedidos da loja e notas fiscais.
       </p>
     </Card>
   );

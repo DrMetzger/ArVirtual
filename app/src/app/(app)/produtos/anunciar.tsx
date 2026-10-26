@@ -104,31 +104,36 @@ export function Anunciar({
           <Field label="Descrição">
             <Textarea name="descricao" value={texto} rows={7} onChange={(e) => setTexto(e.target.value)} />
           </Field>
-          <Field
-            label="Preço no anúncio (R$)"
-            hint={`Vazio = preço de cada canal (${Object.entries({ mercadolivre: "ML", shopee: "Shopee", magalu: "Magalu" })
-              .map(([k, n]) => `${n} ${formatValor(precosCanal[k as keyof typeof precosCanal] || preco)}`)
-              .join(" · ")}).`}
-          >
-            <Input name="preco" inputMode="decimal" placeholder="preço do canal" onBlur={(e) => e.target.value.trim() && (e.target.value = formatValor(parseDecimal(e.target.value)))} />
-          </Field>
-
           <div className="grid gap-2">
-            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Publicar em</span>
+            <span className="text-xs font-semibold uppercase tracking-wide text-muted">Publicar em · preço de cada plataforma</span>
             {contas.map((c) => (
-              <label key={c.id} className="flex items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm">
-                <input
-                  type="checkbox"
-                  name="contas"
-                  value={c.id}
-                  checked={selecionadas.includes(c.id)}
-                  onChange={(e) => setSelecionadas(e.target.checked ? [...selecionadas, c.id] : selecionadas.filter((x) => x !== c.id))}
-                  className="size-4 accent-[var(--gold)]"
-                />
-                <span className="size-2.5 rounded-full" style={{ background: c.cor }} />
-                <span className="font-semibold">{c.marketplaceNome}</span>
-                <span className="text-muted">{c.nome}</span>
-              </label>
+              <div key={c.id} className="flex flex-wrap items-center gap-3 rounded-xl border border-border px-3 py-2 text-sm">
+                <label className="flex min-w-0 flex-1 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    name="contas"
+                    value={c.id}
+                    checked={selecionadas.includes(c.id)}
+                    onChange={(e) => setSelecionadas(e.target.checked ? [...selecionadas, c.id] : selecionadas.filter((x) => x !== c.id))}
+                    className="size-4 accent-[var(--gold)]"
+                  />
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: c.cor }} />
+                  <span className="font-semibold">{c.marketplaceNome}</span>
+                  <span className="truncate text-muted">{c.nome}</span>
+                </label>
+                {/* Preço desta plataforma (vem do cadastro; pode mudar só para este anúncio). */}
+                <div className="relative w-32">
+                  <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-xs text-muted">R$</span>
+                  <Input
+                    name={`preco_${c.marketplace}`}
+                    inputMode="decimal"
+                    defaultValue={formatValor(precosCanal[c.marketplace as keyof typeof precosCanal] || preco)}
+                    onBlur={(e) => e.target.value.trim() && (e.target.value = formatValor(parseDecimal(e.target.value)))}
+                    className="h-9 pl-9 text-right font-semibold"
+                    aria-label={`Preço no ${c.marketplaceNome}`}
+                  />
+                </div>
+              </div>
             ))}
           </div>
 

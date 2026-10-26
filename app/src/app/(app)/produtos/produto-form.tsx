@@ -84,7 +84,6 @@ export function ProdutoForm({
 
   // Cada filamento do estoque entra com o custo médio do kg dele.
   const calc = useMemo(() => custoComposicao(comp, tempoMin, parametros, filamentos), [JSON.stringify(comp), tempoMin, parametros, filamentos]); // eslint-disable-line react-hooks/exhaustive-deps
-  const margemReal = parseDecimal(preco) > 0 && parseDecimal(custo) > 0 ? (parseDecimal(preco) / parseDecimal(custo) - 1) * 100 : null;
 
   return (
     <form onSubmit={onSubmit} className="grid gap-6 xl:grid-cols-3">
@@ -93,7 +92,7 @@ export function ProdutoForm({
       <input
         type="hidden"
         name="precosCanal"
-        value={JSON.stringify(Object.fromEntries(Object.entries(precosCanal).filter(([, v]) => v.trim()).map(([k, v]) => [k, parseDecimal(v)])))}
+        value={JSON.stringify(Object.fromEntries(Object.entries(precosCanal).filter(([k, v]) => k !== "loja" && v.trim()).map(([k, v]) => [k, parseDecimal(v)])))}
       />
 
       <div className="grid min-w-0 content-start gap-6 xl:col-span-2 [&>*]:min-w-0">
@@ -303,13 +302,10 @@ export function ProdutoForm({
         </Card>
 
         <Card>
-          <CardHeader title="Preço e envio" />
+          <CardHeader title="Custo, peso e medidas" />
           <div className="grid gap-4 p-5 sm:grid-cols-2">
             <Field label="Custo (R$)">
               <Input name="custo" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={() => setCusto(normalizar(custo))} />
-            </Field>
-            <Field label="Preço de venda (R$)" hint={margemReal !== null ? `Margem bruta (sem taxas): ${margemReal.toFixed(0)}%` : undefined}>
-              <Input name="preco" inputMode="decimal" value={preco} onChange={(e) => setPreco(e.target.value)} onBlur={() => setPreco(normalizar(preco))} required />
             </Field>
             <Field label="Peso c/ embalagem (g)">
               <Input name="pesoG" type="number" min={0} defaultValue={produto?.pesoG ?? 0} />
@@ -332,8 +328,9 @@ export function ProdutoForm({
 
         <PrecosCanal
           custo={parseDecimal(custo) || calc.custo}
-          preco={parseDecimal(preco)}
+          preco={preco}
           parametros={precos}
+          setPreco={setPreco}
           precosCanal={precosCanal}
           alterar={(canal, v) => setPrecosCanal((p) => ({ ...p, [canal]: v }))}
         />

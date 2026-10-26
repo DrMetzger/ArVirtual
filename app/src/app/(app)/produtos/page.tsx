@@ -1,3 +1,4 @@
+import { MarcaIcone } from "@/components/marca";
 import { and, asc, ilike, isNull, or, sql } from "drizzle-orm";
 import { LayoutGrid, List, Package, Plus, Search } from "lucide-react";
 import { cookies } from "next/headers";
@@ -26,6 +27,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       sku: produtos.sku,
       nome: produtos.nome,
       preco: produtos.preco,
+      precosCanal: produtos.precosCanal,
       custo: produtos.custo,
       // Produto com variações: soma o estoque delas.
       estoque: sql<number>`case when "produtos"."tem_variacoes" then (select coalesce(sum(v.estoque), 0)::int from produtos v where v.pai_id = "produtos"."id") else "produtos"."estoque" end`,
@@ -141,7 +143,10 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td className="text-muted">{p.material || "—"}</td>
                   <td className="text-right whitespace-nowrap text-muted">{p.custo ? formatBRL(p.custo) : "—"}</td>
-                  <td className="text-right font-semibold whitespace-nowrap">{formatBRL(p.preco)}</td>
+                  <td className="text-right whitespace-nowrap">
+                    <span className="font-semibold">{formatBRL(p.preco)}</span>
+                    <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
+                  </td>
                   <td className="text-right whitespace-nowrap">{p.custo && p.preco ? `${Math.round((p.preco / p.custo - 1) * 100)}%` : "—"}</td>
                   <td className={cn("text-right", p.estoque <= 0 && "font-semibold text-red")}>{p.estoque}</td>
                   <td>{p.anuncios > 0 ? <Badge tone="gold">{p.anuncios}</Badge> : <span className="text-muted">—</span>}</td>
@@ -181,6 +186,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   <div className="mt-2 flex items-end justify-between">
                     <div>
                       <p className="text-lg font-extrabold text-primary">{formatBRL(p.preco)}</p>
+                      <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
                       {p.custo ? <p className="text-xs text-muted">custo {formatBRL(p.custo)}</p> : null}
                     </div>
                     <div className="text-right text-xs text-muted">
@@ -195,5 +201,21 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
         </div>
       )}
     </>
+  );
+}
+
+/** Preço de cada marketplace (quando diferente do preço da loja). */
+function PrecosPlataforma({ precos, padrao }: { precos: Partial<Record<string, number>>; padrao: number }) {
+  const itens = (["mercadolivre", "shopee", "magalu"] as const).filter((c) => precos[c] && precos[c] !== padrao);
+  if (!itens.length) return null;
+  return (
+    <span className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[11px] text-muted">
+      {itens.map((c) => (
+        <span key={c} className="inline-flex items-center gap-1 whitespace-nowrap">
+          <MarcaIcone canal={c} className="size-4 p-[2px]" />
+          {formatBRL(precos[c]!)}
+        </span>
+      ))}
+    </span>
   );
 }
