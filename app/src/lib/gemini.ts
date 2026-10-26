@@ -221,7 +221,7 @@ export async function gerarImagemComGemini(
   } catch (e) {
     if (e instanceof FalhaGemini && e.falhas.some((f) => /: 429 /.test(f)) && !e.falhas.some((f) => /: 503 /.test(f))) {
       throw new Error(
-        "Sua chave do Gemini não tem cota para gerar imagens (erro 429: o plano gratuito normalmente não inclui modelos de imagem). Ative o faturamento em aistudio.google.com › Billing ou use outra chave em Configurações › Integrações.",
+        "Sem cota de imagem: o Google não libera geração de imagens na API gratuita (só no app do Gemini, que é outro produto). Para gerar aqui, ative o faturamento em aistudio.google.com (cerca de US$ 0,04 por imagem, com o filtro de segurança do Google). Ou crie no app do Gemini e arraste a imagem para esta conversa.",
       );
     }
     throw e;
