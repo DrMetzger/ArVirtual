@@ -304,7 +304,7 @@ export function Sidebar({ usuario, recolhidoInicial, children }: { usuario: Usua
       ) : null}
 
       <main className={cn("px-4 py-6 transition-[margin] duration-200 sm:px-8 sm:py-8", recolhido ? "lg:ml-[76px]" : "lg:ml-64")}>
-        <div className="mx-auto max-w-7xl">{children}</div>
+        <div className="mx-auto max-w-[1600px]">{children}</div>
       </main>
     </>
   );

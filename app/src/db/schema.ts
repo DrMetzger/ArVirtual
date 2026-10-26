@@ -15,7 +15,7 @@ import {
 import { relations } from "drizzle-orm";
 import type { EntregaPedido, ItemPedido } from "@/lib/marketplaces/types";
 
-export type ComponenteFilamento = { filamentoId: number | null; gramas: number };
+export type ComponenteFilamento = { filamentoId: number | null; gramas: number; tempoMin?: number };
 
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: "number" });
 const rate = (name: string) => numeric(name, { precision: 7, scale: 4, mode: "number" });

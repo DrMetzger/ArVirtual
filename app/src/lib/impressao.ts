@@ -22,7 +22,7 @@ export function custoImpressao(filamentoG: number, tempoMin: number, p: Parametr
   };
 }
 
-export type Componente = { filamentoId: number | null; gramas: number };
+export type Componente = { filamentoId: number | null; gramas: number; tempoMin?: number };
 
 /**
  * Custo de uma peça com vários filamentos (multicor/AMS): cada um com as suas gramas e o custo médio do kg dele

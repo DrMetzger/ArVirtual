@@ -17,7 +17,10 @@ export async function GET(req: Request, { params }: { params: Promise<{ nome: st
   } catch {
     return new Response("Não encontrado", { status: 404 });
   }
+  // ?baixar=<nome> força o download (botão de baixar no cadastro do produto).
+  const baixar = new URL(req.url).searchParams.get("baixar");
   const headers = {
+    ...(baixar ? { "Content-Disposition": `attachment; filename="${baixar.replace(/[^\w.-]/g, "_")}"` } : {}),
     "Content-Type": TIPOS[nome.split(".").pop() ?? ""] ?? "application/octet-stream",
     "Cache-Control": "public, max-age=31536000, immutable",
     "Accept-Ranges": "bytes",

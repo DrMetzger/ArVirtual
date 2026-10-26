@@ -1,18 +1,28 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, GripVertical, ImagePlus, Star, X } from "lucide-react";
-import { Card, CardHeader } from "@/components/ui";
+import { ChevronLeft, ChevronRight, Download, GripVertical, ImagePlus, Star, X } from "lucide-react";
+import { buttonClass, Card, CardHeader } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useMidias } from "./midias";
 
 /** Imagens do produto: arraste para reordenar (ou use as setas). A primeira é a capa do anúncio. */
-export function ImagensField({ iniciais }: { iniciais: string[] }) {
+export function ImagensField({ iniciais, produtoId, sku }: { iniciais: string[]; produtoId?: string; sku?: string }) {
   const m = useMidias(iniciais, "novasImagens");
   const botao = "grid size-6 place-items-center rounded-full bg-black/65 text-white hover:bg-black/85 disabled:opacity-30";
 
   return (
     <Card>
-      <CardHeader title="Imagens" description="JPG, PNG ou WEBP até 5 MB. Arraste para mudar a ordem; a primeira é a capa do anúncio." />
+      <CardHeader
+        title="Imagens"
+        description="JPG, PNG ou WEBP até 5 MB. Arraste para mudar a ordem; a primeira é a capa do anúncio."
+        action={
+          produtoId && iniciais.length ? (
+            <a href={`/api/produtos/${produtoId}/midias?tipo=imagens`} className={buttonClass("outline", "sm")} title="Baixar todas as fotos (.zip)">
+              <Download /> Baixar todas
+            </a>
+          ) : undefined
+        }
+      />
       <div className="grid gap-4 p-5">
         <input type="hidden" name="ordemImagens" value={m.ordem} />
         <input ref={m.inputArquivos} type="file" name="novasImagens" multiple className="hidden" tabIndex={-1} aria-hidden />
@@ -36,6 +46,17 @@ export function ImagensField({ iniciais }: { iniciais: string[] }) {
               <button type="button" onClick={() => m.remover(i)} className={cn(botao, "absolute top-1.5 right-1.5")} aria-label="Remover imagem">
                 <X className="size-3.5" />
               </button>
+              {img.arquivo ? null : (
+                <a
+                  href={`${img.url}?baixar=${encodeURIComponent(`${sku || "foto"}-${String(i + 1).padStart(2, "0")}.${img.url.split(".").pop()}`)}`}
+                  className={cn(botao, "absolute top-1.5 right-9")}
+                  title="Baixar foto"
+                  aria-label="Baixar foto"
+                  draggable={false}
+                >
+                  <Download className="size-3.5" />
+                </a>
+              )}
               <div className="absolute inset-x-1.5 bottom-1.5 flex items-center justify-between">
                 <button type="button" onClick={() => m.mover(i, i - 1)} disabled={i === 0} className={botao} aria-label="Mover para a esquerda">
                   <ChevronLeft className="size-4" />
