@@ -1,0 +1,19 @@
+name: Diagnóstico pedidos ML (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-ml.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Status dos envios (sem dados pessoais)
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T db psql -U arvirtual -d arvirtual -c "select id, status, atualizado_em, dados->'pedido'->'shipping' as shipping, dados->'pedido'->'tags' as tags, dados->'envio'->>'status' as envio_status, dados->'envio'->>'substatus' as envio_sub, (dados->'envio') is null or dados->>'envio' = 'null' as sem_envio, left(dados->'envio'::text, 0) from pedidos_marketplace where marketplace='mercadolivre' order by data desc limit 10"
+          echo "== logs pedidos/ML"; docker compose logs app --since 3h 2>/dev/null | grep -iE "pedidos|mercado|shipment|envio" | tail -20
+          REMOTO
