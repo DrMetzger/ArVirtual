@@ -210,7 +210,10 @@ async function salvarVariacoes(
         i === 0 ? { ...c, filamentoId: v.filamentoId } : c,
       ),
       imagens: pai.imagens,
-      precosCanal: v.preco ? {} : pai.precosCanal,
+      // Preço por plataforma do produto; variação mais cara/barata leva a mesma diferença em todas.
+      precosCanal: Object.fromEntries(
+        Object.entries(pai.precosCanal ?? {}).map(([k, val]) => [k, Math.round(((val as number) + (v.preco ? v.preco - (pai.preco ?? 0) : 0)) * 100) / 100]),
+      ),
       paiId,
       atributos,
       ativo: Boolean(pai.ativo) && v.ativo,
@@ -301,8 +304,11 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
     const a = adapter(conta.marketplace);
     const token = await contaComToken(conta).catch((e: Error) => e);
     for (const [i, item] of itens.entries()) {
-      // Preço digitado na hora, o do canal salvo no item, ou o preço de venda.
-      const preco = dados.preco || item.precosCanal[conta.marketplace] || item.preco;
+      // Preço desta plataforma na tela de publicar (variação: o dela), senão o do cadastro, senão o preço de venda.
+      const naTela = parseDecimal(form.get(`preco_${conta.marketplace}`)) || dados.preco;
+      // Variação com preço próprio: a diferença para o produto vale em todas as plataformas.
+      const diferenca = p.temVariacoes ? item.preco - p.preco : 0;
+      const preco = (naTela ? Math.round((naTela + diferenca) * 100) / 100 : 0) || item.precosCanal[conta.marketplace] || item.preco;
       const rotulo = `${a.nome} · ${conta.nome}${p.temVariacoes ? ` · ${item.cor || item.sku}` : ""}`;
       try {
         if (token instanceof Error) throw token;
