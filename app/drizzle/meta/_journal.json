@@ -120,6 +120,13 @@
       "when": 1793033260705,
       "tag": "0016_variacoes_precos_canal",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1793034242030,
+      "tag": "0017_composicao_filamentos",
+      "breakpoints": true
     }
   ]
 }

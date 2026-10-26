@@ -41,7 +41,15 @@ export async function movimentarFilamento(
   });
 }
 
-/** Produção concluída: as peças entram no estoque e o filamento (peças × gramas + perdas) sai. */
+/** Filamentos da peça; produto antigo (sem composição) usa o filamento e as gramas do cadastro. */
+export function composicaoDo(p: { composicao: { filamentoId: number | null; gramas: number }[]; filamentoId: number | null; filamentoG: number }) {
+  return p.composicao.length ? p.composicao : p.filamentoId || p.filamentoG ? [{ filamentoId: p.filamentoId, gramas: p.filamentoG }] : [];
+}
+
+/**
+ * Produção concluída: as peças entram no estoque e sai cada filamento da peça (peças × gramas).
+ * `filamentoId` (opcional) troca o 1º filamento; a perda (falhas, purga) sai do 1º filamento.
+ */
 export async function registrarProducao(p: {
   produtoId: string;
   quantidade: number;
@@ -53,14 +61,15 @@ export async function registrarProducao(p: {
   return db.transaction(async (tx) => {
     const produto = await tx.query.produtos.findFirst({ where: eq(produtos.id, p.produtoId) });
     if (!produto) throw new Error("Produto não encontrado.");
-    const filamentoId = p.filamentoId ?? produto.filamentoId ?? null;
-    const gramas = produto.filamentoG * p.quantidade;
+    if (produto.temVariacoes) throw new Error("Escolha a variação (cor) que foi produzida.");
+    const comp = composicaoDo(produto).map((c, i) => (i === 0 && p.filamentoId ? { ...c, filamentoId: p.filamentoId } : c));
+    const gramas = comp.reduce((s, c) => s + c.gramas, 0) * p.quantidade;
     const perda = Math.max(0, p.perdaG ?? 0);
     const [prod] = await tx
       .insert(producoes)
       .values({
         produtoId: produto.id,
-        filamentoId,
+        filamentoId: comp[0]?.filamentoId ?? null,
         quantidade: p.quantidade,
         gramas,
         perdaG: perda,
@@ -71,13 +80,15 @@ export async function registrarProducao(p: {
       .returning({ id: producoes.id });
     const origem = `producao:${prod!.id}`;
     await movimentar(tx, { produtoId: produto.id, quantidade: p.quantidade, tipo: "producao", origem, observacao: `Produção de ${p.quantidade}`, usuarioId: p.usuarioId });
-    if (filamentoId && gramas + perda > 0) {
+    for (const [i, c] of comp.entries()) {
+      const usado = c.gramas * p.quantidade + (i === 0 ? perda : 0);
+      if (!c.filamentoId || usado <= 0) continue;
       await movimentarFilamento(tx, {
-        filamentoId,
-        gramas: -(gramas + perda),
+        filamentoId: c.filamentoId,
+        gramas: -usado,
         tipo: "consumo",
         origem,
-        observacao: `${produto.nome} × ${p.quantidade}${perda ? ` (+${perda} g de perda)` : ""}`,
+        observacao: `${produto.nome} × ${p.quantidade}${i === 0 && perda ? ` (+${perda} g de perda)` : ""}${comp.length > 1 ? ` · filamento ${i + 1} de ${comp.length}` : ""}`,
         usuarioId: p.usuarioId,
       });
     }
@@ -94,7 +105,7 @@ export function listaFilamentos() {
     .orderBy(filamentos.material, filamentos.cor);
 }
 
-/** Quantas peças de cada produto ainda dá para imprimir com o saldo do filamento ligado a ele. */
+/** Quantas peças de cada produto ainda dá para imprimir: o filamento que acabar primeiro limita (peças multicor). */
 export async function capacidadeProducao() {
   const [lista, fils] = await Promise.all([
     db
@@ -105,6 +116,7 @@ export async function capacidadeProducao() {
         filamentoG: produtos.filamentoG,
         tempoMin: produtos.tempoImpressaoMin,
         filamentoId: produtos.filamentoId,
+        composicao: produtos.composicao,
         estoque: produtos.estoque,
       })
       .from(produtos)
@@ -113,9 +125,17 @@ export async function capacidadeProducao() {
   ]);
   return lista
     .map((p) => {
-      const f = fils.find((x) => x.id === p.filamentoId);
-      const pecas = f && p.filamentoG > 0 ? Math.max(0, Math.floor(f.saldoG / p.filamentoG)) : null;
-      return { ...p, filamento: f ?? null, pecas, horas: pecas !== null ? (pecas * p.tempoMin) / 60 : null };
+      const comp = composicaoDo(p)
+        .map((c) => ({ ...c, filamento: fils.find((x) => x.id === c.filamentoId) ?? null }))
+        .filter((c) => c.filamento && c.gramas > 0);
+      const pecas = comp.length ? Math.max(0, Math.min(...comp.map((c) => Math.floor(c.filamento!.saldoG / c.gramas)))) : null;
+      return {
+        ...p,
+        filamento: comp[0]?.filamento ?? null,
+        filamentos: comp.map((c) => ({ ...c.filamento!, gramas: c.gramas })),
+        pecas,
+        horas: pecas !== null ? (pecas * p.tempoMin) / 60 : null,
+      };
     })
     .sort((a, b) => a.nome.localeCompare(b.nome));
 }

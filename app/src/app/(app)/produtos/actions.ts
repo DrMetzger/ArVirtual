@@ -50,6 +50,19 @@ const VariacaoSchema = z.object({
 });
 const CANAIS_PRECO = ["mercadolivre", "shopee", "magalu", "loja"] as const;
 
+/** Filamentos da peça: [{ filamentoId, gramas }] vindos da tela (ignora linhas vazias). */
+function lerComposicao(raw: FormDataEntryValue | null) {
+  try {
+    const lista = JSON.parse(String(raw ?? "[]")) as { filamentoId?: unknown; gramas?: unknown }[];
+    return lista
+      .map((c) => ({ filamentoId: Number(c.filamentoId) > 0 ? Math.trunc(Number(c.filamentoId)) : null, gramas: Math.max(0, Math.round(Number(c.gramas) || 0)) }))
+      .filter((c) => c.filamentoId || c.gramas)
+      .slice(0, 16);
+  } catch {
+    return [];
+  }
+}
+
 function lerPrecosCanal(raw: FormDataEntryValue | null) {
   try {
     const obj = JSON.parse(String(raw ?? "{}")) as Record<string, unknown>;
@@ -66,7 +79,7 @@ async function origin() {
 
 export async function salvarProduto(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
-  const raw = Object.fromEntries([...form.entries()].filter(([k, v]) => typeof v === "string" && k !== "variacoes" && k !== "precosCanal"));
+  const raw = Object.fromEntries([...form.entries()].filter(([k, v]) => typeof v === "string" && k !== "variacoes" && k !== "precosCanal" && k !== "composicao"));
   const parsed = ProdutoSchema.safeParse(raw);
   if (!parsed.success) return { erro: parsed.error.issues[0]?.message ?? "Dados inválidos" };
   const id = String(form.get("id") ?? "");
@@ -80,6 +93,7 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
     larguraCm: parseDecimal(form.get("larguraCm")),
     comprimentoCm: parseDecimal(form.get("comprimentoCm")),
     precosCanal: lerPrecosCanal(form.get("precosCanal")),
+    composicao: lerComposicao(form.get("composicao")),
     temVariacoes: form.get("temVariacoes") === "1",
   };
   if (valores.preco <= 0) return { erro: "Informe o preço de venda." };
@@ -186,6 +200,10 @@ async function salvarVariacoes(
       filamentoG: pai.filamentoG,
       tempoImpressaoMin: pai.tempoImpressaoMin,
       filamentoId: v.filamentoId,
+      // O 1º filamento da composição é o da cor da variação; os demais são os do produto.
+      composicao: (pai.composicao?.length ? pai.composicao : [{ filamentoId: null, gramas: pai.filamentoG ?? 0 }]).map((c, i) =>
+        i === 0 ? { ...c, filamentoId: v.filamentoId } : c,
+      ),
       imagens: pai.imagens,
       precosCanal: v.preco ? {} : pai.precosCanal,
       paiId,
