@@ -11,7 +11,7 @@ import { contasMarketplace, notas, pedidosMarketplace, produtos } from "@/db/sch
 import { notaVale } from "@/lib/nota-pedido";
 import { StatusNota } from "../../notas/status";
 import { requireUser } from "@/lib/auth";
-import { linkPedido, numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
+import { linkPedido, numeroPedido, packMercadoLivre, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
 import { alterarSituacao, buscarNotaDoPedido, faturarPedido } from "../actions";
@@ -40,7 +40,8 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
   const externaValida = externas.find((n) => n.status !== "invalid");
   const situacao = situacaoPedido(pedido.marketplace, pedido.status);
   const info = CANAIS[pedido.marketplace];
-  const link = linkPedido(pedido.marketplace, pedido.idExterno);
+  const pack = pedido.marketplace === "mercadolivre" ? packMercadoLivre(pedido.dados) : null;
+  const link = linkPedido(pedido.marketplace, pedido.idExterno, pack);
   const loja = pedido.marketplace === "loja";
   // Próximos passos de um pedido da loja própria.
   const PROXIMOS: Partial<Record<Situacao, Situacao[]>> = {
@@ -68,7 +69,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
         description={
           <span className="inline-flex flex-wrap items-center gap-2">
             <MarcaLogo canal={pedido.marketplace} className="h-5" />
-            · {conta?.nome ?? "Loja própria"} · {formatDate(pedido.data)}
+            · {conta?.nome ?? "Loja própria"}{pack ? ` · pack #${pack}` : ""} · {formatDate(pedido.data)}
             <Badge tone={SITUACOES[situacao].tom}>{SITUACOES[situacao].nome}</Badge>
             {loja ? null : <span className="font-mono text-xs">({pedido.status})</span>}
           </span>

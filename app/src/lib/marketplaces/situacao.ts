@@ -20,6 +20,8 @@ const MAPA: Record<CanalVenda, Record<string, Situacao>> = {
     partially_paid: "aguardando",
     paid: "pago",
     partially_refunded: "pago",
+    shipped: "enviado",
+    delivered: "entregue",
     pending_cancel: "cancelado",
     cancelled: "cancelado",
     invalid: "cancelado",
@@ -73,11 +75,18 @@ export function numeroPedido(marketplace: CanalVenda, idExterno: string) {
 }
 
 /** Link do pedido no painel do vendedor. */
-export function linkPedido(marketplace: CanalVenda, idExterno: string) {
+export function linkPedido(marketplace: CanalVenda, idExterno: string, pack?: string | null) {
   if (marketplace === "loja") return null;
-  if (marketplace === "mercadolivre") return `https://www.mercadolivre.com.br/vendas/${idExterno}/detalhe`;
+  // Venda com carrinho (pack): o painel do Mercado Livre usa o número do pack.
+  if (marketplace === "mercadolivre") return `https://www.mercadolivre.com.br/vendas/${pack || idExterno}/detalhe`;
   if (marketplace === "shopee") return `https://seller.shopee.com.br/portal/sale/order?search=${idExterno}`;
   return "https://seller.magalu.com/pedidos";
 }
 
 export const MAGALU_SEM_NOTA = "Nenhuma nota encontrada ainda. Se a nota foi enviada no Portal do Seller, clique em Buscar nota.";
+
+/** Número que o painel do Mercado Livre mostra (pack, quando a venda tem carrinho). */
+export function packMercadoLivre(dados: unknown) {
+  const pack = (dados as { pedido?: { pack_id?: number | null } } | null)?.pedido?.pack_id;
+  return pack ? String(pack) : null;
+}

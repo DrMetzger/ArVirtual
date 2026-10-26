@@ -123,6 +123,8 @@ export const mercadoLivre: MarketplaceAdapter = {
       date_created: string;
       buyer?: { nickname?: string; first_name?: string; last_name?: string };
       shipping?: { id?: number };
+      pack_id?: number | null;
+      tags?: string[];
       order_items?: { item: { id: string; title: string; seller_sku?: string | null }; quantity: number; unit_price: number }[];
     };
     type Envio = {
@@ -139,6 +141,15 @@ export const mercadoLivre: MarketplaceAdapter = {
         state?: { id?: string };
       };
       lead_time?: { cost?: number };
+      status?: string;
+    };
+    // O pedido fica "paid" mesmo depois de enviado/entregue: o andamento real está no envio.
+    const statusReal = (o: Pedido, envio: Envio | null) => {
+      if (o.status !== "paid" && o.status !== "partially_refunded") return o.status;
+      const e = envio?.status ?? "";
+      if (e === "delivered" || o.tags?.includes("delivered")) return "delivered";
+      if (e === "shipped" || e === "not_delivered") return "shipped";
+      return o.status;
     };
     const out = [];
     for (let offset = 0; offset < 5000; offset += 50) {
@@ -162,7 +173,7 @@ export const mercadoLivre: MarketplaceAdapter = {
         const documento = fiscal?.buyer?.billing_info?.identification?.number;
         out.push({
           idExterno: String(o.id),
-          status: o.status,
+          status: statusReal(o, envio),
           total: o.paid_amount ?? o.total_amount,
           frete: envio?.lead_time?.cost ?? 0,
           comprador: [o.buyer?.first_name, o.buyer?.last_name].filter(Boolean).join(" ") || o.buyer?.nickname || "",
