@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, ilike, or, type SQL } from "drizzle-orm";
+import { and, asc, desc, eq, gte, ilike, or, sql, type SQL } from "drizzle-orm";
 import { CANAIS, MarcaIcone } from "@/components/marca";
 import { FileDown, Plus, RefreshCw, Search, ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
@@ -27,7 +27,14 @@ const PERIODOS = [
 ] as const;
 const POR_PAGINA = 50;
 
-type Filtros = { mp?: string; sit?: string; q?: string; periodo?: string; pagina?: string; ok?: string; erro?: string };
+const ORDENS = [
+  ["recentes", "Mais recentes primeiro"],
+  ["antigos", "Mais antigos primeiro"],
+  ["maior", "Maior valor"],
+  ["menor", "Menor valor"],
+] as const;
+
+type Filtros = { mp?: string; sit?: string; q?: string; periodo?: string; ordem?: string; pagina?: string; ok?: string; erro?: string };
 
 export default async function PedidosPage({ searchParams }: { searchParams: Promise<Filtros> }) {
   await requireUser();
@@ -35,12 +42,15 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
   const periodo = PERIODOS.some(([v]) => v === f.periodo) ? f.periodo! : "90";
   const mp = CANAIS_VENDA.includes(f.mp as CanalVenda) ? (f.mp as CanalVenda) : undefined;
   const sit = f.sit && f.sit in SITUACOES ? (f.sit as Situacao) : undefined;
-  const q = (f.q?.trim() ?? "").replace(/^LU-/i, "");
+  const q = (f.q?.trim() ?? "").replace(/^(LU-|#)/i, "");
+  const ordem = ORDENS.some(([v]) => v === f.ordem) ? f.ordem! : "recentes";
+  // Mercado Livre: venda com carrinho aparece no painel com o número do pack.
+  const pack = sql<string | null>`${pedidosMarketplace.dados}->'pedido'->>'pack_id'`;
 
   const filtros: SQL[] = [];
   if (periodo !== "todos") filtros.push(gte(pedidosMarketplace.data, new Date(Date.now() - Number(periodo) * 86400_000)));
   if (mp) filtros.push(eq(pedidosMarketplace.marketplace, mp));
-  if (q) filtros.push(or(ilike(pedidosMarketplace.idExterno, `%${q}%`), ilike(pedidosMarketplace.comprador, `%${q}%`))!);
+  if (q) filtros.push(or(ilike(pedidosMarketplace.idExterno, `%${q}%`), ilike(pedidosMarketplace.comprador, `%${q}%`), sql`${pack} ilike ${`%${q}%`}`)!);
 
   const [linhas, contas] = await Promise.all([
     db
@@ -57,12 +67,21 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         notaStatus: notas.status,
         notaNumero: notas.numero,
         conta: contasMarketplace.nome,
+        pack,
       })
       .from(pedidosMarketplace)
       .leftJoin(contasMarketplace, eq(contasMarketplace.id, pedidosMarketplace.contaId))
       .leftJoin(notas, eq(notas.id, pedidosMarketplace.notaId))
       .where(and(...filtros))
-      .orderBy(desc(pedidosMarketplace.data))
+      .orderBy(
+        ...(ordem === "antigos"
+          ? [asc(pedidosMarketplace.data)]
+          : ordem === "maior"
+            ? [desc(pedidosMarketplace.total), desc(pedidosMarketplace.data)]
+            : ordem === "menor"
+              ? [asc(pedidosMarketplace.total), desc(pedidosMarketplace.data)]
+              : [desc(pedidosMarketplace.data), desc(pedidosMarketplace.id)]),
+      )
       .limit(5000),
     db.select({ id: contasMarketplace.id, ultima: contasMarketplace.ultimaSincronizacao }).from(contasMarketplace),
   ]);
@@ -86,7 +105,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
 
   const url = (extra: Partial<Filtros>) => {
     const p = new URLSearchParams();
-    const v = { mp, sit, q, periodo, ...extra };
+    const v = { mp, sit, q, periodo, ordem: ordem === "recentes" ? undefined : ordem, ...extra };
     for (const [k, val] of Object.entries(v)) if (val && !(k === "periodo" && val === "90")) p.set(k, String(val));
     const s = p.toString();
     return `/pedidos${s ? `?${s}` : ""}`;
@@ -138,10 +157,10 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         </div>
 
         <Card>
-          <form className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto_auto]" action="/pedidos">
+          <form className="grid gap-3 border-b border-border p-4 sm:grid-cols-2 lg:grid-cols-[1fr_auto_auto_auto_auto_auto]" action="/pedidos">
             <div className="relative">
               <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
-              <Input name="q" defaultValue={q} placeholder="Nº do pedido ou comprador" className="pl-9" />
+              <Input name="q" defaultValue={q} placeholder="Nº do pedido, pack ou comprador" className="pl-9" />
             </div>
             <Select name="mp" defaultValue={mp ?? ""}>
               <option value="">Todos os canais</option>
@@ -161,6 +180,13 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
             </Select>
             <Select name="periodo" defaultValue={periodo}>
               {PERIODOS.map(([v, l]) => (
+                <option key={v} value={v}>
+                  {l}
+                </option>
+              ))}
+            </Select>
+            <Select name="ordem" defaultValue={ordem} aria-label="Ordem">
+              {ORDENS.map(([v, l]) => (
                 <option key={v} value={v}>
                   {l}
                 </option>
@@ -216,6 +242,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
                           <Link href={`/pedidos/${p.id}`} className="block font-mono text-xs font-semibold whitespace-nowrap hover:text-gold">
                             {numeroPedido(p.marketplace, p.idExterno)}
                           </Link>
+                          {p.pack ? <p className="font-mono text-[11px] whitespace-nowrap text-muted">pack #{p.pack}</p> : null}
                           <p className="mt-0.5 flex items-center gap-1.5 text-xs whitespace-nowrap text-muted">
                             <MarcaIcone canal={p.marketplace} className="size-5" />
                             {p.conta ?? "Loja própria"}
