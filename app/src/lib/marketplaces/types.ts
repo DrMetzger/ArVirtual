@@ -25,6 +25,9 @@ export type DadosAnuncio = {
   principal?: boolean;
   /** Mercado Livre (User Products): nome da família, igual para todas as variações. */
   familia?: string;
+  /** Mercado Livre: Clássico ou Premium; frete grátis automático (regra do ML), sempre ou nunca. */
+  tipoAnuncio?: "classico" | "premium";
+  freteGratis?: "automatico" | "sempre" | "nunca";
 };
 
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };

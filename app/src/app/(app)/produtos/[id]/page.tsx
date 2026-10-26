@@ -10,7 +10,7 @@ import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { listaFilamentos } from "@/lib/filamentos";
-import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
+import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
@@ -33,6 +33,7 @@ export default async function ProdutoPage({
   if (produto.paiId) redirect(`/produtos/${produto.paiId}`);
   const variacoes = produto.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)).orderBy(asc(produtos.cor)) : [];
 
+  const cfgMl = await getSettings(["mercadolivre.tipoAnuncio", "mercadolivre.freteGratis"]);
   const [contas, historico, parametros, ia, precos] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
     // Histórico do produto e das variações dele.
@@ -77,6 +78,7 @@ export default async function ProdutoPage({
             descricao={produto.descricao}
             preco={produto.preco}
             precosCanal={produto.precosCanal}
+            ml={{ tipo: cfgMl["mercadolivre.tipoAnuncio"] || "classico", frete: cfgMl["mercadolivre.freteGratis"] || "automatico" }}
             temImagem={produto.imagens.length > 0}
             iaConfigurada={ia}
             contas={contas.map((c) => ({

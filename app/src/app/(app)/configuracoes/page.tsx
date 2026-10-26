@@ -6,7 +6,7 @@ import { Alert, PageHeader } from "@/components/ui";
 import { db } from "@/db";
 import { contasEmail, usuarios } from "@/db/schema";
 import { usoApicpf } from "@/lib/apicpf";
-import { FAIXAS_PADRAO } from "@/lib/precificacao";
+import { FAIXAS_PADRAO, FAIXAS_PREMIUM_ML } from "@/lib/precificacao";
 import { requireUser } from "@/lib/auth";
 import { callbackUrl } from "@/lib/marketplaces";
 import { abaDoGrupo, getSetting, getSettingsForDisplay } from "@/lib/settings";
@@ -56,8 +56,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
     "Precificação: geral": "Vale para todos os canais. O preço sugerido de cada canal é o que deixa este lucro depois de taxas, campanha, imposto e embalagem.",
     "Precificação: Mercado Livre": (
       <>
-        Formato: <code>limite:comissão%+taxa</code> separados por “;” (o limite é o preço de venda; “*” = acima). Padrão do Clássico: <code>{FAIXAS_PADRAO.mercadolivre}</code>. Confira na
-        central do vendedor: a comissão muda por categoria.
+        Formato: <code>limite:comissão%+taxa</code> separados por “;” (o limite é o preço de venda; “*” = acima). Padrão do Clássico: <code>{FAIXAS_PADRAO.mercadolivre}</code>; Premium:{" "}
+        <code>{FAIXAS_PREMIUM_ML}</code>. Confira na central do vendedor: a comissão muda por categoria. Frete grátis: em “Sua parte do frete” informe o que você paga
+        por venda (ex.: 50% do frete com o desconto da sua reputação).
       </>
     ),
     "Precificação: Shopee": (

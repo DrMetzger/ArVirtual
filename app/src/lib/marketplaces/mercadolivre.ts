@@ -93,7 +93,12 @@ export const mercadoLivre: MarketplaceAdapter = {
       available_quantity: Math.max(1, anuncio.estoque),
       buying_mode: "buy_it_now",
       condition: "new",
-      listing_type_id: "gold_special",
+      // Clássico = gold_special; Premium = gold_pro (parcelado sem juros, comissão maior).
+      listing_type_id: anuncio.tipoAnuncio === "premium" ? "gold_pro" : "gold_special",
+      // Automático: o ML aplica a regra dele (grátis obrigatório a partir de R$ 79). Sempre/nunca: força.
+      ...(anuncio.freteGratis === "sempre" || anuncio.freteGratis === "nunca"
+        ? { shipping: { mode: "me2", local_pick_up: false, free_shipping: anuncio.freteGratis === "sempre" } }
+        : {}),
       pictures: produto.imagens.map((source) => ({ source })),
       attributes: [
         { id: "SELLER_SKU", value_name: produto.sku },
