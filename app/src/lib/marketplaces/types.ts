@@ -20,6 +20,11 @@ export type DadosAnuncio = {
   preco: number;
   estoque: number;
   categoria?: string;
+  /** Variação: SKU base do produto principal (agrupa as cores no mesmo anúncio) e se é a variação principal. */
+  grupo?: string;
+  principal?: boolean;
+  /** Mercado Livre (User Products): nome da família, igual para todas as variações. */
+  familia?: string;
 };
 
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
@@ -96,7 +101,15 @@ export async function lerResposta<T>(res: Response, origem: string): Promise<T> 
     const causas = Array.isArray(b?.cause)
       ? (b.cause as { message?: string }[]).map((c) => c.message).filter(Boolean).join("; ")
       : "";
-    const msg = [b?.message, b?.error_description, b?.error, causas].filter(Boolean).join(" · ");
+    // Validação no padrão FastAPI (Magalu): { detail: [{ loc: ["body", "campo"], msg }] }.
+    const detalhe = Array.isArray(b?.detail)
+      ? (b.detail as { loc?: (string | number)[]; msg?: string }[])
+          .map((d) => `${(d.loc ?? []).filter((x) => x !== "body").join(".")}: ${d.msg ?? ""}`)
+          .join("; ")
+      : typeof b?.detail === "string"
+        ? b.detail
+        : "";
+    const msg = [b?.message, b?.error_description, b?.error, causas, detalhe].filter(Boolean).join(" · ");
     throw new MarketplaceError(`${origem} (${res.status}): ${msg || text.slice(0, 300)}`);
   }
   return body as T;

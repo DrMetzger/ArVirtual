@@ -127,27 +127,81 @@ export const magalu: MarketplaceAdapter = {
   },
 
   async publicar(conta, produto, anuncio) {
-    const sku = await api<{ id?: string; code?: string }>("/seller/v1/portfolios/skus", conta.accessToken, {
+    // Docs: developers.magalu.com › APIs › Produtos (portfolios). O SKU é criado sem preço/estoque;
+    // preço e estoque vão em chamadas próprias, no canal da loja (de /portfolios/me).
+    const faltam = [
+      !produto.imagens.length && "ao menos uma foto",
+      !(produto.pesoG > 0) && "peso com embalagem",
+      !(produto.alturaCm > 0 && produto.larguraCm > 0 && produto.comprimentoCm > 0) && "altura, largura e comprimento",
+    ].filter(Boolean);
+    if (faltam.length) throw new MarketplaceError(`Magalu exige ${faltam.join(", ")} no cadastro do produto.`);
+    if (produto.sku.length > 32) throw new MarketplaceError("Magalu aceita SKU com até 32 caracteres.");
+
+    const me = await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken);
+    const canal = me.channel?.id;
+    if (!canal) throw new MarketplaceError("Magalu não informou o canal da loja (portfolios/me).");
+
+    const medida = (v: number) => ({ value: Math.max(0.1, Math.round(v * 10) / 10), unit: "cm" });
+    const dim = (name: "product" | "package") => ({
+      name,
+      height: medida(produto.alturaCm),
+      width: medida(produto.larguraCm),
+      length: medida(produto.comprimentoCm),
+      weight: { value: Math.max(1, Math.round(produto.pesoG)), unit: "g" },
+    });
+    const ficha = [
+      produto.material && { name: "Material", value: produto.material },
+      produto.cor && { name: "Cor", value: produto.cor },
+      { name: "Fabricação", value: "Impressão 3D" },
+    ].filter(Boolean) as { name: string; value: string }[];
+    const atributos = Object.entries(produto.atributos ?? {})
+      .filter(([k, v]) => k && v)
+      .slice(0, 3)
+      .map(([name, value]) => ({ name: name.slice(0, 20), value: value.slice(0, 50) }));
+
+    await api("/seller/v1/portfolios/skus", conta.accessToken, {
       method: "POST",
       body: JSON.stringify({
-        code: produto.sku,
-        title: anuncio.titulo,
-        description: anuncio.descricao,
+        sku: produto.sku,
+        title: anuncio.titulo.slice(0, 150),
+        description: (anuncio.descricao || produto.descricao || anuncio.titulo).slice(0, 7000),
         brand: "ArVirtual",
-        gtin: produto.gtin || undefined,
-        images: produto.imagens.map((url) => ({ url })),
-        dimensions: {
-          weight: { value: produto.pesoG, unit: "g" },
-          height: { value: produto.alturaCm, unit: "cm" },
-          width: { value: produto.larguraCm, unit: "cm" },
-          length: { value: produto.comprimentoCm, unit: "cm" },
-        },
-        price: { list_price: Math.round(anuncio.preco * 100), price: Math.round(anuncio.preco * 100), normalizer: 100, currency: "BRL" },
-        stock: { quantity: Math.max(0, anuncio.estoque) },
-        ...(anuncio.categoria ? { category: anuncio.categoria } : {}),
+        // Variações do mesmo produto ficam no mesmo grupo (SKU base); produto simples é o próprio grupo.
+        group: { id: (anuncio.grupo ?? produto.sku).slice(0, 50), main_variation: anuncio.principal ?? true },
+        channels: [{ id: canal }],
+        condition: "NEW",
+        active: true,
+        type: "product",
+        has_ean: Boolean(produto.gtin),
+        identifiers: produto.gtin ? [{ type: "ean", value: produto.gtin }] : [],
+        datasheet: ficha,
+        attributes: atributos,
+        dimensions: [dim("product"), dim("package")],
+        // Magalu só aceita JPEG: PNG/WEBP vão pela rota que converte (/uploads/jpg/...).
+        images: produto.imagens.slice(0, 30).map((url) => ({ reference: /\.jpe?g$/i.test(url) ? url : url.replace("/uploads/", "/uploads/jpg/"), type: "image/jpeg" })),
+        videos: [],
+        podcasts: [],
+        extra_data: [],
+        ncm: /^\d{8}$/.test(produto.ncm) ? produto.ncm : undefined,
+        origin: [1, 2, 3, 6, 7, 8].includes(produto.origem) ? "imported" : "national",
+        ...(anuncio.categoria ? { category: { id: anuncio.categoria } } : {}),
       }),
     });
-    return { idExterno: sku.id ?? sku.code ?? produto.sku, link: "https://seller.magalu.com" };
+
+    const centavos = Math.round(anuncio.preco * 100);
+    await api(`/seller/v1/portfolios/prices/${encodeURIComponent(produto.sku)}`, conta.accessToken, {
+      method: "POST",
+      body: JSON.stringify({ channel: { id: canal }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos }),
+    });
+    await api(`/seller/v1/portfolios/stocks/${encodeURIComponent(produto.sku)}`, conta.accessToken, {
+      method: "POST",
+      body: JSON.stringify({ channel: { id: canal }, type: "AVAILABLE", quantity: Math.max(0, anuncio.estoque) }),
+    });
+    return {
+      idExterno: produto.sku,
+      link: "https://seller.magalu.com",
+      aviso: "O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).",
+    };
   },
 
   async pedidos(conta, desde, porAtualizacao) {

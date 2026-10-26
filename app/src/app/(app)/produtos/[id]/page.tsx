@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -35,8 +35,9 @@ export default async function ProdutoPage({
 
   const [contas, historico, parametros, ia, precos] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
+    // Histórico do produto e das variações dele.
     db.query.anuncios.findMany({
-      where: eq(anuncios.produtoId, id),
+      where: inArray(anuncios.produtoId, [id, ...variacoes.map((v) => v.id)]),
       with: { conta: true },
       orderBy: desc(anuncios.criadoEm),
       limit: 20,

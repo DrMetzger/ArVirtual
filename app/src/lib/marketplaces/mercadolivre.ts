@@ -84,26 +84,43 @@ export const mercadoLivre: MarketplaceAdapter = {
       if (!categoria) throw new MarketplaceError("Mercado Livre não sugeriu categoria; informe o ID da categoria (ex.: MLB1234).");
     }
 
-    const item = await api<{ id: string; permalink: string }>("/items", conta.accessToken, {
-      method: "POST",
-      body: JSON.stringify({
-        title: anuncio.titulo.slice(0, 60),
-        category_id: categoria,
-        price: anuncio.preco,
-        currency_id: "BRL",
-        available_quantity: Math.max(1, anuncio.estoque),
-        buying_mode: "buy_it_now",
-        condition: "new",
-        listing_type_id: "gold_special",
-        pictures: produto.imagens.map((source) => ({ source })),
-        attributes: [
-          { id: "SELLER_SKU", value_name: produto.sku },
-          { id: "BRAND", value_name: "ArVirtual" },
-          { id: "MODEL", value_name: produto.sku },
-          ...(produto.gtin ? [{ id: "GTIN", value_name: produto.gtin }] : []),
-        ],
-      }),
-    });
+    const corpo: Record<string, unknown> = {
+      title: anuncio.titulo.slice(0, 60),
+      category_id: categoria,
+      price: anuncio.preco,
+      currency_id: "BRL",
+      available_quantity: Math.max(1, anuncio.estoque),
+      buying_mode: "buy_it_now",
+      condition: "new",
+      listing_type_id: "gold_special",
+      pictures: produto.imagens.map((source) => ({ source })),
+      attributes: [
+        { id: "SELLER_SKU", value_name: produto.sku },
+        { id: "BRAND", value_name: "ArVirtual" },
+        { id: "MODEL", value_name: produto.sku },
+        ...(produto.gtin ? [{ id: "GTIN", value_name: produto.gtin }] : []),
+        // Variação: a cor diferencia os itens da mesma família.
+        ...(produto.atributos?.Cor ? [{ id: "COLOR", value_name: produto.atributos.Cor }] : []),
+      ],
+    };
+    const publicar = (body: Record<string, unknown>) =>
+      api<{ id: string; permalink: string }>("/items", conta.accessToken, { method: "POST", body: JSON.stringify(body) });
+    let item: { id: string; permalink: string };
+    try {
+      item = await publicar(corpo);
+    } catch (e) {
+      // Contas no modelo "User Products": o anúncio pede family_name (nome da família, que agrupa as variações)
+      // e o ML monta o título sozinho.
+      if (!/family_name/i.test((e as Error).message)) throw e;
+      const { title: _t, ...semTitulo } = corpo;
+      const familia = (anuncio.familia ?? anuncio.titulo).slice(0, 60);
+      try {
+        item = await publicar({ ...semTitulo, family_name: familia });
+      } catch (e2) {
+        if (!/title/i.test((e2 as Error).message)) throw e2;
+        item = await publicar({ ...corpo, family_name: familia });
+      }
+    }
 
     if (anuncio.descricao) {
       await api(`/items/${item.id}/description`, conta.accessToken, {

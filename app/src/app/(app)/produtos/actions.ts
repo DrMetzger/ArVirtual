@@ -278,46 +278,39 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
     titulo: String(form.get("titulo") ?? p.nome).trim() || p.nome,
     descricao: String(form.get("descricao") ?? p.descricao).trim(),
     preco: parseDecimal(form.get("preco")),
-    // Produto com variações: o anúncio leva o estoque somado das variações ativas.
-    estoque: p.temVariacoes
-      ? (await db.select({ estoque: produtos.estoque }).from(produtos).where(and(eq(produtos.paiId, p.id), eq(produtos.ativo, true)))).reduce((s, v) => s + v.estoque, 0)
-      : p.estoque,
   };
+  // Produto com variações: um anúncio por cor, no mesmo grupo (Magalu) / família (Mercado Livre).
+  const itens = p.temVariacoes
+    ? await db.select().from(produtos).where(and(eq(produtos.paiId, p.id), eq(produtos.ativo, true))).orderBy(produtos.cor)
+    : [p];
+  if (!itens.length) return [{ conta: "-", ok: false, mensagem: "Este produto não tem variações ativas." }];
 
   const resultados: ResultadoPublicacao[] = [];
   for (const conta of contas) {
     const categoria = String(form.get(`categoria_${conta.marketplace}`) ?? "").trim() || undefined;
     const a = adapter(conta.marketplace);
-    try {
-      // Preço digitado na hora ou o preço do canal salvo no produto (senão o preço de venda).
-      const preco = dados.preco || p.precosCanal[conta.marketplace] || p.preco;
-      const r = await a.publicar(await contaComToken(conta), p, { ...dados, preco, categoria });
-      await db.insert(anuncios).values({
-        produtoId: p.id,
-        contaId: conta.id,
-        marketplace: conta.marketplace,
-        idExterno: r.idExterno,
-        link: r.link,
-        status: "publicado",
-        preco,
-      });
-      resultados.push({
-        conta: `${a.nome} · ${conta.nome}`,
-        ok: true,
-        mensagem: `Publicado (${r.idExterno})${r.aviso ? `. ${r.aviso}` : ""}`,
-        link: r.link,
-      });
-    } catch (e) {
-      const msg = (e as Error).message;
-      await db.insert(anuncios).values({
-        produtoId: p.id,
-        contaId: conta.id,
-        marketplace: conta.marketplace,
-        status: "erro",
-        preco: dados.preco || p.precosCanal[conta.marketplace] || p.preco,
-        mensagem: msg.slice(0, 2000),
-      });
-      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: false, mensagem: msg });
+    const token = await contaComToken(conta).catch((e: Error) => e);
+    for (const [i, item] of itens.entries()) {
+      // Preço digitado na hora, o do canal salvo no item, ou o preço de venda.
+      const preco = dados.preco || item.precosCanal[conta.marketplace] || item.preco;
+      const rotulo = `${a.nome} · ${conta.nome}${p.temVariacoes ? ` · ${item.cor || item.sku}` : ""}`;
+      try {
+        if (token instanceof Error) throw token;
+        const r = await a.publicar(token, { ...item, imagens: item.imagens.length ? item.imagens : p.imagens }, {
+          titulo: p.temVariacoes ? `${dados.titulo} ${item.cor}`.trim().slice(0, 60) : dados.titulo,
+          descricao: dados.descricao,
+          preco,
+          estoque: item.estoque,
+          categoria,
+          ...(p.temVariacoes ? { grupo: p.sku, principal: i === 0, familia: dados.titulo } : {}),
+        });
+        await db.insert(anuncios).values({ produtoId: item.id, contaId: conta.id, marketplace: conta.marketplace, idExterno: r.idExterno, link: r.link, status: "publicado", preco });
+        resultados.push({ conta: rotulo, ok: true, mensagem: `Publicado (${r.idExterno})${r.aviso ? `. ${r.aviso}` : ""}`, link: r.link });
+      } catch (e) {
+        const msg = (e as Error).message;
+        await db.insert(anuncios).values({ produtoId: item.id, contaId: conta.id, marketplace: conta.marketplace, status: "erro", preco, mensagem: msg.slice(0, 2000) });
+        resultados.push({ conta: rotulo, ok: false, mensagem: msg });
+      }
     }
   }
   revalidatePath(`/produtos/${produtoId}`);
