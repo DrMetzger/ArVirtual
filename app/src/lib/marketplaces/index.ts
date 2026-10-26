@@ -1,5 +1,5 @@
 import "server-only";
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace, type ContaMarketplace, type Marketplace } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
@@ -74,7 +74,18 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
     try {
       const a = adapter(conta.marketplace);
       const token = await contaComToken(conta);
-      const pedidos = await a.pedidos(token, desde, porAtualizacao);
+      // Pedidos pagos/enviados dos últimos 120 dias: reconferidos a cada rodada até chegarem a entregue.
+      const reconferir = porAtualizacao
+        ? (
+            await db
+              .select({ idExterno: pedidosMarketplace.idExterno, status: pedidosMarketplace.status })
+              .from(pedidosMarketplace)
+              .where(and(eq(pedidosMarketplace.contaId, conta.id), gte(pedidosMarketplace.data, new Date(Date.now() - 120 * 86400_000))))
+          )
+            .filter((p) => ["pago", "enviado"].includes(situacaoPedido(conta.marketplace, p.status)))
+            .map((p) => p.idExterno)
+        : [];
+      const pedidos = await a.pedidos(token, desde, porAtualizacao, reconferir);
       const historico = (data: Date) => data.getTime() < conta.criadoEm.getTime() - 86400_000;
       // Conta com nome genérico ganha o nome da loja que vem nos pedidos.
       const loja = pedidos.find((p) => p.loja)?.loja;
