@@ -4,13 +4,14 @@ import { ImageIcon, Loader2, Mail, Pencil, Plus, Search, Send, ShieldCheck, Spar
 import { useActionState, useState, useTransition } from "react";
 import { AddressFields, emptyAddress, type AddressValues } from "@/components/address-fields";
 import { Alert, Badge, Button, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
-import { SubmitButton, useFormAction } from "@/components/ui/client";
+import { InputSenha, SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Empresa } from "@/db/schema";
 import { formatCep, formatDocumento, formatTelefone, onlyDigits } from "@/lib/utils";
 import {
   alterarSenha,
   confirmarAtivacao2fa,
   criarUsuario,
+  editarUsuario,
   desativar2fa,
   excluirContaEmail,
   excluirUsuario,
@@ -248,13 +249,11 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
             ) : i.multiline ? (
               <Textarea name={i.key} rows={3} defaultValue={i.value} placeholder={i.placeholder} />
             ) : (
-              <Input
-                name={i.key}
-                type={i.secret ? "password" : "text"}
-                autoComplete="off"
-                defaultValue={i.secret ? "" : i.value}
-                placeholder={i.secret && i.isSet ? "••••••••" : i.placeholder}
-              />
+              i.secret ? (
+                <InputSenha name={i.key} autoComplete="off" placeholder={i.isSet ? "••••••••" : i.placeholder} />
+              ) : (
+                <Input name={i.key} autoComplete="off" defaultValue={i.value} placeholder={i.placeholder} />
+              )
             )}
           </Field>
         ))}
@@ -315,7 +314,7 @@ function ContaEmailForm({ conta, onDone }: { conta?: Conta; onDone: () => void }
         <Input name="usuario" defaultValue={conta?.usuario} autoComplete="off" required />
       </Field>
       <Field label="Senha" className="sm:col-span-3" hint={conta ? "Deixe vazio para manter a atual" : undefined}>
-        <Input name="senha" type="password" autoComplete="new-password" required={!conta} />
+        <InputSenha name="senha" autoComplete="new-password" required={!conta} />
       </Field>
       <Field label="Nome do remetente" className="sm:col-span-3">
         <Input name="remetenteNome" defaultValue={conta?.remetenteNome ?? "ArVirtual"} required />
@@ -423,7 +422,7 @@ function DoisFatores({ ativo, exigido }: { ativo: boolean; exigido: boolean }) {
         {ativo ? (
           <form onSubmit={desativar} className="grid gap-3">
             <Field label="Senha atual (para desativar)">
-              <Input name="senha" type="password" autoComplete="current-password" required />
+              <InputSenha name="senha" autoComplete="current-password" required />
             </Field>
             <Feedback state={desState} />
             <SubmitButton pending={desativando} variant="outline" pendingText="Desativando...">
@@ -471,34 +470,45 @@ export function Usuarios({
   const [state, action] = useActionState(criarUsuario, null);
   const [senhaState, senhaAction] = useActionState(alterarSenha, null);
   const [pending, start] = useTransition();
+  const [editando, setEditando] = useState<string | null>(null);
   return (
     <div className="grid gap-6 lg:grid-cols-2">
       <Card>
         <CardHeader title="Usuários" description="Quem pode acessar o sistema." />
         <div className="grid divide-y divide-border">
-          {usuarios.map((u) => (
-            <div key={u.id} className="flex items-center gap-3 px-5 py-3">
-              <div className="min-w-0 flex-1">
-                <p className="font-semibold">
-                  {u.nome} {u.id === meuId ? <span className="text-xs text-muted">(você)</span> : null}
-                </p>
-                <p className="text-xs text-muted">{u.email}</p>
+          {usuarios.map((u) =>
+            editando === u.id ? (
+              <EditarUsuario key={u.id} u={u} eu={u.id === meuId} onFechar={() => setEditando(null)} />
+            ) : (
+              <div key={u.id} className="flex items-center gap-3 px-5 py-3">
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold">
+                    {u.nome} {u.id === meuId ? <span className="text-xs text-muted">(você)</span> : null}
+                  </p>
+                  <p className="text-xs text-muted">{u.email}</p>
+                </div>
+                {u.doisFatores || exigido2fa ? <Badge tone="green">2FA</Badge> : null}
+                <Badge tone={u.papel === "admin" ? "gold" : "neutral"}>{u.papel === "admin" ? "Administrador" : "Usuário"}</Badge>
+                {admin ? (
+                  <Button variant="ghost" size="icon" title="Editar e redefinir senha" onClick={() => setEditando(u.id)}>
+                    <Pencil />
+                  </Button>
+                ) : null}
+                {admin && u.id !== meuId ? (
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    title="Remover acesso"
+                    className="hover:text-red"
+                    disabled={pending}
+                    onClick={() => confirm(`Remover o acesso de ${u.nome}?`) && start(() => excluirUsuario(u.id))}
+                  >
+                    <Trash2 />
+                  </Button>
+                ) : null}
               </div>
-              {u.doisFatores || exigido2fa ? <Badge tone="green">2FA</Badge> : null}
-              <Badge tone={u.papel === "admin" ? "gold" : "neutral"}>{u.papel}</Badge>
-              {admin && u.id !== meuId ? (
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="hover:text-red"
-                  disabled={pending}
-                  onClick={() => confirm(`Remover o acesso de ${u.nome}?`) && start(() => excluirUsuario(u.id))}
-                >
-                  <Trash2 />
-                </Button>
-              ) : null}
-            </div>
-          ))}
+            ),
+          )}
         </div>
         {admin ? (
           <form action={action} className="grid gap-3 border-t border-border p-5 sm:grid-cols-2">
@@ -509,7 +519,7 @@ export function Usuarios({
               <Input name="email" type="email" required />
             </Field>
             <Field label="Senha inicial">
-              <Input name="senha" type="password" minLength={10} autoComplete="new-password" required />
+              <InputSenha name="senha" gerar minLength={10} autoComplete="new-password" required />
             </Field>
             <Field label="Perfil">
               <Select name="papel" defaultValue="usuario">
@@ -532,10 +542,10 @@ export function Usuarios({
         <CardHeader title="Minha senha" />
         <form action={senhaAction} className="grid gap-3 p-5">
           <Field label="Senha atual">
-            <Input name="atual" type="password" autoComplete="current-password" required />
+            <InputSenha name="atual" autoComplete="current-password" required />
           </Field>
           <Field label="Nova senha" hint="Mínimo de 10 caracteres">
-            <Input name="nova" type="password" minLength={10} autoComplete="new-password" required />
+            <InputSenha name="nova" gerar minLength={10} autoComplete="new-password" required />
           </Field>
           <Feedback state={senhaState} />
           <SubmitButton pendingText="Alterando...">Alterar senha</SubmitButton>
@@ -543,6 +553,50 @@ export function Usuarios({
       </Card>
       </div>
     </div>
+  );
+}
+
+type UsuarioLinha = { id: string; nome: string; email: string; papel: "admin" | "usuario"; doisFatores: boolean };
+
+/** Edição pelo administrador: nome, e-mail, perfil, nova senha (esqueceu a senha) e desligar 2FA. */
+function EditarUsuario({ u, eu, onFechar }: { u: UsuarioLinha; eu: boolean; onFechar: () => void }) {
+  const [state, onSubmit, pending] = useFormAction(editarUsuario, null);
+  return (
+    <form onSubmit={onSubmit} className="grid gap-3 bg-surface-2 px-5 py-4 sm:grid-cols-2">
+      <input type="hidden" name="id" value={u.id} />
+      <Field label="Nome">
+        <Input name="nome" defaultValue={u.nome} required />
+      </Field>
+      <Field label="E-mail (login)">
+        <Input name="email" type="email" defaultValue={u.email} required />
+      </Field>
+      <Field label="Perfil">
+        <Select name="papel" defaultValue={u.papel} disabled={eu}>
+          <option value="usuario">Usuário</option>
+          <option value="admin">Administrador</option>
+        </Select>
+        {eu ? <input type="hidden" name="papel" value={u.papel} /> : null}
+      </Field>
+      <Field label="Nova senha" hint="Deixe vazio para manter a atual. Mínimo de 10 caracteres.">
+        <InputSenha name="novaSenha" gerar minLength={10} autoComplete="new-password" placeholder="Redefinir senha" />
+      </Field>
+      {u.doisFatores ? (
+        <label className="flex items-center gap-2 text-sm sm:col-span-2">
+          <input type="checkbox" name="desligar2fa" className="accent-[var(--gold)]" /> Desligar a verificação em duas etapas (perdeu acesso ao e-mail)
+        </label>
+      ) : null}
+      <div className="grid gap-3 sm:col-span-2">
+        <Feedback state={state} />
+        <div className="flex justify-end gap-2">
+          <Button type="button" variant="ghost" onClick={onFechar}>
+            Fechar
+          </Button>
+          <SubmitButton pending={pending} pendingText="Salvando...">
+            Salvar
+          </SubmitButton>
+        </div>
+      </div>
+    </form>
   );
 }
 
@@ -667,7 +721,7 @@ export function CertificadoA1({ cert, cnpjEmpresa, emissao }: { cert: CertInfo |
             />
           </Field>
           <Field label="Senha do certificado">
-            <Input name="senha" type="password" autoComplete="off" required />
+            <InputSenha name="senha" autoComplete="off" required />
           </Field>
           <Feedback state={state} />
           <SubmitButton pending={pending} pendingText="Validando...">

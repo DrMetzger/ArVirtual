@@ -177,6 +177,40 @@ export async function criarUsuario(_: FormState, form: FormData): Promise<FormSt
   }
 }
 
+const EdicaoSchema = z.object({
+  id: z.uuid(),
+  nome: str.min(2, "Informe o nome"),
+  email: z.email("E-mail inválido").transform((v) => v.toLowerCase()),
+  papel: z.enum(["admin", "usuario"]),
+});
+
+/** Administrador edita o usuário e, se informar, define uma nova senha (ex.: quem esqueceu a senha). */
+export async function editarUsuario(_: FormState, form: FormData): Promise<FormState> {
+  try {
+    const me = await requireAdmin();
+    const parsed = EdicaoSchema.safeParse(Object.fromEntries(form));
+    if (!parsed.success) return { erro: parsed.error.issues[0]?.message };
+    const { id, ...d } = parsed.data;
+    const nova = String(form.get("novaSenha") ?? "");
+    if (nova && nova.length < 10) return { erro: "A nova senha precisa ter ao menos 10 caracteres." };
+    if (id === me.sub && d.papel !== "admin") return { erro: "Você não pode tirar o seu próprio acesso de administrador." };
+    const outro = await db.query.usuarios.findFirst({ where: and(eq(usuarios.email, d.email), ne(usuarios.id, id)) });
+    if (outro) return { erro: "Este e-mail já é de outro usuário." };
+    await db
+      .update(usuarios)
+      .set({
+        ...d,
+        ...(nova ? { senhaHash: await bcrypt.hash(nova, 12) } : {}),
+        ...(form.get("desligar2fa") === "on" ? { doisFatores: false } : {}),
+      })
+      .where(eq(usuarios.id, id));
+    revalidatePath("/configuracoes");
+    return { ok: nova ? `${d.nome}: dados salvos e senha redefinida. Passe a nova senha para a pessoa.` : `${d.nome}: dados salvos.` };
+  } catch (e) {
+    return falha(e);
+  }
+}
+
 export async function excluirUsuario(id: string) {
   const me = await requireAdmin();
   if (id === me.sub) return;
