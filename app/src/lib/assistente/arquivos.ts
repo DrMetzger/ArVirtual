@@ -47,6 +47,12 @@ export async function salvarImagemGerada(img: { mimeType: string; data: string }
   return { nome: `imagem-${i + 1}.${ext}`, tipo: img.mimeType, arquivo: await gravar(dados, ext), tamanho: dados.length };
 }
 
+/** Arquivo criado pela IA (ex.: desenho .svg) como anexo da resposta. */
+export async function salvarArquivoGerado(dados: Buffer, nome: string, tipo: string): Promise<AnexoIa> {
+  const ext = nome.split(".").pop() ?? "bin";
+  return { nome, tipo, arquivo: await gravar(dados, ext), tamanho: dados.length };
+}
+
 /** Valida, salva e prepara o arquivo enviado na conversa. */
 export async function salvarAnexo(file: File): Promise<AnexoIa> {
   const nomeLower = file.name.toLowerCase();

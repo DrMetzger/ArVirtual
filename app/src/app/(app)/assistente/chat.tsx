@@ -508,7 +508,7 @@ function Anexos({ anexos, previas, grande }: { anexos: AnexoTela[]; previas?: Ms
           <a
             key={i}
             href={a.baixar ?? "#"}
-            className="flex items-center gap-2 rounded-xl border border-border bg-surface px-3 py-2 text-xs hover:border-gold"
+            className="flex items-center gap-2 self-start rounded-xl border border-border bg-surface px-3 py-2 text-xs hover:border-gold"
             title="Baixar"
           >
             {iconeArquivo(a.nome, a.tipo)}

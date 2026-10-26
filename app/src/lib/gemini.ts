@@ -198,6 +198,9 @@ export async function transmitirComGemini(
 
 export type ImagemGerada = { mimeType: string; data: string };
 
+/** A chave não tem cota para modelos de imagem (API gratuita do Gemini). */
+export class SemCotaImagem extends Error {}
+
 /** Gera (ou edita, se houver imagens anexadas) imagens com o modelo de imagem do Gemini. */
 export async function gerarImagemComGemini(
   messages: ChatMessage[],
@@ -220,7 +223,7 @@ export async function gerarImagemComGemini(
     });
   } catch (e) {
     if (e instanceof FalhaGemini && e.falhas.some((f) => /: 429 /.test(f)) && !e.falhas.some((f) => /: 503 /.test(f))) {
-      throw new Error(
+      throw new SemCotaImagem(
         "Sem cota de imagem: o Google não libera geração de imagens na API gratuita (só no app do Gemini, que é outro produto). Para gerar aqui, ative o faturamento em aistudio.google.com (cerca de US$ 0,04 por imagem, com o filtro de segurança do Google). Ou crie no app do Gemini e arraste a imagem para esta conversa.",
       );
     }
