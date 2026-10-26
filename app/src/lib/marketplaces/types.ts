@@ -76,7 +76,7 @@ export interface MarketplaceAdapter {
   renovar(refreshToken: string, conta: ContaComToken): Promise<Tokens>;
   publicar(conta: ContaComToken, produto: Produto, anuncio: DadosAnuncio): Promise<ResultadoAnuncio>;
   /** Pedidos comprados desde `desde` ou, com `porAtualizacao`, atualizados desde `desde` (sincronização automática). */
-  pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean): Promise<PedidoExterno[]>;
+  pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean, reconferir?: string[]): Promise<PedidoExterno[]>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
 }

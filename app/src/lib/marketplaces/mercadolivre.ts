@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type MarketplaceAdapter, type Tokens } from "./types";
+import { lerResposta, MarketplaceError, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
 const API = "https://api.mercadolibre.com";
@@ -114,7 +114,7 @@ export const mercadoLivre: MarketplaceAdapter = {
     return { idExterno: item.id, link: item.permalink };
   },
 
-  async pedidos(conta, desde, porAtualizacao) {
+  async pedidos(conta, desde, porAtualizacao, reconferir = []) {
     type Pedido = {
       id: number;
       status: string;
@@ -151,7 +151,49 @@ export const mercadoLivre: MarketplaceAdapter = {
       if (e === "shipped" || e === "not_delivered") return "shipped";
       return o.status;
     };
-    const out = [];
+    const montar = async (o: Pedido): Promise<PedidoExterno> => {
+      // Endereço e frete ficam no envio; sem ele o pedido entra do mesmo jeito.
+      const envio = o.shipping?.id ? await api<Envio>(`/shipments/${o.shipping.id}`, conta.accessToken).catch(() => null) : null;
+      const end = envio?.receiver_address;
+      const fiscal = await api<{ buyer?: { billing_info?: { identification?: { number?: string } } } }>(
+        `/orders/${o.id}/billing_info`,
+        conta.accessToken,
+        { headers: { "x-version": "2" } },
+      ).catch(() => null);
+      const documento = fiscal?.buyer?.billing_info?.identification?.number;
+      return {
+        idExterno: String(o.id),
+        status: statusReal(o, envio),
+        total: o.paid_amount ?? o.total_amount,
+        frete: envio?.lead_time?.cost ?? 0,
+        comprador: [o.buyer?.first_name, o.buyer?.last_name].filter(Boolean).join(" ") || o.buyer?.nickname || "",
+        data: new Date(o.date_created),
+        itens: (o.order_items ?? []).map((i) => ({
+          idAnuncio: i.item.id,
+          sku: i.item.seller_sku ?? "",
+          titulo: i.item.title,
+          quantidade: i.quantity,
+          valorUnitario: i.unit_price,
+        })),
+        entrega: end
+          ? {
+              nome: end.receiver_name ?? "",
+              documento,
+              telefone: end.receiver_phone,
+              endereco: end.address_line ?? "",
+              logradouro: end.street_name,
+              numero: end.street_number,
+              complemento: end.comment,
+              bairro: end.neighborhood?.name,
+              cidade: end.city?.name ?? "",
+              uf: (end.state?.id ?? "").replace(/^BR-/, ""),
+              cep: end.zip_code ?? "",
+            }
+          : null,
+        dados: { pedido: o, envio, fiscal },
+      };
+    };
+    const out: PedidoExterno[] = [];
     for (let offset = 0; offset < 5000; offset += 50) {
       const q = new URLSearchParams({
         seller: conta.idExterno,
@@ -161,49 +203,14 @@ export const mercadoLivre: MarketplaceAdapter = {
         offset: String(offset),
       });
       const r = await api<{ results: Pedido[]; paging?: { total?: number } }>(`/orders/search?${q}`, conta.accessToken);
-      for (const o of r.results) {
-        // Endereço e frete ficam no envio; sem ele o pedido entra do mesmo jeito.
-        const envio = o.shipping?.id ? await api<Envio>(`/shipments/${o.shipping.id}`, conta.accessToken).catch(() => null) : null;
-        const end = envio?.receiver_address;
-        const fiscal = await api<{ buyer?: { billing_info?: { identification?: { number?: string } } } }>(
-          `/orders/${o.id}/billing_info`,
-          conta.accessToken,
-          { headers: { "x-version": "2" } },
-        ).catch(() => null);
-        const documento = fiscal?.buyer?.billing_info?.identification?.number;
-        out.push({
-          idExterno: String(o.id),
-          status: statusReal(o, envio),
-          total: o.paid_amount ?? o.total_amount,
-          frete: envio?.lead_time?.cost ?? 0,
-          comprador: [o.buyer?.first_name, o.buyer?.last_name].filter(Boolean).join(" ") || o.buyer?.nickname || "",
-          data: new Date(o.date_created),
-          itens: (o.order_items ?? []).map((i) => ({
-            idAnuncio: i.item.id,
-            sku: i.item.seller_sku ?? "",
-            titulo: i.item.title,
-            quantidade: i.quantity,
-            valorUnitario: i.unit_price,
-          })),
-          entrega: end
-            ? {
-                nome: end.receiver_name ?? "",
-                documento,
-                telefone: end.receiver_phone,
-                endereco: end.address_line ?? "",
-                logradouro: end.street_name,
-                numero: end.street_number,
-                complemento: end.comment,
-                bairro: end.neighborhood?.name,
-                cidade: end.city?.name ?? "",
-                uf: (end.state?.id ?? "").replace(/^BR-/, ""),
-                cep: end.zip_code ?? "",
-              }
-            : null,
-          dados: { pedido: o, envio, fiscal },
-        });
-      }
+      for (const o of r.results) out.push(await montar(o));
       if (r.results.length < 50) break;
+    }
+    // Pedidos ainda em aberto que a busca por atualização não trouxe: o ML nem sempre marca o pedido
+    // como alterado quando só o envio muda (enviado/entregue). Confere um a um.
+    for (const id of reconferir.filter((id) => !out.some((p) => p.idExterno === id))) {
+      const o = await api<Pedido>(`/orders/${id}`, conta.accessToken).catch(() => null);
+      if (o) out.push(await montar(o));
     }
     return out;
   },
