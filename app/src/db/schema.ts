@@ -15,6 +15,8 @@ import {
 import { relations } from "drizzle-orm";
 import type { EntregaPedido, ItemPedido } from "@/lib/marketplaces/types";
 
+export type ComponenteFilamento = { filamentoId: number | null; gramas: number };
+
 const money = (name: string) => numeric(name, { precision: 14, scale: 2, mode: "number" });
 const rate = (name: string) => numeric(name, { precision: 7, scale: 4, mode: "number" });
 const timestamps = {
@@ -194,8 +196,10 @@ export const produtos = pgTable(
     cor: text("cor").notNull().default(""),
     filamentoG: integer("filamento_g").notNull().default(0),
     tempoImpressaoMin: integer("tempo_impressao_min").notNull().default(0),
-    /** Filamento usado na impressão (custo e "quanto dá para imprimir"). */
+    /** Filamento principal (o primeiro da composição); filamentoG é o total de gramas por peça. */
     filamentoId: integer("filamento_id"),
+    /** Filamentos usados na peça (multicor/AMS): cada um com as gramas por peça. Custo, produção e capacidade usam todos. */
+    composicao: jsonb("composicao").$type<ComponenteFilamento[]>().notNull().default([]),
     imagens: text("imagens").array().notNull().default([]),
     /** Vídeos MP4 (URLs públicas na pasta de uploads); a Shopee recebe o primeiro. */
     videos: text("videos").array().notNull().default([]),

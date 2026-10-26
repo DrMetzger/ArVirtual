@@ -4,7 +4,7 @@ import { Layers, Plus, Trash2, Wand2 } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, CardHeader, Input, Select } from "@/components/ui";
-import { custoImpressao, type ParametrosImpressao } from "@/lib/impressao";
+import { custoComposicao, gramasTotais, type Componente, type ParametrosImpressao } from "@/lib/impressao";
 import { cn, formatBRL, formatValor, parseDecimal } from "@/lib/utils";
 
 export type FilamentoOpt = { id: number; material: string; cor: string; marca: string; custoKg: number; saldoG: number; corHex: string };
@@ -52,7 +52,7 @@ export function VariacoesField({
   parametros,
   skuPai,
   precoPai,
-  filamentoG,
+  composicao,
   tempoMin,
   materialPai,
 }: {
@@ -61,7 +61,7 @@ export function VariacoesField({
   parametros: ParametrosImpressao;
   skuPai: string;
   precoPai: number;
-  filamentoG: number;
+  composicao: Componente[];
   tempoMin: number;
   materialPai: string;
 }) {
@@ -115,10 +115,13 @@ export function VariacoesField({
   const usados = new Set(linhas.map((l) => l.filamentoId).filter(Boolean));
   const disponiveis = filamentos.filter((f) => !usados.has(String(f.id)));
 
-  const custoDe = (l: Linha) => {
-    const fil = filamentos.find((f) => String(f.id) === l.filamentoId);
-    return custoImpressao(filamentoG, tempoMin, fil && fil.custoKg > 0 ? { ...parametros, custoFilamentoKg: fil.custoKg } : parametros).custo;
+  // O 1º filamento da composição vira o da cor da variação; os demais continuam iguais.
+  const compDe = (l: Linha): Componente[] => {
+    const base = composicao.length ? composicao : [{ filamentoId: null, gramas: 0 }];
+    return base.map((c, i) => (i === 0 ? { ...c, filamentoId: l.filamentoId ? Number(l.filamentoId) : null } : c));
   };
+  const custoDe = (l: Linha) => custoComposicao(compDe(l), tempoMin, parametros, filamentos).custo;
+  const filamentoG = gramasTotais(composicao);
   const json = JSON.stringify(
     linhas.map((l) => ({
       id: l.id,

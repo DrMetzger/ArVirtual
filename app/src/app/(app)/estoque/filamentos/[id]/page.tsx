@@ -35,7 +35,7 @@ export default async function FilamentoPage({ params }: { params: Promise<{ id: 
       .where(eq(movimentosFilamento.filamentoId, id))
       .orderBy(desc(movimentosFilamento.criadoEm), desc(movimentosFilamento.id))
       .limit(500),
-    capacidadeProducao().then((l) => l.filter((c) => c.filamentoId === id)),
+    capacidadeProducao().then((l) => l.filter((c) => c.filamentos.some((f) => f.id === id))),
   ]);
 
   return (

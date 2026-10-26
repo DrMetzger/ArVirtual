@@ -6,7 +6,7 @@ import { Alert, Card, CardHeader, Field, Input, Select } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import { produzir } from "./actions";
 
-type ProdutoOpt = { id: string; sku: string; nome: string; filamentoG: number; filamentoId: number | null };
+type ProdutoOpt = { id: string; sku: string; nome: string; filamentoG: number; filamentoId: number | null; composicao: { filamentoId: number | null; gramas: number }[] };
 type FilamentoOpt = { id: number; nome: string; saldoG: number };
 
 export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[]; filamentos: FilamentoOpt[] }) {
@@ -18,6 +18,13 @@ export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[];
   const p = produtos.find((x) => x.id === produtoId);
   const fil = filamentos.find((f) => String(f.id) === (filamentoId || String(p?.filamentoId ?? "")));
   const gramas = (p?.filamentoG ?? 0) * (Number(qtd) || 0) + (Number(perda) || 0);
+  // Peça multicor: o que sai de cada filamento (o 1º pode ser trocado acima; a perda sai dele).
+  const comp = p ? (p.composicao.length ? p.composicao : [{ filamentoId: p.filamentoId, gramas: p.filamentoG }]) : [];
+  const usos = comp.map((c, i) => {
+    const id = i === 0 && filamentoId ? Number(filamentoId) : c.filamentoId;
+    const f = filamentos.find((x) => x.id === id);
+    return { f, g: c.gramas * (Number(qtd) || 0) + (i === 0 ? Number(perda) || 0 : 0) };
+  });
 
   return (
     <Card>
@@ -46,7 +53,10 @@ export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[];
             <Input name="perdaG" type="number" min={0} value={perda} onChange={(e) => setPerda(e.target.value)} />
           </Field>
         </div>
-        <Field label="Filamento" hint={p && !p.filamentoId ? "Este produto não tem filamento no cadastro: escolha aqui." : undefined}>
+        <Field
+          label={comp.length > 1 ? "1º filamento (os outros vêm do cadastro)" : "Filamento"}
+          hint={p && !p.filamentoId ? "Este produto não tem filamento no cadastro: escolha aqui." : undefined}
+        >
           <Select name="filamentoId" value={filamentoId || String(p?.filamentoId ?? "")} onChange={(e) => setFilamentoId(e.target.value)}>
             <option value="">Sem baixa de filamento</option>
             {filamentos.map((f) => (
@@ -56,7 +66,16 @@ export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[];
             ))}
           </Select>
         </Field>
-        {p ? (
+        {p && usos.length > 1 ? (
+          <div className="grid gap-1 text-sm">
+            <span className="text-muted">Vai usar:</span>
+            {usos.map((u, i) => (
+              <span key={i} className={u.f && u.g > u.f.saldoG ? "text-red" : "text-muted"}>
+                • <b>{u.g} g</b> de {u.f ? `${u.f.nome} (tem ${u.f.saldoG} g)` : "filamento sem cadastro (não baixa)"}
+              </span>
+            ))}
+          </div>
+        ) : p ? (
           <p className={gramas > (fil?.saldoG ?? Infinity) ? "text-sm text-red" : "text-sm text-muted"}>
             Vai usar <b>{gramas} g</b> ({p.filamentoG} g × {qtd || 0}
             {Number(perda) ? ` + ${perda} g de perda` : ""}){fil ? ` de ${fil.nome}, que tem ${fil.saldoG} g.` : "."}

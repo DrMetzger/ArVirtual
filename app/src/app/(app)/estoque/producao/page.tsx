@@ -17,7 +17,7 @@ export default async function ProducaoPage() {
   await requireUser();
   const [listaProdutos, listaFilamentos, historico, capacidade] = await Promise.all([
     db
-      .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, filamentoG: produtos.filamentoG, filamentoId: produtos.filamentoId })
+      .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, filamentoG: produtos.filamentoG, filamentoId: produtos.filamentoId, composicao: produtos.composicao })
       .from(produtos)
       .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false)))
       .orderBy(asc(produtos.nome)),
@@ -45,7 +45,7 @@ export default async function ProducaoPage() {
         </div>
         <div className="grid content-start gap-6 lg:col-span-2">
           <Card>
-            <CardHeader title="Quanto dá para imprimir" description="Com o saldo de filamento de hoje, por produto (o filamento vem do cadastro do produto)." />
+            <CardHeader title="Quanto dá para imprimir" description="Com o saldo de filamento de hoje, por produto (peça multicor: o filamento que acabar primeiro limita)." />
             <div className="overflow-x-auto">
               <table className="table-base">
                 <thead>
@@ -67,10 +67,15 @@ export default async function ProducaoPage() {
                         <p className="text-xs text-muted">{c.filamentoG ? `${c.filamentoG} g/peça` : "sem gramas no cadastro"}</p>
                       </td>
                       <td>
-                        {c.filamento ? (
-                          <span className="flex items-center gap-2">
-                            <span className="size-3 rounded-full border border-border" style={{ background: c.filamento.corHex }} />
-                            {c.filamento.material} {c.filamento.cor}
+                        {c.filamentos.length ? (
+                          <span className="grid gap-0.5">
+                            {c.filamentos.map((f) => (
+                              <span key={f.id} className="flex items-center gap-2 whitespace-nowrap">
+                                <span className="size-3 rounded-full border border-border" style={{ background: f.corHex }} />
+                                {f.material} {f.cor}
+                                {c.filamentos.length > 1 ? <span className="text-xs text-muted">{f.gramas} g</span> : null}
+                              </span>
+                            ))}
                           </span>
                         ) : (
                           <Link href={`/produtos/${c.id}`} className="text-xs text-gold underline">
