@@ -1,4 +1,4 @@
-import { asc, ilike, or, sql } from "drizzle-orm";
+import { and, asc, ilike, isNull, or, sql } from "drizzle-orm";
 import { LayoutGrid, List, Package, Plus, Search } from "lucide-react";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
@@ -27,7 +27,9 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       nome: produtos.nome,
       preco: produtos.preco,
       custo: produtos.custo,
-      estoque: produtos.estoque,
+      // Produto com variações: soma o estoque delas.
+      estoque: sql<number>`case when "produtos"."tem_variacoes" then (select coalesce(sum(v.estoque), 0)::int from produtos v where v.pai_id = "produtos"."id") else "produtos"."estoque" end`,
+      variacoes: sql<number>`(select count(*)::int from produtos v where v.pai_id = "produtos"."id" and v.ativo)`,
       material: produtos.material,
       ativo: produtos.ativo,
       capa: sql<string | null>`${produtos.imagens}[1]`,
@@ -35,7 +37,18 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       anuncios: sql<number>`(select count(*)::int from anuncios a where a.produto_id = "produtos"."id" and a.status = 'publicado')`,
     })
     .from(produtos)
-    .where(q ? or(ilike(produtos.nome, `%${q}%`), ilike(produtos.sku, `%${q}%`)) : undefined)
+    .where(
+      and(
+        isNull(produtos.paiId),
+        q
+          ? or(
+              ilike(produtos.nome, `%${q}%`),
+              ilike(produtos.sku, `%${q}%`),
+              sql`exists (select 1 from produtos v where v.pai_id = "produtos"."id" and (v.sku ilike ${`%${q}%`} or v.cor ilike ${`%${q}%`}))`,
+            )
+          : undefined,
+      ),
+    )
     .orderBy(asc(produtos.nome))
     .limit(300);
 
@@ -124,6 +137,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                       {p.nome}
                     </Link>
                     {!p.ativo ? <Badge tone="red" className="ml-2">Inativo</Badge> : null}
+                    {p.variacoes ? <Badge tone="blue" className="ml-2">{p.variacoes} variações</Badge> : null}
                   </td>
                   <td className="text-muted">{p.material || "—"}</td>
                   <td className="text-right whitespace-nowrap text-muted">{p.custo ? formatBRL(p.custo) : "—"}</td>
@@ -150,6 +164,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                     </div>
                   )}
                   {!p.ativo ? <Badge tone="red" className="absolute left-3 top-3">Inativo</Badge> : null}
+                  {p.variacoes ? (
+                    <Badge tone="blue" className="absolute bottom-3 left-3">
+                      {p.variacoes} variações
+                    </Badge>
+                  ) : null}
                   {p.anuncios > 0 ? (
                     <Badge tone="gold" className="absolute right-3 top-3 bg-[#0a1a33]/80 text-[#e6c158]">
                       {p.anuncios} anúncio{p.anuncios > 1 ? "s" : ""}

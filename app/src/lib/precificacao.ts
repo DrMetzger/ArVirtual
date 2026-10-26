@@ -84,14 +84,16 @@ function precoPara(alvo: number, t: TaxasCanal, p: ParametrosPreco) {
   return 0;
 }
 
-export function precosPorCanal(custo: number, precoAtual: number, p: ParametrosPreco): ResultadoCanal[] {
+export function precosPorCanal(custo: number, precoAtual: number, p: ParametrosPreco, precoDoCanal: Partial<Record<CanalPreco, number>> = {}): ResultadoCanal[] {
   return (Object.keys(p.canais) as CanalPreco[]).map((canal) => {
     const t = p.canais[canal];
+    // Preço próprio do canal (cadastro do produto) ou, sem ele, o preço de venda.
+    const preco = precoDoCanal[canal] || precoAtual;
     return {
       canal,
       sugerido: custo > 0 ? precoPara(custo * (1 + p.margem / 100), t, p) : 0,
       minimo: custo > 0 ? precoPara(custo, t, p) : 0,
-      atual: precoAtual > 0 ? liquido(precoAtual, custo, t, p) : null,
+      atual: preco > 0 ? liquido(preco, custo, t, p) : null,
     };
   });
 }

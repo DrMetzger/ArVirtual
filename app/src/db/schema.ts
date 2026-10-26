@@ -1,4 +1,5 @@
 import {
+  type AnyPgColumn,
   boolean,
   index,
   integer,
@@ -198,10 +199,18 @@ export const produtos = pgTable(
     imagens: text("imagens").array().notNull().default([]),
     /** Vídeos MP4 (URLs públicas na pasta de uploads); a Shopee recebe o primeiro. */
     videos: text("videos").array().notNull().default([]),
+    /** Produto com variações (cores/filamentos): ele só agrupa; quem vende e tem estoque são as variações. */
+    temVariacoes: boolean("tem_variacoes").notNull().default(false),
+    /** Variação: aponta para o produto principal (herda fiscal, fotos e medidas). */
+    paiId: uuid("pai_id").references((): AnyPgColumn => produtos.id, { onDelete: "cascade" }),
+    /** Atributos da variação, ex.: { Cor: "Preto", Material: "PLA" }. */
+    atributos: jsonb("atributos").$type<Record<string, string>>().notNull().default({}),
+    /** Preço de venda por canal (vazio = usa o preço de venda). */
+    precosCanal: jsonb("precos_canal").$type<Partial<Record<"mercadolivre" | "shopee" | "magalu" | "loja", number>>>().notNull().default({}),
     ativo: boolean("ativo").notNull().default(true),
     ...timestamps,
   },
-  (t) => [uniqueIndex("produtos_sku_idx").on(t.sku)],
+  (t) => [uniqueIndex("produtos_sku_idx").on(t.sku), index("produtos_pai_idx").on(t.paiId)],
 );
 
 // ---------- Fiscal ----------

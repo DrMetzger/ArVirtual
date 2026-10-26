@@ -23,7 +23,7 @@ export default async function NotaEntradaPage({ params }: { params: Promise<{ id
   if (!nota) notFound();
   const [fils, prods] = await Promise.all([
     db.select().from(filamentos).orderBy(asc(filamentos.material), asc(filamentos.cor)),
-    db.select({ id: produtos.id, nome: produtos.nome }).from(produtos).orderBy(asc(produtos.nome)),
+    db.select({ id: produtos.id, nome: produtos.nome }).from(produtos).where(eq(produtos.temVariacoes, false)).orderBy(asc(produtos.nome)),
   ]);
   const st = STATUS_ENTRADA[nota.status];
   return (

@@ -1,4 +1,4 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq } from "drizzle-orm";
 import { Printer } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -19,7 +19,7 @@ export default async function ProducaoPage() {
     db
       .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, filamentoG: produtos.filamentoG, filamentoId: produtos.filamentoId })
       .from(produtos)
-      .where(eq(produtos.ativo, true))
+      .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false)))
       .orderBy(asc(produtos.nome)),
     db.select().from(filamentos).where(eq(filamentos.ativo, true)).orderBy(asc(filamentos.material), asc(filamentos.cor)),
     db

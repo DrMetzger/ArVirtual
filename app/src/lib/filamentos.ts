@@ -1,5 +1,5 @@
 import "server-only";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { filamentos, movimentosFilamento, producoes, produtos } from "@/db/schema";
 import { movimentar } from "@/lib/estoque";
@@ -108,7 +108,7 @@ export async function capacidadeProducao() {
         estoque: produtos.estoque,
       })
       .from(produtos)
-      .where(eq(produtos.ativo, true)),
+      .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false))),
     db.select().from(filamentos),
   ]);
   return lista

@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { Boxes, Package, Search } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -33,7 +33,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
         capa: produtos.imagens,
       })
       .from(produtos)
-      .where(eq(produtos.ativo, true))
+      .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false)))
       .orderBy(asc(produtos.nome))
   ).map((p) => ({ ...p, situacao: (p.estoque <= 0 ? "zerado" : p.estoque <= p.minimo ? "repor" : "ok") as keyof typeof SITUACAO }));
   const busca = q.trim().toLowerCase();

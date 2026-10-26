@@ -1,4 +1,4 @@
-import { asc, eq } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { CANAIS } from "@/components/marca";
 import type { Metadata } from "next";
 import { Alert, PageHeader } from "@/components/ui";
@@ -19,7 +19,7 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
   const listaProdutos = await db
     .select({ id: produtos.id, sku: produtos.sku, nome: produtos.nome, preco: produtos.preco, estoque: produtos.estoque })
     .from(produtos)
-    .where(eq(produtos.ativo, true))
+    .where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false)))
     .orderBy(asc(produtos.nome));
 
   // Nota a partir de um pedido de marketplace: comprador, endereço e itens já preenchidos.
