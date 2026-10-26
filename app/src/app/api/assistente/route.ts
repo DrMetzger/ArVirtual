@@ -1,11 +1,12 @@
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { conversasIa, memoriasIa, mensagensIa, type AnexoIa, type MensagemIa } from "@/db/schema";
-import { parteDoAnexo, salvarAnexo, salvarImagemGerada } from "@/lib/assistente/arquivos";
+import { parteDoAnexo, salvarAnexo, salvarArquivoGerado, salvarImagemGerada } from "@/lib/assistente/arquivos";
+import { desenharSvg } from "@/lib/assistente/desenho";
 import { extrairMemorias, montarSistema } from "@/lib/assistente/contexto";
 import { paraTela } from "@/lib/assistente/tipos";
 import { requireUser } from "@/lib/auth";
-import { gerarComGemini, gerarImagemComGemini, transmitirComGemini, type ChatMessage, type Parte } from "@/lib/gemini";
+import { gerarComGemini, gerarImagemComGemini, SemCotaImagem, transmitirComGemini, type ChatMessage, type Parte } from "@/lib/gemini";
 import { getSetting } from "@/lib/settings";
 
 const PROPORCOES = ["1:1", "4:3", "3:4", "16:9", "9:16"];
@@ -132,9 +133,24 @@ export async function POST(req: Request) {
           const anteriores = historico.filter((m) => m.papel === "user" && m.id !== mensagemUsuario!.id && m.texto).slice(-4).map((m) => `- ${m.texto.slice(0, 300)}`);
           const partes = await Promise.all(base.map((a) => parteDoAnexo(a, true)));
           const pedido = `${anteriores.length ? `Pedidos anteriores nesta conversa (contexto):\n${anteriores.join("\n")}\n\n` : ""}${base.length && !anexosAtuais.length ? "Edite a imagem anexada (a última que você gerou). " : ""}${mensagemUsuario!.texto || "Melhore esta foto de produto para anúncio de marketplace."}`;
-          const r = await gerarImagemComGemini([{ role: "user", text: pedido, partes }], { system: SISTEMA_IMAGEM, proporcao });
-          const salvas = await Promise.all(r.imagens.map((img, i) => salvarImagemGerada(img, i)));
-          resposta = { texto: r.texto || (salvas.length ? "" : "O modelo não devolveu imagem."), modelo: r.modelo, anexos: salvas, fontes: [] };
+          try {
+            const r = await gerarImagemComGemini([{ role: "user", text: pedido, partes }], { system: SISTEMA_IMAGEM, proporcao });
+            const salvas = await Promise.all(r.imagens.map((img, i) => salvarImagemGerada(img, i)));
+            resposta = { texto: r.texto || (salvas.length ? "" : "O modelo não devolveu imagem."), modelo: r.modelo, anexos: salvas, fontes: [] };
+          } catch (e) {
+            if (!(e instanceof SemCotaImagem)) throw e;
+            // API gratuita sem cota de imagem: a IA de texto (grátis) desenha em vetor.
+            enviar({ t: "status", texto: "Desenhando em vetor (SVG)..." });
+            const d = await desenharSvg(mensagemUsuario!.texto || pedido, proporcao);
+            const nome = (mensagemUsuario!.texto || "desenho").normalize("NFD").replace(/[^\w]+/g, "-").replace(/^-|-$/g, "").slice(0, 40).toLowerCase() || "desenho";
+            const anexos = [await salvarArquivoGerado(d.png, `${nome}.png`, "image/png"), await salvarArquivoGerado(Buffer.from(d.svg), `${nome}.svg`, "application/svg")];
+            resposta = {
+              texto: `Desenho vetorial feito pela IA de texto (grátis), porque a API gratuita do Google não gera fotos.${base.length ? " A foto anexada não pôde ser editada (isso precisa do Gemini com faturamento)." : ""} O arquivo **.svg** abre no Bambu Studio, Fusion 360 ou Inkscape — bom para molde e gravação. Para foto realista, use o botão do Gemini ou ative o faturamento.`,
+              modelo: `${d.modelo} · SVG`,
+              anexos,
+              fontes: [],
+            };
+          }
         } else {
           const sistema = await montarSistema();
           const r = await transmitirComGemini(
