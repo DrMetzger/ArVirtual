@@ -332,6 +332,7 @@ export function Chat({
                 <Mensagem
                   key={m.id}
                   m={m}
+                  pedido={m.papel === "model" ? (msgs[i - 1]?.texto ?? "") : ""}
                   carregando={enviando && i === msgs.length - 1 && m.papel === "model"}
                   status={status}
                   podeRegenerar={!enviando && m === ultimaModelo && i === msgs.length - 1 && !msgs[i - 1]?.local}
@@ -519,7 +520,21 @@ function Anexos({ anexos, previas, grande }: { anexos: AnexoTela[]; previas?: Ms
   );
 }
 
-function Mensagem({ m, carregando, status, podeRegenerar, onRegenerar }: { m: Msg; carregando: boolean; status: string; podeRegenerar: boolean; onRegenerar: () => void }) {
+function Mensagem({
+  m,
+  pedido,
+  carregando,
+  status,
+  podeRegenerar,
+  onRegenerar,
+}: {
+  m: Msg;
+  pedido: string;
+  carregando: boolean;
+  status: string;
+  podeRegenerar: boolean;
+  onRegenerar: () => void;
+}) {
   const [copiado, setCopiado] = useState(false);
   if (m.papel === "user") {
     return (
@@ -544,7 +559,25 @@ function Mensagem({ m, carregando, status, podeRegenerar, onRegenerar }: { m: Ms
         {carregando && !texto ? <p className="pt-1.5 text-sm text-muted">{status || "Pensando..."}</p> : null}
         {texto ? (
           m.erro ? (
-            <div className="rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-sm text-red">{texto}</div>
+            <div className="grid gap-3 rounded-xl border border-red/40 bg-red/10 px-4 py-3 text-sm text-red">
+              {texto}
+              {/sem cota de imagem/i.test(texto) && pedido ? (
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(pedido);
+                      window.open("https://gemini.google.com/app", "_blank", "noopener");
+                    }}
+                  >
+                    <Copy /> Copiar o pedido e abrir o Gemini
+                  </Button>
+                  <span className="self-center text-xs text-muted">Lá: cole (Ctrl+V), gere e arraste a imagem de volta para cá.</span>
+                </div>
+              ) : null}
+            </div>
           ) : (
             <Markdown texto={texto} />
           )
