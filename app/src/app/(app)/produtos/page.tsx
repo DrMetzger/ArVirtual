@@ -6,7 +6,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, buttonClass, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { produtos } from "@/db/schema";
+import { produtos, type Marketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
 import { LinhaLink } from "@/components/linha-link";
@@ -36,7 +36,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       ativo: produtos.ativo,
       capa: sql<string | null>`${produtos.imagens}[1]`,
       // Nomes qualificados: dentro da subconsulta "id" seria a coluna de anuncios.
-      anuncios: sql<number>`(select count(*)::int from anuncios a where a.produto_id = "produtos"."id" and a.status = 'publicado')`,
+      // Marketplaces onde o produto está publicado (uma bandeirinha por plataforma).
+      anuncios: sql<Marketplace[]>`array(select distinct a.marketplace from anuncios a where a.produto_id = "produtos"."id" and a.status = 'publicado' order by 1)`,
     })
     .from(produtos)
     .where(
@@ -149,7 +150,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   </td>
                   <td className="text-right whitespace-nowrap">{p.custo && p.preco ? `${Math.round((p.preco / p.custo - 1) * 100)}%` : "—"}</td>
                   <td className={cn("text-right", p.estoque <= 0 && "font-semibold text-red")}>{p.estoque}</td>
-                  <td>{p.anuncios > 0 ? <Badge tone="gold">{p.anuncios}</Badge> : <span className="text-muted">—</span>}</td>
+                  <td>{p.anuncios.length ? <Bandeiras canais={p.anuncios} /> : <span className="text-muted">—</span>}</td>
                 </LinhaLink>
               ))}
             </tbody>
@@ -174,11 +175,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                       {p.variacoes} variações
                     </Badge>
                   ) : null}
-                  {p.anuncios > 0 ? (
-                    <Badge tone="gold" className="absolute right-3 top-3 bg-[#0a1a33]/80 text-[#e6c158]">
-                      {p.anuncios} anúncio{p.anuncios > 1 ? "s" : ""}
-                    </Badge>
-                  ) : null}
+                  {p.anuncios.length ? <Bandeiras canais={p.anuncios} className="absolute right-3 top-3" /> : null}
                 </div>
                 <div className="grid gap-1 p-4">
                   <p className="font-mono text-xs text-muted">{p.sku}</p>
@@ -215,6 +212,17 @@ function PrecosPlataforma({ precos, padrao }: { precos: Partial<Record<string, n
           <MarcaIcone canal={c} className="size-4 p-[2px]" />
           {formatBRL(precos[c]!)}
         </span>
+      ))}
+    </span>
+  );
+}
+
+/** Uma bandeirinha (ícone da marca) para cada marketplace onde o produto está anunciado. */
+function Bandeiras({ canais, className }: { canais: Marketplace[]; className?: string }) {
+  return (
+    <span className={cn("flex items-center gap-1", className)}>
+      {canais.map((c) => (
+        <MarcaIcone key={c} canal={c} className="size-7" />
       ))}
     </span>
   );
