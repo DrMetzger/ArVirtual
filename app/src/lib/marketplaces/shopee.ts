@@ -277,10 +277,10 @@ export const shopee: MarketplaceAdapter = {
     return lista;
   },
 
-  async pedidos(conta, desde, porAtualizacao) {
+  async pedidos(conta, { desde, ate, porAtualizacao }) {
     // A Shopee aceita janelas de no máximo 15 dias por consulta.
     const sns: string[] = [];
-    const agora = Math.floor(Date.now() / 1000);
+    const agora = Math.floor(Math.min(Date.now(), ate?.getTime() ?? Infinity) / 1000);
     for (let from = Math.floor(desde.getTime() / 1000); from < agora; from += 15 * 86400) {
       let cursor = "";
       do {

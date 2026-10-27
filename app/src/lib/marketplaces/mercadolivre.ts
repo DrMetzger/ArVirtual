@@ -179,7 +179,7 @@ export const mercadoLivre: MarketplaceAdapter = {
     return lista;
   },
 
-  async pedidos(conta, desde, porAtualizacao, reconferir = []) {
+  async pedidos(conta, { desde, ate, porAtualizacao, reconferir = [] }) {
     type Pedido = {
       id: number;
       status: string;
@@ -263,6 +263,7 @@ export const mercadoLivre: MarketplaceAdapter = {
       const q = new URLSearchParams({
         seller: conta.idExterno,
         [porAtualizacao ? "order.date_last_updated.from" : "order.date_created.from"]: desde.toISOString().replace("Z", "-00:00"),
+        ...(ate ? { [porAtualizacao ? "order.date_last_updated.to" : "order.date_created.to"]: ate.toISOString().replace("Z", "-00:00") } : {}),
         sort: "date_desc",
         limit: "50",
         offset: String(offset),

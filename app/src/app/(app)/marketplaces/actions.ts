@@ -6,19 +6,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { anuncios, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { sincronizarPedidos } from "@/lib/marketplaces";
-
-export async function sincronizar() {
-  await requireUser();
-  const r = await sincronizarPedidos(365);
-  revalidatePath("/");
-  const erros = r.filter((x) => x.erro);
-  const total = r.reduce((s, x) => s + x.pedidos, 0);
-  const q = erros.length
-    ? `erro=${encodeURIComponent(erros.map((e) => `${e.conta}: ${e.erro}`).join(" | "))}`
-    : `ok=${encodeURIComponent(r.length ? `${total} pedidos sincronizados de ${r.length} conta(s).` : "Nenhuma conta conectada.")}`;
-  redirect(`/marketplaces?${q}`);
-}
 
 export async function desconectar(id: number) {
   await requireUser();

@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, ilike, or, sql, type SQL } from "drizzle-orm";
 import { CANAIS, MarcaIcone } from "@/components/marca";
-import { FileDown, Plus, RefreshCw, Search, ShoppingCart } from "lucide-react";
+import { FileDown, Plus, Search, ShoppingCart } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, Button, buttonClass, Card, EmptyState, Input, PageHeader, Select } from "@/components/ui";
@@ -12,8 +12,10 @@ import { StatusNota } from "../notas/status";
 import { requireUser } from "@/lib/auth";
 import { numeroPedido, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { cn, formatBRL, formatDate } from "@/lib/utils";
-import { buscarNotas, sincronizarAgora } from "./actions";
+import { buscarNotas } from "./actions";
+import { SincronizarPedidos } from "@/components/sincronizar-pedidos";
 import { notasDosPedidos } from "@/lib/marketplaces/notas-externas";
+import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Pedidos" };
@@ -83,7 +85,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               : [desc(pedidosMarketplace.data), desc(pedidosMarketplace.id)]),
       )
       .limit(5000),
-    db.select({ id: contasMarketplace.id, ultima: contasMarketplace.ultimaSincronizacao }).from(contasMarketplace),
+    db.select({ id: contasMarketplace.id, nome: contasMarketplace.nome, marketplace: contasMarketplace.marketplace, ultima: contasMarketplace.ultimaSincronizacao }).from(contasMarketplace),
   ]);
 
   // A situação é calculada a partir do status de cada marketplace, então o filtro e os totais são feitos aqui.
@@ -131,11 +133,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
               <FileDown /> Buscar notas do Magalu
             </SubmitButton>
           </form>
-          <form action={sincronizarAgora.bind(null, periodo === "todos" ? 3650 : Math.max(Number(periodo), 30))}>
-            <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
-              <RefreshCw /> Sincronizar agora
-            </SubmitButton>
-          </form>
+          <SincronizarPedidos contas={contas.map((c) => ({ id: c.id, nome: c.nome, marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome }))} voltar="/pedidos" />
           </>
         }
       />

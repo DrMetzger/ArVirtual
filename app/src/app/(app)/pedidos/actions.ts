@@ -15,17 +15,30 @@ import { importarNotasDoPedido } from "@/lib/marketplaces/notas-externas";
 import type { Situacao } from "@/lib/marketplaces/situacao";
 import { cadastrarClienteDoPedido, garantirEnderecoEntrega } from "@/lib/pedidos";
 
-export async function sincronizarAgora(dias: number) {
+/** Botão Sincronizar (Pedidos e Marketplaces): só novidades, ou os pedidos comprados no período, numa conta ou em todas. */
+export async function sincronizarManual(voltar: string, form: FormData) {
   await requireUser();
-  const r = await sincronizarPedidos(dias);
+  const conta = Number(form.get("conta")) || undefined;
+  // Datas do formulário são dias no horário de Brasília.
+  const de = new Date(`${form.get("de")}T00:00:00-03:00`);
+  const ate = new Date(`${form.get("ate")}T23:59:59-03:00`);
+  const novidades = form.get("modo") === "novidades" || Number.isNaN(de.getTime());
+  const r = novidades
+    ? await sincronizarPedidos({ tipo: "novidades" })
+    : await sincronizarPedidos({
+        tipo: "periodo",
+        desde: de,
+        ate: Number.isNaN(ate.getTime()) || ate > new Date() ? undefined : ate,
+        contas: conta ? [conta] : undefined,
+      });
   revalidatePath("/pedidos");
   revalidatePath("/");
   const erros = r.filter((x) => x.erro);
   const total = r.reduce((s, x) => s + x.pedidos, 0);
   const q = erros.length
     ? `erro=${encodeURIComponent(erros.map((e) => `${e.conta}: ${e.erro}`).join(" | "))}`
-    : `ok=${encodeURIComponent(r.length ? `${total} pedido(s) atualizados de ${r.length} conta(s).` : "Nenhuma conta conectada: conecte em Marketplaces.")}`;
-  redirect(`/pedidos?${q}`);
+    : `ok=${encodeURIComponent(r.length ? `${total} pedido(s) ${novidades ? "novos ou alterados" : "no período"}, de ${r.length} conta(s).` : "Nenhuma conta conectada: conecte em Marketplaces.")}`;
+  redirect(`${voltar}${voltar.includes("?") ? "&" : "?"}${q}`);
 }
 
 /** Puxa do marketplace (Magalu) as NF-e emitidas fora e liga aos pedidos. */
