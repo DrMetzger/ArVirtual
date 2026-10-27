@@ -31,3 +31,8 @@ export async function salvarVideo(file: File, origin: string): Promise<string> {
   await writeFile(`${UPLOAD_DIR}/${nome}`, Buffer.from(await file.arrayBuffer()));
   return `${process.env.APP_URL ?? origin}/uploads/${nome}`;
 }
+
+/** Arquivos de impressão (privados: só com login). A impressora A1 mini abre 3MF, STL, OBJ, STEP e G-code. */
+export const PASTA_IMPRESSAO = `${UPLOAD_DIR}/impressao`;
+export const EXTENSOES_IMPRESSAO = ["3mf", "stl", "obj", "step", "stp", "gcode", "amf", "ply", "zip"];
+export const MAX_ARQUIVO_IMPRESSAO = 150 * 1024 * 1024;
