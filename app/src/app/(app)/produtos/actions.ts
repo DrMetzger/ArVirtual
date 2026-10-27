@@ -1,19 +1,20 @@
 "use server";
 
+import { rm } from "node:fs/promises";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
-import { anuncios, contasMarketplace, movimentosEstoque, produtos } from "@/db/schema";
+import { anuncios, arquivosProduto, contasMarketplace, movimentosEstoque, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
 import { movimentar } from "@/lib/estoque";
-import { salvarImagem, salvarVideo } from "@/lib/uploads";
+import { PASTA_IMPRESSAO, salvarImagem, salvarVideo } from "@/lib/uploads";
 import { onlyDigits, parseDecimal } from "@/lib/utils";
 
 export type FormState = { erro?: string; ok?: string } | null;
@@ -246,7 +247,10 @@ async function salvarVariacoes(
 
 export async function excluirProduto(id: string) {
   await requireUser();
+  // Os registros dos arquivos de impressão saem junto (cascade); os arquivos no disco, aqui.
+  const arquivos = await db.select({ arquivo: arquivosProduto.arquivo }).from(arquivosProduto).where(eq(arquivosProduto.produtoId, id));
   await db.delete(produtos).where(eq(produtos.id, id));
+  await Promise.all(arquivos.map((a) => rm(`${PASTA_IMPRESSAO}/${a.arquivo}`, { force: true })));
   revalidatePath("/produtos");
   redirect("/produtos");
 }

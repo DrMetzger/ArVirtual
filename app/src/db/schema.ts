@@ -394,6 +394,26 @@ export const pedidosMarketplace = pgTable(
   ],
 );
 
+/** Arquivos de impressão do produto (3MF, STL, G-code...): ficam no servidor para quem vai imprimir baixar. */
+export const arquivosProduto = pgTable(
+  "arquivos_produto",
+  {
+    id: serial("id").primaryKey(),
+    produtoId: uuid("produto_id")
+      .notNull()
+      .references(() => produtos.id, { onDelete: "cascade" }),
+    /** Nome original do arquivo (é o nome usado no download). */
+    nome: text("nome").notNull(),
+    /** Nome no disco, dentro de UPLOAD_DIR/impressao. */
+    arquivo: text("arquivo").notNull(),
+    tamanho: integer("tamanho").notNull(),
+    observacao: text("observacao").notNull().default(""),
+    enviadoPor: text("enviado_por").notNull().default(""),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("arquivos_produto_produto_idx").on(t.produtoId)],
+);
+
 /** NF-e emitida fora do sistema e informada ao marketplace (ex.: Magalu devolve chave e XML), ligada ao pedido. */
 export const notasExternas = pgTable(
   "notas_externas",

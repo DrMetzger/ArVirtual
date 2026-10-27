@@ -5,7 +5,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { anuncios, contasMarketplace, produtos } from "@/db/schema";
+import { anuncios, arquivosProduto, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
@@ -14,6 +14,7 @@ import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/s
 import { formatBRL, formatDate } from "@/lib/utils";
 import { excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
+import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
 
 export default async function ProdutoPage({
@@ -34,7 +35,7 @@ export default async function ProdutoPage({
   const variacoes = produto.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)).orderBy(asc(produtos.cor)) : [];
 
   const cfgMl = await getSettings(["mercadolivre.tipoAnuncio", "mercadolivre.freteGratis"]);
-  const [contas, historico, parametros, ia, precos] = await Promise.all([
+  const [contas, historico, parametros, ia, precos, arquivos] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
     // Histórico do produto e das variações dele.
     db.query.anuncios.findMany({
@@ -46,6 +47,7 @@ export default async function ProdutoPage({
     getParametrosImpressao(),
     geminiConfigurado(),
     getParametrosPreco(),
+    db.select().from(arquivosProduto).where(eq(arquivosProduto.produtoId, id)).orderBy(desc(arquivosProduto.criadoEm)),
   ]);
 
   return (
@@ -71,6 +73,10 @@ export default async function ProdutoPage({
           key={[...produto.imagens, ...produto.videos, ...variacoes.map((v) => `${v.id}${v.estoque}`)].join("|")}
           variacoes={variacoes.map((v) => ({ id: v.id, sku: v.sku, cor: v.cor, material: v.material, filamentoId: v.filamentoId, preco: v.preco, gtin: v.gtin, estoque: v.estoque, ativo: v.ativo }))}
           produto={produto} parametros={parametros} precos={precos} filamentos={await listaFilamentos()} />
+        <ArquivosImpressao
+          produtoId={id}
+          iniciais={arquivos.map((a) => ({ id: a.id, nome: a.nome, tamanho: a.tamanho, observacao: a.observacao, enviadoPor: a.enviadoPor, criadoEm: a.criadoEm }))}
+        />
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}
