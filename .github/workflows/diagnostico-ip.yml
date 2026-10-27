@@ -13,9 +13,9 @@ jobs:
         run: |
           sudo apt-get install -y -qq sshpass >/dev/null
           sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
-          echo "VM ipv4: $(curl -s4 --max-time 10 https://api.ipify.org || echo sem)"
+          echo "VM ipv4: $(curl -s4 --max-time 10 https://api.ipify.org | sed "s/\./ . /g")"
           echo "VM ipv6: $(curl -s6 --max-time 10 https://api64.ipify.org || echo sem)"
           cd /opt/arvirtual-app
-          echo "container: $(docker compose exec -T app node -e "fetch('https://api64.ipify.org').then(r=>r.text()).then(console.log).catch(e=>console.log('erro',e.message))")"
-          echo "container ipv4: $(docker compose exec -T app node -e "fetch('https://api.ipify.org').then(r=>r.text()).then(console.log).catch(e=>console.log('erro',e.message))")"
+          echo "container: $(docker compose exec -T app node -e "fetch('https://api64.ipify.org').then(r=>r.text()).then(t=>console.log(t.split('.').join(' . ')))")"
+          echo "container ipv4: $(docker compose exec -T app node -e "fetch('https://api.ipify.org').then(r=>r.text()).then(t=>console.log(t.split('.').join(' . ')))")"
           REMOTO
