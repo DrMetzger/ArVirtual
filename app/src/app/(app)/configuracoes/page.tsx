@@ -49,6 +49,12 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       </>
     ),
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
+    "Shopee Afiliados": (
+      <>
+        Em affiliate.shopee.com.br › Open API (precisa ser afiliado aprovado), gere o App ID e a Senha. Com eles o ERP busca produtos com comissão, gera seus links de
+        afiliado e traz as comissões a cada 6 horas.
+      </>
+    ),
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
     Magalu: <MagaluGuia base={process.env.APP_URL ?? origin} clientId={(await getSetting("magalu.clientId")) ?? ""} />,
     "Impressão 3D: custos": "Usado no cálculo do custo de produção dos produtos.",
