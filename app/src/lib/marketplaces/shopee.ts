@@ -1,7 +1,7 @@
 import "server-only";
 import { createHash, createHmac } from "node:crypto";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
+import { lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
 
 // Shopee Open Platform v2: https://open.shopee.com/documents
 // Toda chamada é assinada com HMAC-SHA256(partner_key, partner_id + path + timestamp [+ access_token + shop_id]).
@@ -239,6 +239,42 @@ export const shopee: MarketplaceAdapter = {
     });
     const itemId = String(r.response.item_id);
     return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
+  },
+
+  async anuncios(conta) {
+    const ids: { id: number; status: string }[] = [];
+    for (const status of ["NORMAL", "UNLIST"]) {
+      for (let offset = 0; offset < 10_000; ) {
+        const r = await shopCall<ShopeeBase & { response: { item?: { item_id: number }[]; has_next_page: boolean; next_offset: number } }>(
+          conta,
+          "/api/v2/product/get_item_list",
+          { query: { offset: String(offset), page_size: "100", item_status: status } },
+        );
+        ids.push(...(r.response.item ?? []).map((i) => ({ id: i.item_id, status })));
+        if (!r.response.has_next_page) break;
+        offset = r.response.next_offset;
+      }
+    }
+    type Item = { item_id: number; item_name: string; item_sku?: string; price_info?: { current_price: number }[]; image?: { image_url_list?: string[] } };
+    const lista: AnuncioExterno[] = [];
+    for (let i = 0; i < ids.length; i += 50) {
+      const lote = ids.slice(i, i + 50);
+      const r = await shopCall<ShopeeBase & { response: { item_list: Item[] } }>(conta, "/api/v2/product/get_item_base_info", {
+        query: { item_id_list: lote.map((x) => x.id).join(",") },
+      });
+      for (const it of r.response.item_list ?? []) {
+        lista.push({
+          idExterno: String(it.item_id),
+          titulo: it.item_name,
+          sku: it.item_sku ?? "",
+          preco: it.price_info?.[0]?.current_price ?? null,
+          link: `https://shopee.com.br/product/${conta.idExterno}/${it.item_id}`,
+          imagem: it.image?.image_url_list?.[0] ?? "",
+          status: lote.find((x) => x.id === it.item_id)?.status === "UNLIST" ? "pausado" : "ativo",
+        });
+      }
+    }
+    return lista;
   },
 
   async pedidos(conta, desde, porAtualizacao) {

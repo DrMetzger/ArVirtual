@@ -32,6 +32,18 @@ export type DadosAnuncio = {
 
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
 
+/** Anúncio que já existe na conta do marketplace (criado lá ou em outro sistema). */
+export type AnuncioExterno = {
+  idExterno: string;
+  titulo: string;
+  sku: string;
+  preco: number | null;
+  link: string;
+  imagem: string;
+  /** Ativo, pausado etc., como o marketplace informa. */
+  status: string;
+};
+
 export type ItemPedido = {
   /** ID do anúncio/item no marketplace (liga ao cadastro pelo histórico de anúncios). */
   idAnuncio: string;
@@ -87,6 +99,8 @@ export interface MarketplaceAdapter {
   pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean, reconferir?: string[]): Promise<PedidoExterno[]>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
+  /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
+  anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
 }
 
 export class MarketplaceError extends Error {}

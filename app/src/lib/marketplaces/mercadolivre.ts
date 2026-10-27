@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
+import { lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
 const API = "https://api.mercadolibre.com";
@@ -135,6 +135,48 @@ export const mercadoLivre: MarketplaceAdapter = {
       }).catch(() => undefined); // o anúncio já existe; a descrição pode ser ajustada depois
     }
     return { idExterno: item.id, link: item.permalink };
+  },
+
+  async anuncios(conta) {
+    // search_type=scan: percorre todos os anúncios (a busca normal para em 1.000).
+    const ids: string[] = [];
+    let scroll = "";
+    for (let i = 0; i < 100; i++) {
+      const q = new URLSearchParams({ search_type: "scan", limit: "100", ...(scroll ? { scroll_id: scroll } : {}) });
+      const r = await api<{ results: string[]; scroll_id?: string }>(`/users/${conta.idExterno}/items/search?${q}`, conta.accessToken);
+      if (!r.results.length) break;
+      ids.push(...r.results);
+      scroll = r.scroll_id ?? "";
+      if (!scroll) break;
+    }
+    type Item = {
+      id: string;
+      title: string;
+      price: number;
+      permalink: string;
+      status: string;
+      thumbnail: string;
+      seller_custom_field: string | null;
+      attributes?: { id: string; value_name: string | null }[];
+    };
+    const lista: AnuncioExterno[] = [];
+    for (let i = 0; i < ids.length; i += 20) {
+      const q = new URLSearchParams({ ids: ids.slice(i, i + 20).join(","), attributes: "id,title,price,permalink,status,thumbnail,seller_custom_field,attributes" });
+      const r = await api<{ code: number; body: Item }[]>(`/items?${q}`, conta.accessToken);
+      for (const { code, body: it } of r) {
+        if (code !== 200 || it.status === "closed") continue;
+        lista.push({
+          idExterno: it.id,
+          titulo: it.title,
+          sku: it.seller_custom_field || it.attributes?.find((a) => a.id === "SELLER_SKU")?.value_name || "",
+          preco: it.price,
+          link: it.permalink,
+          imagem: it.thumbnail?.replace(/^http:/, "https:") ?? "",
+          status: { active: "ativo", paused: "pausado", under_review: "em revisão" }[it.status] ?? it.status,
+        });
+      }
+    }
+    return lista;
   },
 
   async pedidos(conta, desde, porAtualizacao, reconferir = []) {
