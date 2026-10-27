@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type MarketplaceAdapter, type Tokens } from "./types";
+import { lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
@@ -202,6 +202,35 @@ export const magalu: MarketplaceAdapter = {
       link: "https://seller.magalu.com",
       aviso: "O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).",
     };
+  },
+
+  async anuncios(conta) {
+    // No Magalu o anúncio é o SKU do portfólio (o mesmo que vem nos itens dos pedidos).
+    type Sku = {
+      sku: string;
+      title: string;
+      status: string;
+      url_marketplace?: { url?: string }[];
+      images?: { reference?: string }[];
+    };
+    const lista: AnuncioExterno[] = [];
+    for (let offset = 0; offset < 10_000; offset += 100) {
+      const r = await api<{ results: Sku[] }>(`/seller/v1/portfolios/skus?_limit=100&_offset=${offset}`, conta.accessToken);
+      for (const s of r.results) {
+        if (["DELETED", "DELETING"].includes(s.status)) continue;
+        lista.push({
+          idExterno: s.sku,
+          titulo: s.title,
+          sku: s.sku,
+          preco: null,
+          link: s.url_marketplace?.find((u) => u.url)?.url ?? "https://seller.magalu.com",
+          imagem: s.images?.find((i) => i.reference)?.reference ?? "",
+          status: { PUBLISHED: "ativo", UNPUBLISHED: "pausado", UNDER_REVIEW: "em revisão", BLOCKED: "bloqueado" }[s.status] ?? s.status,
+        });
+      }
+      if (r.results.length < 100) break;
+    }
+    return lista;
   },
 
   async pedidos(conta, desde, porAtualizacao) {

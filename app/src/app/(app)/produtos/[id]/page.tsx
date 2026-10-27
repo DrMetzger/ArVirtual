@@ -93,7 +93,14 @@ export default async function ProdutoPage({
               .map((mp) => ({ marketplace: mp, nome: MARKETPLACE_INFO[mp].nome, cor: MARKETPLACE_INFO[mp].cor }))}
           />
           <Card>
-            <CardHeader title="Histórico de anúncios" />
+            <CardHeader
+              title="Histórico de anúncios"
+              action={
+                <Link href="/marketplaces/anuncios" className={buttonClass("outline", "sm")}>
+                  Vincular anúncio existente
+                </Link>
+              }
+            />
             {historico.length === 0 ? (
               <p className="p-5 text-sm text-muted">Este produto ainda não foi anunciado.</p>
             ) : (

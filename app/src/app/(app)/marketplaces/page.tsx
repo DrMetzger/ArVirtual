@@ -49,11 +49,18 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
         title="Marketplaces"
         description="Conecte suas lojas para anunciar o catálogo e acompanhar os pedidos no dashboard."
         actions={
-          <form action={sincronizar}>
-            <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
-              <RefreshCw /> Sincronizar pedidos
-            </SubmitButton>
-          </form>
+          <>
+            {contas.length ? (
+              <Link href="/marketplaces/anuncios" className={buttonClass("outline", "md")}>
+                <Link2 /> Vincular anúncios
+              </Link>
+            ) : null}
+            <form action={sincronizar}>
+              <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
+                <RefreshCw /> Sincronizar pedidos
+              </SubmitButton>
+            </form>
+          </>
         }
       />
       <div className="grid gap-6">
@@ -81,6 +88,9 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                           {c.ultimaSincronizacao ? `Sincronizado ${formatDate(c.ultimaSincronizacao)}` : "Ainda não sincronizado"}
                         </p>
                       </div>
+                      <Link href={`/marketplaces/anuncios?conta=${c.id}`} className={buttonClass("ghost", "icon", "hover:text-gold")} title="Vincular anúncios desta conta">
+                        <Link2 />
+                      </Link>
                       <form action={desconectar.bind(null, c.id)}>
                         <button type="submit" className={buttonClass("ghost", "icon", "hover:text-red")} title="Desconectar">
                           <Unplug />
