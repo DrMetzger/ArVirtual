@@ -394,6 +394,80 @@ export const pedidosMarketplace = pgTable(
   ],
 );
 
+/** Produto de outro vendedor que divulgamos como afiliado Shopee (vem da API de afiliados ou de um link colado). */
+export const afiliadosProdutos = pgTable(
+  "afiliados_produtos",
+  {
+    id: serial("id").primaryKey(),
+    itemId: text("item_id").notNull(),
+    shopId: text("shop_id").notNull(),
+    nome: text("nome").notNull(),
+    imagem: text("imagem").notNull().default(""),
+    loja: text("loja").notNull().default(""),
+    preco: money("preco").notNull().default(0),
+    /** Comissão em fração (0.12 = 12%) e valor estimado por venda, como a Shopee informa. */
+    comissaoTaxa: numeric("comissao_taxa", { precision: 8, scale: 4, mode: "number" }).notNull().default(0),
+    comissaoValor: money("comissao_valor").notNull().default(0),
+    vendas: integer("vendas").notNull().default(0),
+    avaliacao: numeric("avaliacao", { precision: 3, scale: 2, mode: "number" }).notNull().default(0),
+    linkProduto: text("link_produto").notNull().default(""),
+    /** Link de afiliado (curto) gerado pela API, com o sub ID para saber de onde veio a venda. */
+    linkAfiliado: text("link_afiliado").notNull().default(""),
+    subId: text("sub_id").notNull().default(""),
+    status: text("status", { enum: ["ideia", "divulgando", "pausado"] }).notNull().default("ideia"),
+    observacao: text("observacao").notNull().default(""),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("afiliados_produtos_item_idx").on(t.shopId, t.itemId)],
+);
+
+/** Vídeos para divulgar (brutos e editados): baixados de um link ou enviados do computador. */
+export const afiliadosVideos = pgTable(
+  "afiliados_videos",
+  {
+    id: serial("id").primaryKey(),
+    produtoId: integer("produto_id").references(() => afiliadosProdutos.id, { onDelete: "set null" }),
+    titulo: text("titulo").notNull().default(""),
+    /** De onde veio: vídeo próprio, do anúncio do vendedor, de criador que autorizou ou outro. */
+    origem: text("origem", { enum: ["proprio", "anuncio", "criador", "outro"] }).notNull().default("proprio"),
+    urlOrigem: text("url_origem").notNull().default(""),
+    /** Quem autorizou o uso (nome/@ do criador, data, onde combinou). */
+    autorizacao: text("autorizacao").notNull().default(""),
+    arquivo: text("arquivo").notNull().default(""),
+    tamanho: integer("tamanho").notNull().default(0),
+    duracaoS: integer("duracao_s").notNull().default(0),
+    status: text("status", { enum: ["baixando", "bruto", "editado", "postado", "erro"] }).notNull().default("bruto"),
+    erro: text("erro").notNull().default(""),
+    observacao: text("observacao").notNull().default(""),
+    criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("afiliados_videos_produto_idx").on(t.produtoId)],
+);
+
+/** Comissões do relatório de conversões da Shopee (um registro por item de pedido). */
+export const afiliadosComissoes = pgTable(
+  "afiliados_comissoes",
+  {
+    id: serial("id").primaryKey(),
+    conversionId: text("conversion_id").notNull(),
+    orderId: text("order_id").notNull(),
+    itemId: text("item_id").notNull(),
+    itemNome: text("item_nome").notNull().default(""),
+    loja: text("loja").notNull().default(""),
+    quantidade: integer("quantidade").notNull().default(1),
+    valor: money("valor").notNull().default(0),
+    comissao: money("comissao").notNull().default(0),
+    /** Status do pedido na Shopee: UNPAID, PENDING, COMPLETED, CANCELLED. */
+    status: text("status").notNull().default(""),
+    subId: text("sub_id").notNull().default(""),
+    compraEm: timestamp("compra_em", { withTimezone: true }),
+    dados: jsonb("dados"),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("afiliados_comissoes_item_idx").on(t.conversionId, t.orderId, t.itemId)],
+);
+
 /** Arquivos de impressão do produto (3MF, STL, G-code...): ficam no servidor para quem vai imprimir baixar. */
 export const arquivosProduto = pgTable(
   "arquivos_produto",

@@ -27,6 +27,7 @@ import {
   Users,
   X,
   type LucideIcon,
+  BadgePercent,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -88,6 +89,7 @@ const NAV: (Item | Grupo)[] = [
     ],
   },
   { href: "/marketplaces", label: "Marketplaces", icon: Store },
+  { href: "/afiliados", label: "Afiliados Shopee", icon: BadgePercent },
   { href: "/assistente", label: "Assistente IA", icon: Sparkles },
 ];
 const CONFIGURACOES: Item = { href: "/configuracoes", label: "Configurações", icon: Settings };

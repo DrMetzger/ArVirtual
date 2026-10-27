@@ -61,6 +61,10 @@ export const SETTINGS = {
   "shopee.partnerKey": { label: "Partner Key", secret: true, group: "Shopee" },
   "shopee.ambiente": { label: "Ambiente", secret: false, group: "Shopee", options: ["producao", "sandbox"] },
 
+  "afiliados.appId": { label: "App ID", secret: false, group: "Shopee Afiliados" },
+  "afiliados.secret": { label: "Senha (Secret)", secret: true, group: "Shopee Afiliados" },
+  "afiliados.subId": { label: "Sub ID padrão dos links (identifica as vendas que vieram do ERP)", secret: false, group: "Shopee Afiliados", placeholder: "arvirtual" },
+
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
 

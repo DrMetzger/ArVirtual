@@ -134,6 +134,13 @@
       "when": 1793120205583,
       "tag": "0018_arquivos_impressao",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1793139998416,
+      "tag": "0019_afiliados_shopee",
+      "breakpoints": true
     }
   ]
 }

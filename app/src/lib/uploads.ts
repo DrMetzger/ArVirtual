@@ -36,3 +36,7 @@ export async function salvarVideo(file: File, origin: string): Promise<string> {
 export const PASTA_IMPRESSAO = `${UPLOAD_DIR}/impressao`;
 export const EXTENSOES_IMPRESSAO = ["3mf", "stl", "obj", "step", "stp", "gcode", "amf", "ply", "zip"];
 export const MAX_ARQUIVO_IMPRESSAO = 150 * 1024 * 1024;
+
+/** Vídeos do módulo de afiliados (privados: só com login). */
+export const PASTA_AFILIADOS = `${UPLOAD_DIR}/afiliados`;
+export const MAX_VIDEO_AFILIADO = 300 * 1024 * 1024;

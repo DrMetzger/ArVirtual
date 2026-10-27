@@ -25,6 +25,8 @@ WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000 UPLOAD_DIR=/app/uploads
 # xmllint: validação da NF-e no XSD oficial (esquemas em node_modules/@brasil-fiscal/nfe/schemas)
 RUN apk add --no-cache libxml2-utils
+# Afiliados: yt-dlp baixa os vídeos pelo link; ffmpeg junta vídeo+áudio, lê a duração e vai servir para a edição.
+RUN apk add --no-cache ffmpeg yt-dlp
 RUN addgroup -S app && adduser -S app -G app && mkdir -p /app/uploads && chown app:app /app/uploads
 COPY --from=build --chown=app:app /app/package.json /app/next.config.mjs ./
 COPY --from=build --chown=app:app /app/node_modules ./node_modules
