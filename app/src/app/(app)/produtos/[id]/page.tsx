@@ -88,6 +88,9 @@ export default async function ProdutoPage({
               marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome,
               cor: MARKETPLACE_INFO[c.marketplace].cor,
             }))}
+            pendentes={(Object.keys(MARKETPLACE_INFO) as (keyof typeof MARKETPLACE_INFO)[])
+              .filter((mp) => !contas.some((c) => c.marketplace === mp))
+              .map((mp) => ({ marketplace: mp, nome: MARKETPLACE_INFO[mp].nome, cor: MARKETPLACE_INFO[mp].cor }))}
           />
           <Card>
             <CardHeader title="Histórico de anúncios" />

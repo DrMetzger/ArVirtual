@@ -17,6 +17,7 @@ export function Anunciar({
   preco,
   precosCanal = {},
   contas,
+  pendentes = [],
   temImagem,
   iaConfigurada,
   ml = { tipo: "classico", frete: "automatico" },
@@ -27,6 +28,8 @@ export function Anunciar({
   preco: number;
   precosCanal?: Partial<Record<"mercadolivre" | "shopee" | "magalu" | "loja", number>>;
   contas: Conta[];
+  /** Marketplaces ainda sem conta conectada: aparecem na lista com o atalho para conectar. */
+  pendentes?: { marketplace: Marketplace; nome: string; cor: string }[];
   temImagem: boolean;
   iaConfigurada: boolean;
   /** Padrões de Configurações › Precificação: Mercado Livre. */
@@ -133,6 +136,19 @@ export function Anunciar({
                     aria-label={`Preço no ${c.marketplaceNome}`}
                   />
                 </div>
+              </div>
+            ))}
+            {pendentes.map((p) => (
+              <div key={p.marketplace} className="flex flex-wrap items-center gap-3 rounded-xl border border-dashed border-border px-3 py-2 text-sm">
+                <span className="flex min-w-0 flex-1 items-center gap-3 text-muted">
+                  <input type="checkbox" disabled className="size-4" aria-label={`${p.nome} não conectado`} />
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ background: p.cor }} />
+                  <span className="font-semibold text-foreground">{p.nome}</span>
+                  <span className="truncate">não conectado</span>
+                </span>
+                <Link href="/marketplaces" className={buttonClass("outline", "sm")}>
+                  Conectar
+                </Link>
               </div>
             ))}
           </div>
