@@ -233,7 +233,7 @@ export const magalu: MarketplaceAdapter = {
     return lista;
   },
 
-  async pedidos(conta, desde, porAtualizacao) {
+  async pedidos(conta, { desde, ate, porAtualizacao }) {
     // Valores vêm em inteiros com "normalizer" (100 = centavos): { total | value, normalizer }.
     type Valor = { value?: number; total?: number; normalizer?: number } | number | undefined;
     const valor = (v: Valor, normalizer = 100) =>
@@ -273,6 +273,7 @@ export const magalu: MarketplaceAdapter = {
     for (let offset = 0; ; offset += 50) {
       const q = new URLSearchParams({ _limit: "50", _offset: String(offset), _sort: "purchased_at:desc" });
       q.set(porAtualizacao ? "updated_at__gte" : "purchased_at__gte", desde.toISOString());
+      if (ate) q.set(porAtualizacao ? "updated_at__lte" : "purchased_at__lte", ate.toISOString());
       const r = await api<{ results?: Pedido[] }>(`/seller/v1/orders?${q}`, conta.accessToken);
       const lista = r.results ?? [];
       out.push(

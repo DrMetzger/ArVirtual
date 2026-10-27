@@ -30,12 +30,13 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ mp: 
       expiraEm: conta.expiraEm,
       dados: conta.dados ?? null,
     };
-    await db
+    const [salva] = await db
       .insert(contasMarketplace)
       .values({ marketplace: a.id, idExterno: conta.idExterno, ...valores })
-      .onConflictDoUpdate({ target: [contasMarketplace.marketplace, contasMarketplace.idExterno], set: valores });
+      .onConflictDoUpdate({ target: [contasMarketplace.marketplace, contasMarketplace.idExterno], set: valores })
+      .returning({ id: contasMarketplace.id });
     // Conta nova: importa o histórico de pedidos (2 anos) em segundo plano.
-    void sincronizarPedidos(730).catch(() => undefined);
+    void sincronizarPedidos({ tipo: "periodo", desde: new Date(Date.now() - 730 * 86400_000), contas: [salva!.id] }).catch(() => undefined);
     return voltar(`ok=${encodeURIComponent(`${a.nome} conectado: ${conta.nome}. Importando o histórico de pedidos em segundo plano.`)}`);
   } catch (e) {
     return voltar(`erro=${encodeURIComponent((e as Error).message)}`);

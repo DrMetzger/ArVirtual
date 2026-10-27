@@ -30,6 +30,15 @@ export type DadosAnuncio = {
   freteGratis?: "automatico" | "sempre" | "nunca";
 };
 
+export type FiltroPedidos = {
+  desde: Date;
+  /** Sem `ate`: até agora. */
+  ate?: Date;
+  porAtualizacao?: boolean;
+  /** Pedidos ainda em aberto para conferir um a um (o ML nem sempre marca como alterado quando só o envio muda). */
+  reconferir?: string[];
+};
+
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
 
 /** Anúncio que já existe na conta do marketplace (criado lá ou em outro sistema). */
@@ -95,8 +104,8 @@ export interface MarketplaceAdapter {
   conectar(params: URLSearchParams, redirectUri: string): Promise<ContaConectada>;
   renovar(refreshToken: string, conta: ContaComToken): Promise<Tokens>;
   publicar(conta: ContaComToken, produto: Produto, anuncio: DadosAnuncio): Promise<ResultadoAnuncio>;
-  /** Pedidos comprados desde `desde` ou, com `porAtualizacao`, atualizados desde `desde` (sincronização automática). */
-  pedidos(conta: ContaComToken, desde: Date, porAtualizacao?: boolean, reconferir?: string[]): Promise<PedidoExterno[]>;
+  /** Pedidos comprados entre `desde` e `ate` ou, com `porAtualizacao`, alterados nesse intervalo (sincronização automática). */
+  pedidos(conta: ContaComToken, filtro: FiltroPedidos): Promise<PedidoExterno[]>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */

@@ -1,17 +1,17 @@
 import { desc, eq } from "drizzle-orm";
 import { CANAIS, MarcaIcone, MarcaLogo } from "@/components/marca";
-import { Link2, RefreshCw, Store, Unplug } from "lucide-react";
+import { Link2, Store, Unplug } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
-import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { contasMarketplace, MARKETPLACES, pedidosMarketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ADAPTERS, callbackUrl, MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { desconectar, sincronizar } from "./actions";
+import { desconectar } from "./actions";
+import { SincronizarPedidos } from "@/components/sincronizar-pedidos";
 import { LinhaLink } from "@/components/linha-link";
 
 export const metadata: Metadata = { title: "Marketplaces" };
@@ -55,11 +55,7 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
                 <Link2 /> Vincular anúncios
               </Link>
             ) : null}
-            <form action={sincronizar}>
-              <SubmitButton variant="gold" pendingText="Sincronizando..." disabled={!contas.length}>
-                <RefreshCw /> Sincronizar pedidos
-              </SubmitButton>
-            </form>
+            <SincronizarPedidos contas={contas.map((c) => ({ id: c.id, nome: c.nome, marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome }))} voltar="/marketplaces" />
           </>
         }
       />

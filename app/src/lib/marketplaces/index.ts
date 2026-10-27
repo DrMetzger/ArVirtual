@@ -54,28 +54,47 @@ export async function contaComToken(conta: ContaMarketplace): Promise<ContaComTo
 }
 
 type ResultadoSync = { conta: string; marketplace: Marketplace; pedidos: number; erro?: string }[];
+
+export type OpcoesSync =
+  /** Automática (a cada 15 min, ao subir e nos avisos do marketplace): só o que mudou desde a última rodada de cada conta. */
+  | { tipo: "novidades"; marketplace?: Marketplace }
+  /** Manual: pedidos comprados no período, nas contas escolhidas (todas, se vazio). */
+  | { tipo: "periodo"; desde: Date; ate?: Date; contas?: number[] };
+
 let emAndamento: Promise<ResultadoSync> | null = null;
 
-/** Busca pedidos dos últimos `dias` em todas as contas conectadas e grava/atualiza no banco.
- *  Uma sincronização por vez: a automática e o botão compartilham a mesma execução. */
-export function sincronizarPedidos(dias = 30, porAtualizacao = false) {
-  emAndamento ??= sincronizar(dias, porAtualizacao).finally(() => {
+/**
+ * Busca os pedidos nos marketplaces e grava/atualiza no banco. Uma sincronização por vez:
+ * a automática pega carona na que já está rodando; a manual espera a atual terminar e roda a dela.
+ */
+export async function sincronizarPedidos(opcoes: OpcoesSync = { tipo: "novidades" }): Promise<ResultadoSync> {
+  if (opcoes.tipo === "novidades" && emAndamento) return emAndamento;
+  while (emAndamento) await emAndamento.catch(() => undefined);
+  emAndamento = sincronizar(opcoes).finally(() => {
     emAndamento = null;
   });
   return emAndamento;
 }
 
-async function sincronizar(dias: number, porAtualizacao: boolean): Promise<ResultadoSync> {
-  const contas = await db.select().from(contasMarketplace);
-  const desde = new Date(Date.now() - dias * 86400_000);
+async function sincronizar(opcoes: OpcoesSync): Promise<ResultadoSync> {
+  const todas = await db.select().from(contasMarketplace);
+  const contas = todas.filter((c) =>
+    opcoes.tipo === "novidades" ? !opcoes.marketplace || c.marketplace === opcoes.marketplace : !opcoes.contas?.length || opcoes.contas.includes(c.id),
+  );
   const resultado: ResultadoSync = [];
 
   for (const conta of contas) {
     try {
       const a = adapter(conta.marketplace);
       const token = await contaComToken(conta);
+      const novidades = opcoes.tipo === "novidades";
+      // Novidades: desde a última rodada (com 30 min de folga); conta nunca sincronizada, últimos 2 dias.
+      const desde = novidades
+        ? new Date((conta.ultimaSincronizacao?.getTime() ?? Date.now() - 2 * 86400_000) - 30 * 60_000)
+        : opcoes.desde;
+      const inicio = new Date();
       // Pedidos pagos/enviados dos últimos 120 dias: reconferidos a cada rodada até chegarem a entregue.
-      const reconferir = porAtualizacao
+      const reconferir = novidades
         ? (
             await db
               .select({ idExterno: pedidosMarketplace.idExterno, status: pedidosMarketplace.status })
@@ -85,7 +104,7 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
             .filter((p) => ["pago", "enviado"].includes(situacaoPedido(conta.marketplace, p.status)))
             .map((p) => p.idExterno)
         : [];
-      const pedidos = await a.pedidos(token, desde, porAtualizacao, reconferir);
+      const pedidos = await a.pedidos(token, novidades ? { desde, porAtualizacao: true, reconferir } : { desde, ate: opcoes.ate });
       const historico = (data: Date) => data.getTime() < conta.criadoEm.getTime() - 86400_000;
       // Conta com nome genérico ganha o nome da loja que vem nos pedidos.
       const loja = pedidos.find((p) => p.loja)?.loja;
@@ -127,7 +146,8 @@ async function sincronizar(dias: number, porAtualizacao: boolean): Promise<Resul
           }
         }
       }
-      await db.update(contasMarketplace).set({ ultimaSincronizacao: new Date() }).where(eq(contasMarketplace.id, conta.id));
+      // Só a rodada de novidades marca o ponto de partida da próxima (a manual cobre só um período).
+      if (novidades) await db.update(contasMarketplace).set({ ultimaSincronizacao: inicio }).where(eq(contasMarketplace.id, conta.id));
       resultado.push({ conta: conta.nome, marketplace: conta.marketplace, pedidos: pedidos.length });
     } catch (e) {
       resultado.push({ conta: conta.nome, marketplace: conta.marketplace, pedidos: 0, erro: (e as Error).message });
