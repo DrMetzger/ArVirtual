@@ -18,6 +18,7 @@ export function Anunciar({
   precosCanal = {},
   contas,
   pendentes = [],
+  variacoes = [],
   temImagem,
   iaConfigurada,
   ml = { tipo: "classico", frete: "automatico" },
@@ -30,6 +31,8 @@ export function Anunciar({
   contas: Conta[];
   /** Marketplaces ainda sem conta conectada: aparecem na lista com o atalho para conectar. */
   pendentes?: { marketplace: Marketplace; nome: string; cor: string }[];
+  /** Variações ativas e as contas em que cada uma já está anunciada. */
+  variacoes?: { id: string; rotulo: string; sku: string; imagem?: string; contas: number[] }[];
   temImagem: boolean;
   iaConfigurada: boolean;
   /** Padrões de Configurações › Precificação: Mercado Livre. */
@@ -38,6 +41,8 @@ export function Anunciar({
   const [titulo, setTitulo] = useState(nome.slice(0, 60));
   const [texto, setTexto] = useState(descricao);
   const [selecionadas, setSelecionadas] = useState<number[]>(contas.map((c) => c.id));
+  // Começa marcando só as variações que ainda não estão anunciadas em nenhuma conta.
+  const [itens, setItens] = useState<string[]>(variacoes.filter((v) => !v.contas.length).map((v) => v.id));
   const [erroIA, setErroIA] = useState("");
   const [resultados, setResultados] = useState<ResultadoPublicacao[] | null>(null);
   const [gerando, startIA] = useTransition();
@@ -107,6 +112,38 @@ export function Anunciar({
           <Field label="Descrição">
             <Textarea name="descricao" value={texto} rows={7} onChange={(e) => setTexto(e.target.value)} />
           </Field>
+          {variacoes.length ? (
+            <div className="grid gap-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-muted">Variações a publicar</span>
+              <div className="grid gap-2 sm:grid-cols-2">
+                {variacoes.map((v) => {
+                  const ja = contas.filter((c) => v.contas.includes(c.id));
+                  return (
+                    <label key={v.id} className="flex items-center gap-2 rounded-xl border border-border px-3 py-2 text-sm">
+                      <input
+                        type="checkbox"
+                        name="itens"
+                        value={v.id}
+                        checked={itens.includes(v.id)}
+                        onChange={(e) => setItens(e.target.checked ? [...itens, v.id] : itens.filter((x) => x !== v.id))}
+                        className="size-4 accent-[var(--gold)]"
+                      />
+                      {v.imagem ? <img src={v.imagem} alt="" className="size-8 shrink-0 rounded-md object-cover" /> : null}
+                      <span className="min-w-0 flex-1">
+                        <span className="block truncate font-semibold">{v.rotulo}</span>
+                        <span className="block truncate text-xs text-muted">
+                          {ja.length ? `já anunciada: ${ja.map((c) => c.marketplaceNome).join(", ")}` : v.sku}
+                        </span>
+                      </span>
+                    </label>
+                  );
+                })}
+              </div>
+              <p className="text-xs text-muted">
+                Nada é publicado em dobro: variação que já tem anúncio na conta (aqui ou na própria plataforma, pelo SKU) é pulada.
+              </p>
+            </div>
+          ) : null}
           <div className="grid gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted">Publicar em · preço de cada plataforma</span>
             {contas.map((c) => (

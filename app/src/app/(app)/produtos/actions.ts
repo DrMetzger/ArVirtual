@@ -12,6 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
+import type { AnuncioExterno } from "@/lib/marketplaces/types";
 import { adapter, contaComToken } from "@/lib/marketplaces";
 import { movimentar } from "@/lib/estoque";
 import { PASTA_IMPRESSAO, salvarImagem, salvarVideo } from "@/lib/uploads";
@@ -41,7 +42,8 @@ const ProdutoSchema = z.object({
 const VariacaoSchema = z.object({
   id: z.uuid().optional(),
   sku: str.min(1, "Informe o SKU de todas as variações").max(60),
-  cor: str.min(1, "Informe a cor de todas as variações"),
+  /** Valor da variação no tipo escolhido (ex.: Cor → "Verde"). */
+  cor: str.min(1, "Informe o valor de todas as variações (ex.: Verde)"),
   material: str.default(""),
   filamentoId: z.number().int().nullable(),
   preco: z.number().min(0).nullable(),
@@ -49,6 +51,9 @@ const VariacaoSchema = z.object({
   gtin: str.transform(onlyDigits).refine((v) => !v || [8, 12, 13, 14].includes(v.length), "GTIN/EAN da variação deve ter 8, 12, 13 ou 14 dígitos"),
   estoqueInicial: z.number().int().min(0).default(0),
   ativo: z.boolean().default(true),
+  /** Fotos próprias já salvas e o campo de arquivo com as novas (fotosVar_<campoFotos>). */
+  imagens: z.array(z.string()).default([]),
+  campoFotos: z.string().regex(/^[\w.-]*$/).default(""),
 });
 const CANAIS_PRECO = ["mercadolivre", "shopee", "magalu", "loja"] as const;
 
@@ -146,6 +151,24 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   }
   if (videos.length > 3) return { erro: "No máximo 3 vídeos por produto." };
 
+  // Fotos de cada variação: as que já eram dela (ou do produto) mais as enviadas agora.
+  if (variacoes.length) {
+    const antigas = new Set([
+      ...(atuais?.imagens ?? []),
+      ...(id ? (await db.select({ imagens: produtos.imagens }).from(produtos).where(eq(produtos.paiId, id))).flatMap((v) => v.imagens) : []),
+    ]);
+    try {
+      const o = await origin();
+      for (const v of variacoes) {
+        const novas = v.campoFotos ? form.getAll(`fotosVar_${v.campoFotos}`).filter((f): f is File => f instanceof File && f.size > 0) : [];
+        v.imagens = [...v.imagens.filter((u) => antigas.has(u)), ...(await Promise.all(novas.map((f) => salvarImagem(f, o))))].slice(0, 12);
+      }
+    } catch (e) {
+      return { erro: (e as Error).message };
+    }
+  }
+  const tipoVariacao = String(form.get("tipoVariacao") ?? "").trim().slice(0, 30) || "Cor";
+
   let produtoId = id;
   // NCM novo entra no cadastro e a IA completa a descrição e o IPI (em segundo plano, como no ERP Vanguard).
   void garantirNcm(valores.ncm);
@@ -162,7 +185,7 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
         await movimentar(tx, { produtoId: pid, quantidade: inicial, tipo: "entrada", observacao: "Saldo inicial", usuarioId: user.sub });
       }
     }
-    await salvarVariacoes(tx, pid, { ...semEstoque, imagens }, valores.temVariacoes ? variacoes : [], user.sub);
+    await salvarVariacoes(tx, pid, { ...semEstoque, imagens }, valores.temVariacoes ? variacoes : [], user.sub, tipoVariacao);
     return pid;
   });
   revalidatePath("/produtos");
@@ -181,11 +204,13 @@ async function salvarVariacoes(
   pai: Omit<typeof produtos.$inferInsert, "id" | "estoque">,
   variacoes: z.infer<typeof VariacaoSchema>[],
   usuarioId: string,
+  tipo = "Cor",
 ) {
   const atuais = await tx.select().from(produtos).where(eq(produtos.paiId, paiId));
   const mantidas = new Set(variacoes.map((v) => v.id).filter(Boolean));
   for (const v of variacoes) {
-    const atributos = { Cor: v.cor, ...(v.material ? { Material: v.material } : {}) };
+    // Tipo da variação (Cor, Tamanho, Modelo...) → valor; o Mercado Livre usa "Cor" como COLOR.
+    const atributos = { [tipo]: v.cor, ...(v.material && tipo !== "Material" ? { Material: v.material } : {}) };
     const dados = {
       sku: v.sku,
       nome: `${pai.nome} - ${v.cor}${v.material && v.material !== pai.material ? ` ${v.material}` : ""}`,
@@ -210,7 +235,8 @@ async function salvarVariacoes(
       composicao: (pai.composicao?.length ? pai.composicao : [{ filamentoId: null, gramas: pai.filamentoG ?? 0 }]).map((c, i) =>
         i === 0 ? { ...c, filamentoId: v.filamentoId } : c,
       ),
-      imagens: pai.imagens,
+      // Fotos próprias da variação (sem elas, os anúncios usam as do produto principal).
+      imagens: v.imagens,
       // Preço por plataforma do produto; variação mais cara/barata leva a mesma diferença em todas.
       precosCanal: Object.fromEntries(
         Object.entries(pai.precosCanal ?? {}).map(([k, val]) => [k, Math.round(((val as number) + (v.preco ? v.preco - (pai.preco ?? 0) : 0)) * 100) / 100]),
@@ -296,18 +322,63 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
     tipoAnuncio: (tipo === "premium" ? "premium" : "classico") as "classico" | "premium",
     freteGratis: (["sempre", "nunca"].includes(frete) ? frete : "automatico") as "automatico" | "sempre" | "nunca",
   };
-  // Produto com variações: um anúncio por cor, no mesmo grupo (Magalu) / família (Mercado Livre).
+  // Produto com variações: um anúncio por variação escolhida na tela, no mesmo grupo (Magalu) / família (Mercado Livre).
+  const escolhidas = form.getAll("itens").map(String);
   const itens = p.temVariacoes
-    ? await db.select().from(produtos).where(and(eq(produtos.paiId, p.id), eq(produtos.ativo, true))).orderBy(produtos.cor)
+    ? (await db.select().from(produtos).where(and(eq(produtos.paiId, p.id), eq(produtos.ativo, true))).orderBy(produtos.cor)).filter(
+        (v) => escolhidas.includes(v.id),
+      )
     : [p];
-  if (!itens.length) return [{ conta: "-", ok: false, mensagem: "Este produto não tem variações ativas." }];
+  if (!itens.length) return [{ conta: "-", ok: false, mensagem: p.temVariacoes ? "Escolha ao menos uma variação para publicar." : "Produto não encontrado." }];
 
   const resultados: ResultadoPublicacao[] = [];
   for (const conta of contas) {
     const categoria = String(form.get(`categoria_${conta.marketplace}`) ?? "").trim() || undefined;
     const a = adapter(conta.marketplace);
     const token = await contaComToken(conta).catch((e: Error) => e);
+    // Nunca duplicar: o que já tem anúncio nesta conta (no histórico ou na própria plataforma, pelo SKU) não é publicado de novo.
+    const jaNoHistorico = new Map(
+      (
+        await db
+          .select({ produtoId: anuncios.produtoId, idExterno: anuncios.idExterno })
+          .from(anuncios)
+          .where(and(eq(anuncios.contaId, conta.id), eq(anuncios.status, "publicado"), inArray(anuncios.produtoId, itens.map((x) => x.id))))
+      ).map((x) => [x.produtoId, x.idExterno]),
+    );
+    let naPlataforma: AnuncioExterno[];
+    try {
+      if (token instanceof Error) throw token;
+      naPlataforma = itens.every((x) => jaNoHistorico.has(x.id)) ? [] : await a.anuncios(token);
+    } catch (e) {
+      resultados.push({
+        conta: `${a.nome} · ${conta.nome}`,
+        ok: false,
+        mensagem: `Não consegui conferir os anúncios que já existem (${(e as Error).message}). Nada foi publicado para não duplicar.`,
+      });
+      continue;
+    }
     for (const [i, item] of itens.entries()) {
+      const rotuloItem = `${a.nome} · ${conta.nome}${p.temVariacoes ? ` · ${item.cor || item.sku}` : ""}`;
+      if (jaNoHistorico.has(item.id)) {
+        resultados.push({ conta: rotuloItem, ok: true, mensagem: `Já anunciado (${jaNoHistorico.get(item.id) ?? "sem código"}): não publiquei de novo.` });
+        continue;
+      }
+      const sku = item.sku.trim().toLowerCase();
+      const existente = naPlataforma.find((x) => x.sku.trim().toLowerCase() === sku || x.idExterno.toLowerCase() === sku);
+      if (existente) {
+        await db.insert(anuncios).values({
+          produtoId: item.id,
+          contaId: conta.id,
+          marketplace: conta.marketplace,
+          idExterno: existente.idExterno,
+          link: existente.link,
+          status: "publicado",
+          preco: existente.preco ?? item.precosCanal[conta.marketplace] ?? item.preco,
+          mensagem: "Vinculado: já existia na plataforma com o mesmo SKU",
+        });
+        resultados.push({ conta: rotuloItem, ok: true, mensagem: `Já existia na plataforma (${existente.idExterno}, mesmo SKU): vinculado, não publiquei de novo.`, link: existente.link });
+        continue;
+      }
       // Preço desta plataforma na tela de publicar (variação: o dela), senão o do cadastro, senão o preço de venda.
       const naTela = parseDecimal(form.get(`preco_${conta.marketplace}`)) || dados.preco;
       // Variação com preço próprio: a diferença para o produto vale em todas as plataformas.

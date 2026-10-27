@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers, Plus, Trash2, Wand2 } from "lucide-react";
+import { ImagePlus, Layers, Plus, Trash2, Wand2, X } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, CardHeader, Input, Select } from "@/components/ui";
@@ -18,6 +18,10 @@ export type VariacaoInicial = {
   gtin: string;
   estoque: number;
   ativo: boolean;
+  /** Fotos próprias da variação. */
+  imagens?: string[];
+  /** Tipo da variação (Cor, Tamanho...). */
+  tipo?: string;
 };
 type Linha = {
   key: string;
@@ -31,7 +35,62 @@ type Linha = {
   estoqueInicial: string;
   estoque?: number;
   ativo: boolean;
+  imagens: string[];
+  novas: { arquivo: File; url: string }[];
 };
+
+const TIPOS = ["Cor", "Tamanho", "Modelo", "Estampa", "Acabamento", "Material"];
+const EXEMPLO: Record<string, string> = { Cor: "Verde", Tamanho: "P, 10 cm", Modelo: "Natal", Estampa: "Floral", Acabamento: "Fosco", Material: "PETG" };
+
+/** Fotos da variação: as já salvas e as novas (essas vão no campo de arquivo fotosVar_<key>, enviado com o formulário). */
+function FotosVariacao({ linha, alterar }: { linha: Linha; alterar: (patch: Partial<Linha>) => void }) {
+  const input = useRef<HTMLInputElement>(null);
+  // O campo de arquivo precisa ter exatamente as fotos novas da lista (inclusive depois de remover uma).
+  useEffect(() => {
+    if (!input.current) return;
+    const dt = new DataTransfer();
+    for (const n of linha.novas) dt.items.add(n.arquivo);
+    input.current.files = dt.files;
+  }, [linha.novas]);
+  const miniatura = "relative size-14 shrink-0 overflow-hidden rounded-lg border border-border bg-white";
+  const remover = "absolute top-0.5 right-0.5 grid size-4 place-items-center rounded-full bg-black/70 text-white";
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      {linha.imagens.map((u) => (
+        <div key={u} className={miniatura}>
+          <img src={u} alt="" className="size-full object-cover" />
+          <button type="button" className={remover} onClick={() => alterar({ imagens: linha.imagens.filter((x) => x !== u) })} aria-label="Remover foto">
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+      {linha.novas.map((n) => (
+        <div key={n.url} className={cn(miniatura, "border-dashed border-gold")}>
+          <img src={n.url} alt="" className="size-full object-cover" />
+          <button type="button" className={remover} onClick={() => alterar({ novas: linha.novas.filter((x) => x !== n) })} aria-label="Remover foto">
+            <X className="size-3" />
+          </button>
+        </div>
+      ))}
+      <input ref={input} type="file" name={`fotosVar_${linha.key}`} multiple className="hidden" tabIndex={-1} aria-hidden />
+      <label className="grid size-14 shrink-0 cursor-pointer place-items-center rounded-lg border-2 border-dashed border-border text-muted hover:border-gold hover:text-gold" title="Adicionar fotos desta variação">
+        <ImagePlus className="size-5" />
+        <input
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          multiple
+          className="hidden"
+          onChange={(e) => {
+            const fs = [...(e.target.files ?? [])];
+            e.target.value = "";
+            alterar({ novas: [...linha.novas, ...fs.map((arquivo) => ({ arquivo, url: URL.createObjectURL(arquivo) }))] });
+          }}
+        />
+      </label>
+      {!linha.imagens.length && !linha.novas.length ? <span className="text-xs text-muted">Sem foto própria: usa as fotos do produto.</span> : null}
+    </div>
+  );
+}
 
 const MATERIAIS = ["PLA", "PLA+", "PETG", "ABS", "ASA", "TPU", "PLA Silk", "PLA Matte", "Outro"];
 const slug = (s: string) =>
@@ -78,8 +137,12 @@ export function VariacoesField({
       estoqueInicial: "",
       estoque: v.estoque,
       ativo: v.ativo,
+      imagens: v.imagens ?? [],
+      novas: [],
     })),
   );
+  const [tipo, setTipo] = useState(iniciais[0]?.tipo || "Cor");
+  const outroTipo = !TIPOS.includes(tipo);
   const [escolhendo, setEscolhendo] = useState(false);
   const caixa = useRef<HTMLDivElement>(null);
 
@@ -110,6 +173,8 @@ export function VariacoesField({
       gtin: "",
       estoqueInicial: "",
       ativo: true,
+      imagens: [],
+      novas: [],
     };
   };
   const usados = new Set(linhas.map((l) => l.filamentoId).filter(Boolean));
@@ -134,6 +199,8 @@ export function VariacoesField({
       gtin: l.gtin.trim(),
       estoqueInicial: Math.max(0, Math.round(parseDecimal(l.estoqueInicial))),
       ativo: l.ativo,
+      imagens: l.imagens,
+      campoFotos: l.key,
     })),
   );
 
@@ -145,7 +212,7 @@ export function VariacoesField({
             <Layers className="size-4 text-gold" /> Variações
           </span>
         }
-        description="Cada cor/filamento vira um item com SKU, estoque, custo e preço próprios. Nome, fiscal, fotos e medidas vêm do produto principal."
+        description="Cada variação (ex.: Cor → Verde) vira um item com SKU, foto, estoque, custo e preço próprios. Nome, fiscal e medidas vêm do produto principal."
         action={
           <div ref={caixa} className="relative flex gap-2">
             {filamentos.length ? (
@@ -198,6 +265,19 @@ export function VariacoesField({
         }
       />
       <input type="hidden" name="variacoes" value={json} />
+      <input type="hidden" name="tipoVariacao" value={tipo} />
+      <div className="flex flex-wrap items-center gap-3 border-b border-border px-5 py-3">
+        <span className="text-sm font-semibold">Tipo de variação</span>
+        <Select value={outroTipo ? "outro" : tipo} onChange={(e) => setTipo(e.target.value === "outro" ? "" : e.target.value)} className="h-9 w-44 text-sm" aria-label="Tipo de variação">
+          {TIPOS.map((t) => (
+            <option key={t}>{t}</option>
+          ))}
+          <option value="outro">Outro...</option>
+        </Select>
+        {outroTipo ? (
+          <Input value={tipo} onChange={(e) => setTipo(e.target.value)} placeholder="Nome do tipo (ex.: Sabor)" className="h-9 w-48 text-sm" required aria-label="Nome do tipo de variação" />
+        ) : null}
+      </div>
       {linhas.length === 0 ? (
         <p className="p-5 text-sm text-muted">
           Nenhuma variação ainda. Use <strong>Criar pelos filamentos</strong> para gerar uma por cor do seu estoque, ou <strong>+ Variação</strong>.
@@ -212,12 +292,13 @@ export function VariacoesField({
               <div key={l.key} className={cn("grid gap-3 px-5 py-4", !l.ativo && "opacity-50")}>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="size-5 shrink-0 rounded-full ring-1 ring-black/20" style={{ background: fil?.corHex ?? "transparent" }} />
+                  <span className="text-sm font-semibold text-muted">{tipo || "Valor"}</span>
                   <Input
                     value={l.cor}
                     onChange={(e) => atualizar(l.key, { cor: e.target.value })}
-                    placeholder="Cor (ex.: Preto)"
+                    placeholder={`ex.: ${EXEMPLO[tipo] ?? "Verde"}`}
                     className="h-9 w-40 font-semibold"
-                    aria-label="Cor"
+                    aria-label={tipo || "Valor da variação"}
                     required
                   />
                   <span className="text-sm text-muted">custo {formatBRL(custoDe(l))}</span>
@@ -241,6 +322,7 @@ export function VariacoesField({
                     </Button>
                   </span>
                 </div>
+                <FotosVariacao linha={l} alterar={(patch) => atualizar(l.key, patch)} />
                 <div className="grid gap-3 sm:grid-cols-2 2xl:grid-cols-3">
                   <label className="sm:col-span-2 2xl:col-span-1">
                     {rotulo("Filamento do estoque")}

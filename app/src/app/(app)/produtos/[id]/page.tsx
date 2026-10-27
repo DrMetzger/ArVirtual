@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -35,7 +35,7 @@ export default async function ProdutoPage({
   const variacoes = produto.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)).orderBy(asc(produtos.cor)) : [];
 
   const cfgMl = await getSettings(["mercadolivre.tipoAnuncio", "mercadolivre.freteGratis"]);
-  const [contas, historico, parametros, ia, precos, arquivos] = await Promise.all([
+  const [contas, historico, parametros, ia, precos, arquivos, anunciadas] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
     // Histórico do produto e das variações dele.
     db.query.anuncios.findMany({
@@ -48,6 +48,13 @@ export default async function ProdutoPage({
     geminiConfigurado(),
     getParametrosPreco(),
     db.select().from(arquivosProduto).where(eq(arquivosProduto.produtoId, id)).orderBy(desc(arquivosProduto.criadoEm)),
+    // Onde cada variação já está anunciada (para não publicar em dobro).
+    variacoes.length
+      ? db
+          .select({ produtoId: anuncios.produtoId, contaId: anuncios.contaId })
+          .from(anuncios)
+          .where(and(inArray(anuncios.produtoId, variacoes.map((v) => v.id)), eq(anuncios.status, "publicado")))
+      : Promise.resolve([] as { produtoId: string; contaId: number }[]),
   ]);
 
   return (
@@ -71,7 +78,12 @@ export default async function ProdutoPage({
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
         <ProdutoForm
           key={[...produto.imagens, ...produto.videos, ...variacoes.map((v) => `${v.id}${v.estoque}`)].join("|")}
-          variacoes={variacoes.map((v) => ({ id: v.id, sku: v.sku, cor: v.cor, material: v.material, filamentoId: v.filamentoId, preco: v.preco, gtin: v.gtin, estoque: v.estoque, ativo: v.ativo }))}
+          variacoes={variacoes.map((v) => ({
+            id: v.id, sku: v.sku, cor: v.cor, material: v.material, filamentoId: v.filamentoId, preco: v.preco, gtin: v.gtin, estoque: v.estoque, ativo: v.ativo,
+            // Antes, a variação copiava as fotos do produto: essas não contam como fotos dela.
+            imagens: v.imagens.join() === produto.imagens.join() ? [] : v.imagens,
+            tipo: Object.keys(v.atributos ?? {}).find((k) => k !== "Material") ?? "Cor",
+          }))}
           produto={produto} parametros={parametros} precos={precos} filamentos={await listaFilamentos()} />
         <ArquivosImpressao
           produtoId={id}
@@ -94,6 +106,15 @@ export default async function ProdutoPage({
               marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome,
               cor: MARKETPLACE_INFO[c.marketplace].cor,
             }))}
+            variacoes={variacoes
+              .filter((v) => v.ativo)
+              .map((v) => ({
+                id: v.id,
+                rotulo: v.cor || v.sku,
+                sku: v.sku,
+                imagem: v.imagens[0],
+                contas: anunciadas.filter((a) => a.produtoId === v.id).map((a) => a.contaId),
+              }))}
             pendentes={(Object.keys(MARKETPLACE_INFO) as (keyof typeof MARKETPLACE_INFO)[])
               .filter((mp) => !contas.some((c) => c.marketplace === mp))
               .map((mp) => ({ marketplace: mp, nome: MARKETPLACE_INFO[mp].nome, cor: MARKETPLACE_INFO[mp].cor }))}
