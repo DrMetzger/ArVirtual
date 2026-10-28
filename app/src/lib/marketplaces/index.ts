@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte } from "drizzle-orm";
+import { and, eq, gte, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import { contasMarketplace, pedidosMarketplace, type ContaMarketplace, type Marketplace } from "@/db/schema";
 import { decrypt, encrypt } from "@/lib/crypto";
@@ -10,7 +10,7 @@ import { situacaoPedido } from "./situacao";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
 import { shopee } from "./shopee";
-import type { ContaComToken, MarketplaceAdapter } from "./types";
+import type { ContaComToken, EntregaPedido, MarketplaceAdapter } from "./types";
 
 export const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   mercadolivre: mercadoLivre,
@@ -111,15 +111,24 @@ async function sincronizar(opcoes: OpcoesSync): Promise<ResultadoSync> {
       if (loja && /^(Loja|Seller) Magalu\b/.test(conta.nome)) {
         await db.update(contasMarketplace).set({ nome: loja }).where(eq(contasMarketplace.id, conta.id));
       }
+      // O marketplace mascara os dados do comprador depois que o pedido termina ou é cancelado (ex.: Shopee "P******R"):
+      // o que já foi salvo sem máscara não é trocado pela versão mascarada.
+      const salvos = pedidos.length
+        ? await db
+            .select({ idExterno: pedidosMarketplace.idExterno, comprador: pedidosMarketplace.comprador, entrega: pedidosMarketplace.entrega })
+            .from(pedidosMarketplace)
+            .where(and(eq(pedidosMarketplace.marketplace, conta.marketplace), inArray(pedidosMarketplace.idExterno, pedidos.map((p) => p.idExterno))))
+        : [];
       for (const p of pedidos) {
+        const antes = salvos.find((x) => x.idExterno === p.idExterno);
         const valores = {
           status: p.status,
           total: p.total,
           frete: p.frete,
-          comprador: p.comprador,
+          comprador: semMascara(p.comprador, antes?.comprador),
           data: p.data,
           itens: p.itens,
-          entrega: p.entrega,
+          entrega: mesclarEntrega(p.entrega, antes?.entrega ?? null),
           dados: p.dados as object,
         };
         const [salvo] = await db
@@ -161,3 +170,20 @@ export const MARKETPLACE_INFO: Record<Marketplace, { nome: string; cor: string; 
   shopee: { nome: "Shopee", cor: "var(--mp-shopee)", portal: "https://open.shopee.com/" },
   magalu: { nome: "Magalu", cor: "var(--mp-magalu)", portal: "https://developers.magalu.com/" },
 };
+
+const mascarado = (v: string | undefined | null) => Boolean(v && v.includes("*"));
+
+/** Valor novo, a não ser que venha mascarado (ou vazio) e o anterior não. */
+function semMascara(novo: string, antigo: string | undefined | null) {
+  return (!novo || mascarado(novo)) && antigo && !mascarado(antigo) ? antigo : novo;
+}
+
+/** Entrega nova campo a campo, mantendo os campos que já estavam sem máscara; documento mascarado não vale. */
+function mesclarEntrega(nova: EntregaPedido | null, antiga: EntregaPedido | null): EntregaPedido | null {
+  if (!nova) return antiga;
+  const out = { ...nova } as Record<string, string | undefined>;
+  const velha = (antiga ?? {}) as Record<string, string | undefined>;
+  for (const k of Object.keys(out)) if (typeof out[k] === "string") out[k] = semMascara(out[k], velha[k]);
+  if (mascarado(out.documento)) out.documento = undefined;
+  return out as EntregaPedido;
+}
