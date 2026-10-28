@@ -1,6 +1,9 @@
 import "server-only";
 import { createHash, createHmac } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import sharp from "sharp";
 import { getSettings } from "@/lib/settings";
+import { UPLOAD_DIR } from "@/lib/uploads";
 import { lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
 
 // Shopee Open Platform v2: https://open.shopee.com/documents
@@ -68,11 +71,32 @@ const toTokens = (t: TokenResp): Tokens => ({
   expiraEm: new Date(Date.now() + t.expire_in * 1000),
 });
 
+/**
+ * Sobe a foto para a Shopee. Ela só aceita JPG/PNG de até 10 MB e recusa WEBP ("image is invalid or not supported"):
+ * toda foto vai convertida para JPEG (fundo branco onde era transparente), entre 500 e 2000 px.
+ */
 async function enviarImagem(conta: ContaComToken, url: string) {
-  const img = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-  if (!img.ok) throw new MarketplaceError(`Não foi possível baixar a imagem ${url}`);
+  const nome = url.match(/\/uploads\/([a-z0-9-]+\.(?:jpg|png|webp))$/)?.[1];
+  // Foto do próprio ERP: lê do disco (não depende do site público responder a ele mesmo).
+  const original = nome
+    ? await readFile(`${UPLOAD_DIR}/${nome}`).catch(() => null)
+    : await fetch(url, { signal: AbortSignal.timeout(20_000) }).then((r) => (r.ok ? r.arrayBuffer() : null)).catch(() => null);
+  if (!original) throw new MarketplaceError(`Não foi possível ler a imagem ${url}`);
+  let jpeg: Buffer;
+  try {
+    const img = sharp(Buffer.from(original as ArrayBuffer)).rotate();
+    const { width = 0, height = 0 } = await img.metadata();
+    const menor = Math.min(width, height);
+    jpeg = await img
+      .resize(menor && menor < 500 ? { width: width <= height ? 500 : undefined, height: height < width ? 500 : undefined } : { width: 2000, height: 2000, fit: "inside", withoutEnlargement: true })
+      .flatten({ background: "#ffffff" })
+      .jpeg({ quality: 90, mozjpeg: true })
+      .toBuffer();
+  } catch {
+    throw new MarketplaceError(`A imagem ${url} está corrompida ou num formato desconhecido.`);
+  }
   const form = new FormData();
-  form.append("image", new Blob([await img.arrayBuffer()]), "imagem.jpg");
+  form.append("image", new Blob([new Uint8Array(jpeg)], { type: "image/jpeg" }), "imagem.jpg");
   const r = await shopCall<ShopeeBase & { response: { image_info: { image_id: string } } }>(
     conta,
     "/api/v2/media_space/upload_image",
