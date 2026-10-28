@@ -28,6 +28,8 @@ export type DadosAnuncio = {
   /** Mercado Livre: Clássico ou Premium; frete grátis automático (regra do ML), sempre ou nunca. */
   tipoAnuncio?: "classico" | "premium";
   freteGratis?: "automatico" | "sempre" | "nunca";
+  /** Atributos informados na tela (ex.: { "Connection Type": "Com fio" }), usados nos obrigatórios da categoria. */
+  atributos?: Record<string, string>;
 };
 
 export type FiltroPedidos = {

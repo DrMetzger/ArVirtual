@@ -349,6 +349,17 @@ export async function gerarAnuncioIA(produtoId: string): Promise<{ erro?: string
 
 export type ResultadoPublicacao = { conta: string; ok: boolean; mensagem: string; link?: string };
 
+/** "Nome = valor" por linha (atributos da categoria informados na tela de anunciar). */
+function atributosDaTela(v: FormDataEntryValue | null) {
+  return Object.fromEntries(
+    String(v ?? "")
+      .split("\n")
+      .map((l) => l.split(/[=:]/))
+      .filter((p) => p.length >= 2 && p[0]!.trim() && p.slice(1).join("=").trim())
+      .map((p) => [p[0]!.trim(), p.slice(1).join("=").trim()]),
+  );
+}
+
 export async function publicarAnuncio(produtoId: string, form: FormData): Promise<ResultadoPublicacao[]> {
   await requireUser();
   const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId) });
@@ -441,6 +452,7 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
           tipoAnuncio: dados.tipoAnuncio,
           freteGratis: dados.freteGratis,
           categoria,
+          atributos: atributosDaTela(form.get(`atributos_${conta.marketplace}`)),
           ...(p.temVariacoes ? { grupo: p.sku, principal: i === 0, familia: dados.titulo } : {}),
         });
         await db.insert(anuncios).values({ produtoId: item.id, contaId: conta.id, marketplace: conta.marketplace, idExterno: r.idExterno, link: r.link, status: "publicado", preco });

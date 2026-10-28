@@ -148,6 +148,97 @@ async function enviarVideo(conta: ContaComToken, url: string): Promise<string> {
   throw new MarketplaceError("A Shopee ainda está processando o vídeo; publique de novo em alguns minutos.");
 }
 
+type AtributoShopee = { id: number; nome: string; obrigatorio: boolean; textoLivre: boolean; valores: { id: number; nome: string }[] };
+
+/**
+ * Atributos da categoria (Connection Type, Material...). Lê a árvore de atributos (API nova) e, se ela não vier,
+ * a lista antiga; aceita os dois formatos de resposta.
+ */
+async function atributosDaCategoria(conta: ContaComToken, categoria: number): Promise<AtributoShopee[]> {
+  type Bruto = Record<string, unknown> & { attribute_id: number; attribute_value_list?: Record<string, unknown>[] };
+  const nomeDe = (o: Record<string, unknown>, ...chaves: string[]) => {
+    for (const k of chaves) if (typeof o[k] === "string" && o[k]) return o[k] as string;
+    const ml = (o.multi_lang as { language?: string; value?: string }[] | undefined)?.find((m) => /pt/i.test(m.language ?? ""));
+    return ml?.value ?? "";
+  };
+  const normalizar = (lista: Bruto[]): AtributoShopee[] =>
+    lista.map((a) => {
+      const info = (a.attribute_info ?? {}) as { input_type?: number | string };
+      const tipo = String(info.input_type ?? a.input_type ?? a.attribute_type ?? "");
+      return {
+        id: a.attribute_id,
+        nome: nomeDe(a, "display_attribute_name", "name", "attribute_name", "original_attribute_name"),
+        obrigatorio: Boolean(a.mandatory ?? a.is_mandatory),
+        // Texto livre ou combo (lista + valor digitado): 2/3/5 na API nova; TEXT_FILED/COMBO_BOX na antiga.
+        textoLivre: /^(2|3|5)$|TEXT|COMBO/i.test(tipo) || !(a.attribute_value_list ?? []).length,
+        valores: (a.attribute_value_list ?? []).map((v) => ({
+          id: Number(v.value_id),
+          nome: nomeDe(v, "display_value_name", "name", "original_value_name", "value_name"),
+        })),
+      };
+    });
+  try {
+    const r = await shopCall<ShopeeBase & { response: { list?: { attribute_tree?: Bruto[] }[]; attribute_list?: Bruto[]; attribute_tree?: Bruto[] } }>(
+      conta,
+      "/api/v2/product/get_attribute_tree",
+      { query: { category_id_list: String(categoria), language: "pt-br" } },
+    );
+    const lista = r.response.list?.[0]?.attribute_tree ?? r.response.attribute_tree ?? r.response.attribute_list;
+    if (lista?.length) return normalizar(lista);
+  } catch {
+    // cai para a API antiga
+  }
+  const r = await shopCall<ShopeeBase & { response: { attribute_list?: Bruto[] } }>(conta, "/api/v2/product/get_attributes", {
+    query: { category_id: String(categoria), language: "pt-br" },
+  });
+  return normalizar(r.response.attribute_list ?? []);
+}
+
+const sem = (s: string) => s.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Preenche os atributos obrigatórios da categoria: primeiro com os dados do produto (cor, material),
+ * senão com a opção neutra da lista ("Outros", "Não se aplica"...) ou a primeira. Devolve o que escolheu, para avisar.
+ */
+function preencherObrigatorios(
+  atributos: AtributoShopee[],
+  produto: { cor: string; material: string; atributos: Record<string, string> | null },
+  daTela: Record<string, string> = {},
+) {
+  const doProduto: Record<string, string> = {
+    cor: produto.cor,
+    color: produto.cor,
+    colour: produto.cor,
+    material: produto.material,
+    marca: "ArVirtual",
+    brand: "ArVirtual",
+    ...Object.fromEntries(Object.entries(produto.atributos ?? {}).map(([k, v]) => [sem(k), v])),
+    ...Object.fromEntries(Object.entries(daTela).map(([k, v]) => [sem(k), v])),
+  };
+  const NEUTRAS = /^(outros?|others?|nao se aplica|n\/a|nenhum|none|sem marca|no brand|nobrand|universal|nao|generic[oa]?)$/;
+  const lista: { attribute_id: number; attribute_value_list: { value_id: number; original_value_name?: string }[] }[] = [];
+  const escolhidos: string[] = [];
+  for (const a of atributos.filter((x) => x.obrigatorio)) {
+    const desejado = doProduto[sem(a.nome)] ?? "";
+    // Igual, ou a palavra inteira dentro do nome da opção ("Preto" casa com "Preto Fosco"; "PLA" não casa com "Plástico").
+    const palavras = (t: string) => sem(t).split(/[^a-z0-9]+/).filter(Boolean);
+    const igual = desejado
+      ? (a.valores.find((v) => sem(v.nome) === sem(desejado)) ??
+        a.valores.find((v) => palavras(desejado).every((p) => palavras(v.nome).includes(p))))
+      : undefined;
+    const valor = igual ?? (desejado && a.textoLivre ? undefined : a.valores.find((v) => NEUTRAS.test(sem(v.nome))) ?? a.valores[0]);
+    if (valor) {
+      lista.push({ attribute_id: a.id, attribute_value_list: [{ value_id: valor.id }] });
+      escolhidos.push(`${a.nome} = ${valor.nome}`);
+    } else {
+      const texto = desejado || "Não se aplica";
+      lista.push({ attribute_id: a.id, attribute_value_list: [{ value_id: 0, original_value_name: texto }] });
+      escolhidos.push(`${a.nome} = ${texto}`);
+    }
+  }
+  return { lista, escolhidos };
+}
+
 export const shopee: MarketplaceAdapter = {
   id: "shopee",
   nome: "Shopee",
@@ -225,6 +316,9 @@ export const shopee: MarketplaceAdapter = {
       .map((l) => ({ logistic_id: l.logistics_channel_id, enabled: true }));
     if (!logistica.length) throw new MarketplaceError("Nenhum canal de envio ativo na loja Shopee.");
 
+    // Atributos obrigatórios da categoria (ex.: "Connection Type" em acessórios de games).
+    const { lista: atributos, escolhidos } = preencherObrigatorios(await atributosDaCategoria(conta, categoria).catch(() => []), produto, anuncio.atributos);
+
     const imageIds: string[] = [];
     for (const url of produto.imagens.slice(0, 9)) imageIds.push(await enviarImagem(conta, url));
 
@@ -258,10 +352,14 @@ export const shopee: MarketplaceAdapter = {
         item_sku: produto.sku,
         condition: "NEW",
         brand: { brand_id: 0, original_brand_name: "NoBrand" },
+        ...(atributos.length ? { attribute_list: atributos } : {}),
         ...(videoId ? { video_upload_id: [videoId] } : {}),
       },
     });
     const itemId = String(r.response.item_id);
+    if (escolhidos.length) {
+      aviso = [aviso, `Atributos obrigatórios preenchidos automaticamente: ${escolhidos.join("; ")}. Confira no anúncio da Shopee.`].filter(Boolean).join(" ");
+    }
     return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
   },
 
