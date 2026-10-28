@@ -1,9 +1,10 @@
 import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
-import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
+import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { anuncios, arquivosProduto, contasMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
@@ -12,7 +13,7 @@ import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { excluirProduto } from "../actions";
+import { duplicarProduto, excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
 import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
@@ -22,11 +23,11 @@ export default async function ProdutoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string }>;
+  searchParams: Promise<{ salvo?: string; copia?: string }>;
 }) {
   await requireUser();
   const { id } = await params;
-  const { salvo } = await searchParams;
+  const { salvo, copia } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const produto = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
   if (!produto) notFound();
@@ -71,15 +72,27 @@ export default async function ProdutoPage({
         title={produto.nome}
         description={`SKU ${produto.sku} · NCM ${produto.ncm}${variacoes.length ? ` · ${variacoes.filter((v) => v.ativo).length} variação(ões)` : ""}`}
         actions={
-          <form action={excluirProduto.bind(null, id)}>
-            <button type="submit" className={buttonClass("outline", "md", "hover:border-red hover:text-red")}>
-              <Trash2 /> Excluir
-            </button>
-          </form>
+          <>
+            <form action={duplicarProduto.bind(null, id)}>
+              <SubmitButton variant="outline" pendingText="Copiando..." title="Cria outro produto igual (SKU novo, estoque zero, sem anúncios) para anunciar de outro jeito">
+                <Copy /> Duplicar
+              </SubmitButton>
+            </form>
+            <form action={excluirProduto.bind(null, id)}>
+              <button type="submit" className={buttonClass("outline", "md", "hover:border-red hover:text-red")}>
+                <Trash2 /> Excluir
+              </button>
+            </form>
+          </>
         }
       />
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
+        {copia ? (
+          <Alert tone="green">
+            Cópia criada com SKU {produto.sku}, estoque zero e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
+          </Alert>
+        ) : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
         <ProdutoForm
           key={[...produto.imagens, ...produto.videos, ...variacoes.map((v) => `${v.id}${v.estoque}`)].join("|")}

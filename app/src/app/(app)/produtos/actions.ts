@@ -1,6 +1,7 @@
 "use server";
 
-import { rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { copyFile, rm } from "node:fs/promises";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
@@ -279,6 +280,51 @@ export async function excluirProduto(id: string) {
   await Promise.all(arquivos.map((a) => rm(`${PASTA_IMPRESSAO}/${a.arquivo}`, { force: true })));
   revalidatePath("/produtos");
   redirect("/produtos");
+}
+
+/**
+ * Copia o produto (com variações, fotos, vídeos, composição, fiscal, preços por plataforma e arquivos de impressão)
+ * para anunciar de outro jeito, ex.: um anúncio mais barato. A cópia nasce com SKU novo, estoque zero e sem anúncios.
+ */
+export async function duplicarProduto(id: string) {
+  const user = await requireUser();
+  const p = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
+  if (!p) redirect("/produtos");
+  const variacoes = p.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)) : [];
+  const usados = new Set((await db.select({ sku: produtos.sku }).from(produtos)).map((x) => x.sku.toUpperCase()));
+  const livre = (base: string) => {
+    let sku = base.slice(0, 60);
+    for (let n = 2; usados.has(sku.toUpperCase()); n++) sku = `${base.slice(0, 55)}-${n}`;
+    usados.add(sku.toUpperCase());
+    return sku;
+  };
+  const skuNovo = livre(`${p.sku}-C`);
+  const { id: _id, criadoEm: _c, atualizadoEm: _a, ...dados } = p;
+
+  const novoId = await db.transaction(async (tx) => {
+    const [novo] = await tx
+      .insert(produtos)
+      .values({ ...dados, sku: skuNovo, nome: `${p.nome} (cópia)`.slice(0, 200), estoque: 0 })
+      .returning({ id: produtos.id });
+    for (const v of variacoes) {
+      const { id: _vid, criadoEm: _vc, atualizadoEm: _va, ...dv } = v;
+      // SKU da variação acompanha o SKU novo do produto (VASO-PRETO → VASO-C-PRETO).
+      const sku = livre(v.sku.toUpperCase().startsWith(p.sku.toUpperCase()) ? skuNovo + v.sku.slice(p.sku.length) : `${v.sku}-C`);
+      await tx.insert(produtos).values({ ...dv, sku, nome: `${v.nome} (cópia)`.slice(0, 200), paiId: novo!.id, estoque: 0 });
+    }
+    // Arquivos de impressão: cópia física (apagar um produto não pode levar o arquivo do outro).
+    const arquivos = await tx.select().from(arquivosProduto).where(eq(arquivosProduto.produtoId, id));
+    for (const a of arquivos) {
+      const arquivo = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}.${a.arquivo.split(".").pop()}`;
+      const ok = await copyFile(`${PASTA_IMPRESSAO}/${a.arquivo}`, `${PASTA_IMPRESSAO}/${arquivo}`).then(() => true).catch(() => false);
+      if (ok) {
+        await tx.insert(arquivosProduto).values({ produtoId: novo!.id, nome: a.nome, arquivo, tamanho: a.tamanho, observacao: a.observacao, enviadoPor: user.nome });
+      }
+    }
+    return novo!.id;
+  });
+  revalidatePath("/produtos");
+  redirect(`/produtos/${novoId}?copia=1`);
 }
 
 export async function gerarAnuncioIA(produtoId: string): Promise<{ erro?: string; sugestao?: SugestaoAnuncio }> {
