@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
 import type { Marketplace } from "@/db/schema";
+import { CAMPOS_ANUNCIO } from "@/lib/marketplaces/types";
 import { formatValor, parseDecimal } from "@/lib/utils";
 import { gerarAnuncioIA, type ResultadoPublicacao } from "./actions";
 
@@ -237,7 +238,9 @@ export function Anunciar({
             <div className="grid gap-2 rounded-xl border border-border p-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wide text-muted">Atualizar anúncios existentes</p>
-                <p className="text-xs text-muted">Usa o título e a descrição acima. Marque o que trocar em cada plataforma.</p>
+                <p className="text-xs text-muted">
+                  Marque o que trocar em cada plataforma. Título, descrição e preço vêm desta tela; fotos, vídeo e estoque, do cadastro do produto (salve antes).
+                </p>
               </div>
               {existentes.map((e) => {
                 const c = contas.find((x) => x.id === e.contaId);
@@ -247,17 +250,16 @@ export function Anunciar({
                   setMarcados((m) => ({ ...m, [c.id]: on ? [...sel, campo] : sel.filter((x) => x !== campo) }));
                 return (
                   <div key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
-                    <span className="flex min-w-[180px] flex-1 items-center gap-2">
+                    <span className="flex w-full items-center gap-2">
                       <span className="size-2.5 shrink-0 rounded-full" style={{ background: c.cor }} />
                       <span className="font-semibold">{c.marketplaceNome}</span>
                       <span className="truncate text-muted">
                         {c.nome} · {e.quantidade} anúncio(s)
                       </span>
                     </span>
-                    {[
-                      ["titulo", "Título"],
-                      ["descricao", "Descrição"],
-                    ].map(([campo, rotulo]) => (
+                    {Object.entries(CAMPOS_ANUNCIO)
+                      .filter(([campo]) => campo !== "video" || c.marketplace === "shopee")
+                      .map(([campo, rotulo]) => (
                       <label key={campo} className="inline-flex items-center gap-1.5">
                         <input
                           type="checkbox"
@@ -269,7 +271,7 @@ export function Anunciar({
                         />
                         {rotulo}
                       </label>
-                    ))}
+                      ))}
                   </div>
                 );
               })}

@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
 const API = "https://api.mercadolibre.com";
@@ -137,22 +137,25 @@ export const mercadoLivre: MarketplaceAdapter = {
     return { idExterno: item.id, link: item.permalink };
   },
 
-  async atualizar(conta, id, { titulo, descricao }) {
-    const avisos: string[] = [];
-    if (titulo) {
-      // O ML não deixa trocar o título depois da primeira venda, nem em anúncios do modelo "User Products" (ele monta o título).
-      await api(`/items/${id}`, conta.accessToken, { method: "PUT", body: JSON.stringify({ title: titulo.slice(0, 60) }) }).catch((e: Error) =>
-        avisos.push(`título não alterado: o Mercado Livre recusou (${e.message.replace(/^Mercado Livre \(\d+\):\s*/, "")})`),
-      );
-    }
-    if (descricao) {
-      const corpo = JSON.stringify({ plain_text: descricao });
+  async atualizar(conta, id, m) {
+    const put = (body: object) => api(`/items/${id}`, conta.accessToken, { method: "PUT", body: JSON.stringify(body) });
+    const descricao = JSON.stringify({ plain_text: m.descricao ?? "" });
+    return aplicarCampos([
+      // O ML não deixa trocar o título depois da primeira venda, nem em anúncios "User Products" (ele monta o título).
+      ["titulo", m.titulo !== undefined && (() => put({ title: m.titulo!.slice(0, 60) }))],
       // PUT troca a descrição; anúncio que nunca teve descrição precisa de POST.
-      await api(`/items/${id}/description`, conta.accessToken, { method: "PUT", body: corpo }).catch(() =>
-        api(`/items/${id}/description`, conta.accessToken, { method: "POST", body: corpo }),
-      );
-    }
-    return avisos;
+      [
+        "descricao",
+        m.descricao !== undefined &&
+          (() =>
+            api(`/items/${id}/description`, conta.accessToken, { method: "PUT", body: descricao }).catch(() =>
+              api(`/items/${id}/description`, conta.accessToken, { method: "POST", body: descricao }),
+            )),
+      ],
+      ["fotos", m.fotos?.length && (() => put({ pictures: m.fotos!.slice(0, 10).map((u) => ({ source: fotoJpeg(u) })) }))],
+      ["preco", m.preco !== undefined && (() => put({ price: m.preco }))],
+      ["estoque", m.estoque !== undefined && (() => put({ available_quantity: Math.max(0, m.estoque!) }))],
+    ]);
   },
 
   async anuncios(conta) {
