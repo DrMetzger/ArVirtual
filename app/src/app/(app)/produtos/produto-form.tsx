@@ -140,11 +140,20 @@ export function ProdutoForm({
                 </div>
               </Field>
             ) : produto ? (
-              <Field label="Estoque" className="sm:col-span-2" hint="Entradas, saídas e contagens ficam no Estoque.">
-                <Link href={`/estoque/${produto.id}`} className="flex h-10 items-center justify-between rounded-xl border border-border px-3 text-sm hover:border-gold">
-                  <span className="font-semibold">{produto.estoque} un.</span>
-                  <span className="text-xs text-gold">movimentar →</span>
-                </Link>
+              <Field
+                label="Estoque"
+                className="sm:col-span-2"
+                hint={
+                  <>
+                    A mudança entra no histórico como ajuste.{" "}
+                    <Link href={`/estoque/${produto.id}`} className="text-gold hover:underline">
+                      Ver histórico
+                    </Link>
+                  </>
+                }
+              >
+                <input type="hidden" name="estoqueAntes" value={produto.estoque} />
+                <Input name="estoque" type="number" step={1} defaultValue={produto.estoque} />
               </Field>
             ) : (
               <Field label="Estoque inicial" className="sm:col-span-2" hint="Entra no kardex como saldo inicial.">
