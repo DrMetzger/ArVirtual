@@ -211,11 +211,30 @@ export const magalu: MarketplaceAdapter = {
     const canalDaLoja = async () =>
       (canal ??= (await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken)).channel?.id) ??
       Promise.reject(new MarketplaceError("Magalu não informou o canal da loja."));
-    const r = await aplicarCampos([
-      ["titulo", m.titulo !== undefined && (() => patch("skus", { title: m.titulo!.slice(0, 150) }))],
-      ["descricao", m.descricao !== undefined && (() => patch("skus", { description: m.descricao!.slice(0, 7000) }))],
+    // Título, descrição e fotos vão juntos numa alteração só: duas alterações seguidas no mesmo SKU fazem o Magalu
+    // recusar a segunda ("Product cannot be saved because sku already exists"). Nesse erro, tenta de novo uma vez.
+    const cadastro = {
+      ...(m.titulo !== undefined ? { title: m.titulo.slice(0, 150) } : {}),
+      ...(m.descricao !== undefined ? { description: m.descricao.slice(0, 7000) } : {}),
       // O Magalu só aceita JPEG.
-      ["fotos", m.fotos?.length && (() => patch("skus", { images: m.fotos!.slice(0, 30).map((u) => ({ reference: fotoJpeg(u), type: "image/jpeg" })) }))],
+      ...(m.fotos?.length ? { images: m.fotos.slice(0, 30).map((u) => ({ reference: fotoJpeg(u), type: "image/jpeg" })) } : {}),
+    };
+    const camposCadastro = (["titulo", "descricao", "fotos"] as const).filter((c) => (c === "fotos" ? m.fotos?.length : m[c] !== undefined));
+    const r = await aplicarCampos([]);
+    if (camposCadastro.length) {
+      try {
+        await patch("skus", cadastro).catch(async (e: Error) => {
+          if (!/already exists/i.test(e.message)) throw e;
+          await new Promise((ok) => setTimeout(ok, 4000));
+          await patch("skus", cadastro);
+        });
+        r.feitos.push(...camposCadastro);
+      } catch (e) {
+        const motivo = (e as Error).message.replace(/^[\w ]+ \(\d+\):\s*/, "");
+        r.falhas.push(...camposCadastro.map((campo) => ({ campo, motivo })));
+      }
+    }
+    const resto = await aplicarCampos([
       [
         "preco",
         m.preco !== undefined &&
@@ -226,6 +245,8 @@ export const magalu: MarketplaceAdapter = {
       ],
       ["estoque", m.estoque !== undefined && (async () => patch("stocks", { channel: { id: await canalDaLoja() }, type: "AVAILABLE", quantity: Math.max(0, m.estoque!) }))],
     ]);
+    r.feitos.push(...resto.feitos);
+    r.falhas.push(...resto.falhas);
     if (r.feitos.some((c) => c === "titulo" || c === "descricao" || c === "fotos")) r.avisos.push("O Magalu analisa a alteração do cadastro antes de mostrar no site.");
     return r;
   },

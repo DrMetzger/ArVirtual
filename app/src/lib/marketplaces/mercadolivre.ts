@@ -37,6 +37,25 @@ async function api<T>(path: string, accessToken: string, init: RequestInit = {})
   return lerResposta<T>(res, "Mercado Livre");
 }
 
+/**
+ * O ML só aceita descrição em texto puro: sem emoji, sem HTML e sem caracteres de controle
+ * ("The description must be in plain text"). Mantém acentos, quebras de linha e marcadores simples.
+ */
+export function textoPuroML(s: string) {
+  return s
+    .replace(/<[^>]+>/g, "")
+    .replace(/[\u2013\u2014\u2022\u00B7\u25CF\u25AA\u2023\u2043]/g, "-")
+    .replace(/[\u201C\u201D\u201E]/g, '"')
+    .replace(/[\u2018\u2019\u201A]/g, "'")
+    .replace(/\u2026/g, "...")
+    .replace(/[\p{Extended_Pictographic}\u{FE0F}\u{FE0E}\u{200D}\u{20E3}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}]/gu, "")
+    .replace(/[^\S\n]+\n/g, "\n")
+    .replace(/^[^\S\n]+/gm, "")
+    .replace(/[^\S\n]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export const mercadoLivre: MarketplaceAdapter = {
   id: "mercadolivre",
   nome: "Mercado Livre",
@@ -131,7 +150,7 @@ export const mercadoLivre: MarketplaceAdapter = {
     if (anuncio.descricao) {
       await api(`/items/${item.id}/description`, conta.accessToken, {
         method: "POST",
-        body: JSON.stringify({ plain_text: anuncio.descricao }),
+        body: JSON.stringify({ plain_text: textoPuroML(anuncio.descricao) }),
       }).catch(() => undefined); // o anúncio já existe; a descrição pode ser ajustada depois
     }
     return { idExterno: item.id, link: item.permalink };
@@ -139,10 +158,23 @@ export const mercadoLivre: MarketplaceAdapter = {
 
   async atualizar(conta, id, m) {
     const put = (body: object) => api(`/items/${id}`, conta.accessToken, { method: "PUT", body: JSON.stringify(body) });
-    const descricao = JSON.stringify({ plain_text: m.descricao ?? "" });
+    const descricao = JSON.stringify({ plain_text: textoPuroML(m.descricao ?? "") });
     return aplicarCampos([
       // O ML não deixa trocar o título depois da primeira venda, nem em anúncios "User Products" (ele monta o título).
-      ["titulo", m.titulo !== undefined && (() => put({ title: m.titulo!.slice(0, 60) }))],
+      [
+        "titulo",
+        m.titulo !== undefined &&
+          (() =>
+            put({ title: m.titulo!.slice(0, 60) }).catch(async (e: Error) => {
+              if (!/family_name/i.test(e.message)) throw e;
+              // Anúncio do modelo novo (User Products): o ML monta o título a partir do nome da família.
+              await put({ family_name: m.titulo!.slice(0, 60) }).catch(() => {
+                throw new Error(
+                  "anúncio do modelo novo do Mercado Livre: o título é montado pelo próprio ML e não pode ser trocado pela API (só editando o anúncio no site do ML)",
+                );
+              });
+            })),
+      ],
       // PUT troca a descrição; anúncio que nunca teve descrição precisa de POST.
       [
         "descricao",
