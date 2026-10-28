@@ -204,6 +204,14 @@ export const magalu: MarketplaceAdapter = {
     };
   },
 
+  async atualizar(conta, sku, { titulo, descricao }) {
+    await api(`/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`, conta.accessToken, {
+      method: "PATCH",
+      body: JSON.stringify({ ...(titulo ? { title: titulo.slice(0, 150) } : {}), ...(descricao ? { description: descricao.slice(0, 7000) } : {}) }),
+    });
+    return ["o Magalu analisa a alteração antes de mostrar no site."];
+  },
+
   async anuncios(conta) {
     // No Magalu o anúncio é o SKU do portfólio (o mesmo que vem nos itens dos pedidos).
     type Sku = {

@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, Loader2, Megaphone, Sparkles, XCircle } from "lucide-react";
+import { CheckCircle2, ExternalLink, Loader2, Megaphone, RefreshCw, Sparkles, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { Alert, Button, buttonClass, Card, CardHeader, Field, Input, Select, Textarea } from "@/components/ui";
@@ -19,6 +19,7 @@ export function Anunciar({
   contas,
   pendentes = [],
   variacoes = [],
+  existentes = [],
   temImagem,
   iaConfigurada,
   ml = { tipo: "classico", frete: "automatico" },
@@ -33,6 +34,8 @@ export function Anunciar({
   pendentes?: { marketplace: Marketplace; nome: string; cor: string }[];
   /** Variações ativas e as contas em que cada uma já está anunciada. */
   variacoes?: { id: string; rotulo: string; sku: string; imagem?: string; contas: number[] }[];
+  /** Contas em que o produto (ou variações) já tem anúncio: dá para atualizar título e descrição. */
+  existentes?: { contaId: number; quantidade: number }[];
   temImagem: boolean;
   iaConfigurada: boolean;
   /** Padrões de Configurações › Precificação: Mercado Livre. */
@@ -47,6 +50,10 @@ export function Anunciar({
   const [resultados, setResultados] = useState<ResultadoPublicacao[] | null>(null);
   const [gerando, startIA] = useTransition();
   const [publicando, startPub] = useTransition();
+  const [atualizando, startAtu] = useTransition();
+  // Por conta: o que atualizar nos anúncios existentes (nada marcado de início).
+  const [marcados, setMarcados] = useState<Record<number, string[]>>({});
+  const algoMarcado = Object.values(marcados).some((v) => v.length);
   const mps = [...new Set(contas.filter((c) => selecionadas.includes(c.id)).map((c) => c.marketplace))];
 
   return (
@@ -226,11 +233,82 @@ export function Anunciar({
             {publicando ? "Publicando..." : "Publicar anúncio"}
           </Button>
 
+          {existentes.length ? (
+            <div className="grid gap-2 rounded-xl border border-border p-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Atualizar anúncios existentes</p>
+                <p className="text-xs text-muted">Usa o título e a descrição acima. Marque o que trocar em cada plataforma.</p>
+              </div>
+              {existentes.map((e) => {
+                const c = contas.find((x) => x.id === e.contaId);
+                if (!c) return null;
+                const sel = marcados[c.id] ?? [];
+                const alternar = (campo: string, on: boolean) =>
+                  setMarcados((m) => ({ ...m, [c.id]: on ? [...sel, campo] : sel.filter((x) => x !== campo) }));
+                return (
+                  <div key={c.id} className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm">
+                    <span className="flex min-w-[180px] flex-1 items-center gap-2">
+                      <span className="size-2.5 shrink-0 rounded-full" style={{ background: c.cor }} />
+                      <span className="font-semibold">{c.marketplaceNome}</span>
+                      <span className="truncate text-muted">
+                        {c.nome} · {e.quantidade} anúncio(s)
+                      </span>
+                    </span>
+                    {[
+                      ["titulo", "Título"],
+                      ["descricao", "Descrição"],
+                    ].map(([campo, rotulo]) => (
+                      <label key={campo} className="inline-flex items-center gap-1.5">
+                        <input
+                          type="checkbox"
+                          name={`atualizar_${c.id}`}
+                          value={campo}
+                          checked={sel.includes(campo!)}
+                          onChange={(ev) => alternar(campo!, ev.target.checked)}
+                          className="size-4 accent-[var(--gold)]"
+                        />
+                        {rotulo}
+                      </label>
+                    ))}
+                  </div>
+                );
+              })}
+              {marcados[contas.find((c) => c.marketplace === "mercadolivre")?.id ?? -1]?.includes("titulo") ? (
+                <p className="text-xs text-muted">Mercado Livre: o título não pode ser trocado em anúncio que já vendeu; nesse caso só a descrição muda.</p>
+              ) : null}
+              {contas.some((c) => c.marketplace === "magalu" && marcados[c.id]?.length) ? (
+                <p className="text-xs text-muted">Magalu: a alteração passa por análise antes de aparecer no site.</p>
+              ) : null}
+              <Button
+                type="button"
+                variant="outline"
+                disabled={atualizando || !algoMarcado}
+                onClick={(ev) => {
+                  const fd = new FormData(ev.currentTarget.form!);
+                  setResultados(null);
+                  startAtu(async () => {
+                    try {
+                      const res = await fetch(`/api/produtos/${produtoId}/atualizar-anuncios`, { method: "POST", body: fd });
+                      const dados = (await res.json().catch(() => null)) as ResultadoPublicacao[] | null;
+                      setResultados(dados ?? [{ conta: "-", ok: false, mensagem: `Erro ${res.status} ao atualizar. Recarregue a página e tente de novo.` }]);
+                      if (dados?.some((d) => d.ok)) setMarcados({});
+                    } catch {
+                      setResultados([{ conta: "-", ok: false, mensagem: "Sem conexão com o servidor. Verifique a internet e tente de novo." }]);
+                    }
+                  });
+                }}
+              >
+                {atualizando ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+                {atualizando ? "Atualizando..." : "Atualizar anúncios"}
+              </Button>
+            </div>
+          ) : null}
+
           {resultados ? (
             <div className="grid gap-2">
               {resultados.map((r) => (
                 <div
-                  key={r.conta}
+                  key={`${r.conta}-${r.mensagem}`}
                   className={`flex items-start gap-2 rounded-xl border px-3 py-2 text-sm ${r.ok ? "border-green/30 text-green" : "border-red/30 text-red"}`}
                 >
                   {r.ok ? <CheckCircle2 className="mt-0.5 size-4 shrink-0" /> : <XCircle className="mt-0.5 size-4 shrink-0" />}

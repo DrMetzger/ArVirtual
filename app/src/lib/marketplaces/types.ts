@@ -110,6 +110,8 @@ export interface MarketplaceAdapter {
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
+  /** Troca título e/ou descrição de um anúncio que já existe. Devolve avisos do que a plataforma não deixou mudar. */
+  atualizar(conta: ContaComToken, idExterno: string, mudancas: { titulo?: string; descricao?: string }): Promise<string[]>;
 }
 
 export class MarketplaceError extends Error {}

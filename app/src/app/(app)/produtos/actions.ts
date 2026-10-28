@@ -410,6 +410,68 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
   return resultados;
 }
 
+/**
+ * Troca título e/ou descrição dos anúncios que já existem, escolhendo por conta o que muda
+ * (campos "atualizar_<contaId>" = "titulo" / "descricao"). Variação leva o título + o valor dela, como ao publicar.
+ */
+export async function atualizarAnuncios(produtoId: string, form: FormData): Promise<ResultadoPublicacao[]> {
+  await requireUser();
+  const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId) });
+  if (!p) return [{ conta: "-", ok: false, mensagem: "Produto não encontrado." }];
+  const titulo = String(form.get("titulo") ?? "").trim();
+  const descricao = String(form.get("descricao") ?? "").trim();
+  const itens = p.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, p.id)) : [p];
+  const publicados = await db
+    .select()
+    .from(anuncios)
+    .where(and(inArray(anuncios.produtoId, itens.map((x) => x.id)), eq(anuncios.status, "publicado")));
+  const contas = await db.select().from(contasMarketplace);
+
+  const resultados: ResultadoPublicacao[] = [];
+  for (const conta of contas) {
+    const campos = form.getAll(`atualizar_${conta.id}`).map(String);
+    const querTitulo = campos.includes("titulo") && Boolean(titulo);
+    const querDescricao = campos.includes("descricao") && Boolean(descricao);
+    const a = adapter(conta.marketplace);
+    if (campos.length && !querTitulo && !querDescricao) {
+      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: false, mensagem: "O título/descrição marcado está em branco: nada foi alterado." });
+      continue;
+    }
+    if (!querTitulo && !querDescricao) continue;
+    const daConta = publicados.filter((x) => x.contaId === conta.id && x.idExterno);
+    // O mesmo anúncio pode estar no histórico mais de uma vez (publicado e depois vinculado): atualiza uma vez só.
+    const unicos = daConta.filter((x, i) => daConta.findIndex((y) => y.idExterno === x.idExterno) === i);
+    if (!unicos.length) {
+      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: false, mensagem: "Este produto não tem anúncio nesta conta." });
+      continue;
+    }
+    const token = await contaComToken(conta).catch((e: Error) => e);
+    for (const an of unicos) {
+      const item = itens.find((x) => x.id === an.produtoId);
+      const rotulo = `${a.nome} · ${conta.nome}${p.temVariacoes && item ? ` · ${item.cor || item.sku}` : ""}`;
+      const mudou = querTitulo && querDescricao ? "Título e descrição atualizados" : querTitulo ? "Título atualizado" : "Descrição atualizada";
+      try {
+        if (token instanceof Error) throw token;
+        const avisos = await a.atualizar(token, an.idExterno!, {
+          titulo: querTitulo ? (p.temVariacoes && item ? `${titulo} ${item.cor}`.trim() : titulo) : undefined,
+          descricao: querDescricao ? descricao : undefined,
+        });
+        const recusouTitulo = avisos.some((x) => x.startsWith("título não alterado"));
+        resultados.push({
+          conta: rotulo,
+          ok: !recusouTitulo || querDescricao,
+          mensagem: `${recusouTitulo ? (querDescricao ? "Descrição atualizada" : "Nada alterado") : mudou} (${an.idExterno})${avisos.length ? `. ${avisos.map((x) => x[0]!.toUpperCase() + x.slice(1)).join(" ")}` : ""}`,
+          link: an.link ?? undefined,
+        });
+      } catch (e) {
+        resultados.push({ conta: rotulo, ok: false, mensagem: (e as Error).message });
+      }
+    }
+  }
+  if (!resultados.length) return [{ conta: "-", ok: false, mensagem: "Marque o que atualizar (título e/ou descrição) em ao menos uma plataforma." }];
+  return resultados;
+}
+
 export async function sugerirNcmIA(produto: { nome: string; descricao: string; material: string }): Promise<{ erro?: string; sugestoes?: SugestaoNcm[] }> {
   await requireUser();
   if (produto.nome.trim().length < 3) return { erro: "Preencha o nome do produto primeiro." };
