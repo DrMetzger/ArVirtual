@@ -75,6 +75,45 @@ function dadosDoToken(accessToken: string): { tenant: string; nome: string; payl
   }
 }
 
+const MARCADOR = /^\s*(?:[-*•·▪►➤➜→✓✔✅☑️]|\d+[.)])\s*/u;
+
+/**
+ * O Magalu mostra a descrição como HTML (o editor do Portal tem negrito e listas): texto puro vira um bloco só.
+ * Converte: linha em branco separa parágrafos, linhas com marcador ("-", "•", "✅", "1.") viram lista,
+ * "Rótulo:" no começo da linha fica em negrito e as demais quebras de linha são mantidas.
+ */
+export function descricaoHtml(texto: string) {
+  const esc = (t: string) => t.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const negrito = (t: string) => {
+    const m = t.match(/^([^:.!?]{2,40}):(\s+|$)(.*)$/u);
+    return m ? `<strong>${esc(m[1]!)}:</strong>${m[3] ? ` ${esc(m[3])}` : ""}` : esc(t);
+  };
+  const blocos = texto.replace(/\r/g, "").trim().split(/\n\s*\n+/);
+  const html = blocos
+    .map((bloco) => {
+      const linhas = bloco.split("\n").map((l) => l.trim()).filter(Boolean);
+      const partes: string[] = [];
+      let lista: string[] = [];
+      let paragrafo: string[] = [];
+      const fecharLista = () => lista.length && (partes.push(`<ul>${lista.map((i) => `<li>${i}</li>`).join("")}</ul>`), (lista = []));
+      const fecharParagrafo = () => paragrafo.length && (partes.push(`<p>${paragrafo.join("<br>")}</p>`), (paragrafo = []));
+      for (const l of linhas) {
+        if (MARCADOR.test(l)) {
+          fecharParagrafo();
+          lista.push(negrito(l.replace(MARCADOR, "")));
+        } else {
+          fecharLista();
+          paragrafo.push(negrito(l));
+        }
+      }
+      fecharLista();
+      fecharParagrafo();
+      return partes.join("");
+    })
+    .join("");
+  return html.slice(0, 7000);
+}
+
 // Campos aceitos pela atualização completa do SKU (SkuUpdateRequest; o Magalu recusa campos a mais).
 const CAMPOS_PUT = [
   "active", "attributes", "brand", "category", "channels", "condition", "datasheet", "description", "dimensions", "extra_data",
@@ -181,7 +220,7 @@ export const magalu: MarketplaceAdapter = {
       body: JSON.stringify({
         sku: produto.sku,
         title: anuncio.titulo.slice(0, 150),
-        description: (anuncio.descricao || produto.descricao || anuncio.titulo).slice(0, 7000),
+        description: descricaoHtml(anuncio.descricao || produto.descricao || anuncio.titulo),
         brand: "ArVirtual",
         // Variações do mesmo produto ficam no mesmo grupo (SKU base); produto simples é o próprio grupo.
         group: { id: (anuncio.grupo ?? produto.sku).slice(0, 50), main_variation: anuncio.principal ?? true },
@@ -245,7 +284,7 @@ export const magalu: MarketplaceAdapter = {
     // recusar a segunda ("Product cannot be saved because sku already exists"). Nesse erro, tenta de novo uma vez.
     const cadastro = {
       ...(m.titulo !== undefined ? { title: m.titulo.slice(0, 150) } : {}),
-      ...(m.descricao !== undefined ? { description: m.descricao.slice(0, 7000) } : {}),
+      ...(m.descricao !== undefined ? { description: descricaoHtml(m.descricao) } : {}),
       // O Magalu só aceita JPEG.
       ...(m.fotos?.length ? { images: m.fotos.slice(0, 30).map((u) => ({ reference: fotoJpeg(u), type: "image/jpeg" })) } : {}),
     };
