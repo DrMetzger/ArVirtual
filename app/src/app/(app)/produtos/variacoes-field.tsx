@@ -34,6 +34,8 @@ type Linha = {
   gtin: string;
   estoqueInicial: string;
   estoque?: number;
+  /** Estoque digitado (variação existente). */
+  estoqueTela: string;
   ativo: boolean;
   imagens: string[];
   novas: { arquivo: File; url: string }[];
@@ -136,6 +138,7 @@ export function VariacoesField({
       gtin: v.gtin,
       estoqueInicial: "",
       estoque: v.estoque,
+      estoqueTela: String(v.estoque),
       ativo: v.ativo,
       imagens: v.imagens ?? [],
       novas: [],
@@ -172,6 +175,7 @@ export function VariacoesField({
       preco: "",
       gtin: "",
       estoqueInicial: "",
+      estoqueTela: "",
       ativo: true,
       imagens: [],
       novas: [],
@@ -198,6 +202,8 @@ export function VariacoesField({
       custo: custoDe(l),
       gtin: l.gtin.trim(),
       estoqueInicial: Math.max(0, Math.round(parseDecimal(l.estoqueInicial))),
+      estoque: l.id && l.estoqueTela.trim() !== "" ? Math.round(parseDecimal(l.estoqueTela)) : null,
+      estoqueAntes: l.id ? (l.estoque ?? 0) : null,
       ativo: l.ativo,
       imagens: l.imagens,
       campoFotos: l.key,
@@ -381,9 +387,12 @@ export function VariacoesField({
                   <label>
                     {rotulo(l.id ? "Estoque" : "Estoque inicial")}
                     {l.id ? (
-                      <Link href={`/estoque/${l.id}`} className="flex h-9 items-center rounded-xl border border-border px-3 text-sm font-semibold hover:border-gold" title="Movimentar no Estoque">
-                        {l.estoque ?? 0} un. <span className="ml-auto text-xs font-normal text-gold">movimentar →</span>
-                      </Link>
+                      <div className="flex items-center gap-2">
+                        <Input value={l.estoqueTela} inputMode="numeric" onChange={(e) => atualizar(l.key, { estoqueTela: e.target.value })} className="h-9" aria-label="Estoque" />
+                        <Link href={`/estoque/${l.id}`} className="shrink-0 text-xs text-gold hover:underline" title="Histórico do estoque">
+                          histórico
+                        </Link>
+                      </div>
                     ) : (
                       <Input value={l.estoqueInicial} inputMode="numeric" onChange={(e) => atualizar(l.key, { estoqueInicial: e.target.value })} placeholder="0" className="h-9" />
                     )}

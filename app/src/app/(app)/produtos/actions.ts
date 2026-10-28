@@ -51,6 +51,9 @@ const VariacaoSchema = z.object({
   custo: z.number().min(0).default(0),
   gtin: str.transform(onlyDigits).refine((v) => !v || [8, 12, 13, 14].includes(v.length), "GTIN/EAN da variação deve ter 8, 12, 13 ou 14 dígitos"),
   estoqueInicial: z.number().int().min(0).default(0),
+  /** Variação já existente: estoque digitado e o que estava na tela ao abrir (a diferença vira ajuste). */
+  estoque: z.number().int().nullable().default(null),
+  estoqueAntes: z.number().int().nullable().default(null),
   ativo: z.boolean().default(true),
   /** Fotos próprias já salvas e o campo de arquivo com as novas (fotosVar_<campoFotos>). */
   imagens: z.array(z.string()).default([]),
@@ -173,12 +176,17 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
   let produtoId = id;
   // NCM novo entra no cadastro e a IA completa a descrição e o IPI (em segundo plano, como no ERP Vanguard).
   void garantirNcm(valores.ncm);
-  // O saldo só muda pelo estoque (kardex): na edição é ignorado; no cadastro vira o saldo inicial.
+  // O saldo passa sempre pelo kardex: no cadastro vira o saldo inicial; na edição, o que foi mudado na tela vira ajuste
+  // (só a diferença, para não apagar uma venda que entrou enquanto a tela estava aberta).
   const { estoque: inicial, ...semEstoque } = valores;
+  const estoqueAntes = Number(form.get("estoqueAntes"));
   produtoId = await db.transaction(async (tx) => {
     let pid = id;
     if (id) {
       await tx.update(produtos).set({ ...semEstoque, imagens, videos }).where(eq(produtos.id, id));
+      if (!valores.temVariacoes && form.has("estoqueAntes") && Number.isFinite(estoqueAntes) && inicial !== estoqueAntes) {
+        await movimentar(tx, { produtoId: id, quantidade: inicial - estoqueAntes, tipo: "ajuste", observacao: "Ajuste no cadastro do produto", usuarioId: user.sub });
+      }
     } else {
       const [novo] = await tx.insert(produtos).values({ ...semEstoque, estoque: 0, imagens, videos }).returning({ id: produtos.id });
       pid = novo!.id;
@@ -249,6 +257,9 @@ async function salvarVariacoes(
     const existente = v.id ? atuais.find((a) => a.id === v.id) : undefined;
     if (existente) {
       await tx.update(produtos).set(dados).where(eq(produtos.id, existente.id));
+      if (v.estoque !== null && v.estoqueAntes !== null && v.estoque !== v.estoqueAntes) {
+        await movimentar(tx, { produtoId: existente.id, quantidade: v.estoque - v.estoqueAntes, tipo: "ajuste", observacao: "Ajuste no cadastro do produto", usuarioId });
+      }
     } else {
       const [nova] = await tx.insert(produtos).values({ ...dados, estoque: 0 }).returning({ id: produtos.id });
       if (v.estoqueInicial > 0) {
