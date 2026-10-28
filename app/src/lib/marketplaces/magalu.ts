@@ -205,6 +205,19 @@ export const magalu: MarketplaceAdapter = {
       }),
     });
 
+    // O Magalu responde "recebido" (202) e cria o cadastro depois; se a validação dele recusar (ex.: produto igual a
+    // outro anúncio da loja), o SKU simplesmente não aparece. Confere antes de dizer que publicou.
+    let criado = false;
+    for (let i = 0; i < 10 && !criado; i++) {
+      await new Promise((ok) => setTimeout(ok, 4000));
+      criado = await api(`/seller/v1/portfolios/skus/${encodeURIComponent(produto.sku)}`, conta.accessToken).then(() => true, () => false);
+    }
+    if (!criado) {
+      throw new MarketplaceError(
+        "O Magalu recebeu o produto mas não criou o cadastro (a API não diz o motivo). O mais comum: já existe um anúncio seu com o mesmo produto (mesmas fotos/título) — o Magalu não aceita duas ofertas do mesmo produto na mesma loja. Se o cadastro aparecer depois, publicar de novo só vincula.",
+      );
+    }
+
     const centavos = Math.round(anuncio.preco * 100);
     await api(`/seller/v1/portfolios/prices/${encodeURIComponent(produto.sku)}`, conta.accessToken, {
       method: "POST",
