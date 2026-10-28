@@ -218,13 +218,21 @@ export function Anunciar({
 
           {mps.length ? (
             <details className="rounded-xl border border-border px-3 py-2 text-sm">
-              <summary className="cursor-pointer text-muted">Categoria (opcional: sem ela, usamos a sugestão do marketplace)</summary>
+              <summary className="cursor-pointer text-muted">Categoria e atributos (opcional: sem eles, usamos a sugestão do marketplace)</summary>
               <div className="mt-3 grid gap-3">
                 {mps.map((mp) => (
                   <Field key={mp} label={`ID da categoria · ${contas.find((c) => c.marketplace === mp)?.marketplaceNome}`}>
                     <Input name={`categoria_${mp}`} placeholder={mp === "mercadolivre" ? "MLB1234" : "123456"} />
                   </Field>
                 ))}
+                {mps.includes("shopee") ? (
+                  <Field
+                    label="Atributos obrigatórios · Shopee"
+                    hint="Um por linha, como aparece no erro da Shopee. Sem isso, o ERP escolhe a opção mais neutra e avisa qual usou."
+                  >
+                    <Textarea name="atributos_shopee" rows={2} placeholder={"Connection Type = Com fio\nMaterial = PLA"} />
+                  </Field>
+                ) : null}
               </div>
             </details>
           ) : null}
