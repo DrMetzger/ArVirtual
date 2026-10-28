@@ -75,6 +75,23 @@ function dadosDoToken(accessToken: string): { tenant: string; nome: string; payl
   }
 }
 
+// Campos aceitos pela atualização completa do SKU (SkuUpdateRequest; o Magalu recusa campos a mais).
+const CAMPOS_PUT = [
+  "active", "attributes", "brand", "category", "channels", "condition", "datasheet", "description", "dimensions", "extra_data",
+  "fulfillment", "group", "has_ean", "identifiers", "images", "metadata", "origin", "ncm", "tax_replacement", "perishable",
+  "podcasts", "title", "type", "videos",
+];
+
+/** Cadastro do SKU como o GET devolve, só com os campos que o PUT aceita (sem vazios que ele recusa). */
+function cadastroCompleto(atual: Record<string, unknown>) {
+  const out: Record<string, unknown> = {};
+  for (const k of CAMPOS_PUT) if (atual[k] !== undefined && atual[k] !== null) out[k] = atual[k];
+  if (out.category && typeof out.category === "object" && !Object.keys(out.category).length) delete out.category;
+  if (Array.isArray(out.identifiers)) out.identifiers = (out.identifiers as { value?: unknown }[]).filter((i) => i.value);
+  for (const k of ["attributes", "datasheet", "dimensions", "images", "videos", "podcasts", "extra_data", "identifiers"]) out[k] ??= [];
+  return out;
+}
+
 export const magalu: MarketplaceAdapter = {
   id: "magalu",
   nome: "Magalu",
@@ -223,10 +240,14 @@ export const magalu: MarketplaceAdapter = {
     const r = await aplicarCampos([]);
     if (camposCadastro.length) {
       try {
+        // Algumas alterações (ex.: descrição) o PATCH recusa com "sku already exists": aí regrava o cadastro
+        // completo (PUT), partindo do que está no Magalu e trocando só o que foi marcado.
         await patch("skus", cadastro).catch(async (e: Error) => {
           if (!/already exists/i.test(e.message)) throw e;
-          await new Promise((ok) => setTimeout(ok, 4000));
-          await patch("skus", cadastro);
+          const atual = await api<Record<string, unknown>>(caminho("skus"), conta.accessToken);
+          await api(caminho("skus"), conta.accessToken, { method: "PUT", body: JSON.stringify({ ...cadastroCompleto(atual), ...cadastro }) }).catch((e2: Error) => {
+            throw new MarketplaceError(`${e.message} / atualização completa: ${e2.message}`);
+          });
         });
         r.feitos.push(...camposCadastro);
       } catch (e) {
