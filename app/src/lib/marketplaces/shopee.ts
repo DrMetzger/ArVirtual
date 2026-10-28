@@ -265,6 +265,14 @@ export const shopee: MarketplaceAdapter = {
     return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
   },
 
+  async atualizar(conta, id, { titulo, descricao }) {
+    await shopCall(conta, "/api/v2/product/update_item", {
+      method: "POST",
+      body: { item_id: Number(id), ...(titulo ? { item_name: titulo.slice(0, 120) } : {}), ...(descricao ? { description: descricao.slice(0, 3000) } : {}) },
+    });
+    return [];
+  },
+
   async anuncios(conta) {
     const ids: { id: number; status: string }[] = [];
     for (const status of ["NORMAL", "UNLIST"]) {

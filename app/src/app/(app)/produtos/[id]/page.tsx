@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -35,7 +35,7 @@ export default async function ProdutoPage({
   const variacoes = produto.temVariacoes ? await db.select().from(produtos).where(eq(produtos.paiId, id)).orderBy(asc(produtos.cor)) : [];
 
   const cfgMl = await getSettings(["mercadolivre.tipoAnuncio", "mercadolivre.freteGratis"]);
-  const [contas, historico, parametros, ia, precos, arquivos, anunciadas] = await Promise.all([
+  const [contas, historico, parametros, ia, precos, arquivos, anunciadas, todosPublicados] = await Promise.all([
     db.select().from(contasMarketplace).orderBy(contasMarketplace.marketplace),
     // Histórico do produto e das variações dele.
     db.query.anuncios.findMany({
@@ -55,6 +55,11 @@ export default async function ProdutoPage({
           .from(anuncios)
           .where(and(inArray(anuncios.produtoId, variacoes.map((v) => v.id)), eq(anuncios.status, "publicado")))
       : Promise.resolve([] as { produtoId: string; contaId: number }[]),
+    // Anúncios existentes do produto e das variações, por conta (para "Atualizar anúncios").
+    db
+      .select({ contaId: anuncios.contaId, idExterno: anuncios.idExterno })
+      .from(anuncios)
+      .where(and(inArray(anuncios.produtoId, [id, ...variacoes.map((v) => v.id)]), eq(anuncios.status, "publicado"), isNotNull(anuncios.idExterno))),
   ]);
 
   return (
@@ -106,6 +111,9 @@ export default async function ProdutoPage({
               marketplaceNome: MARKETPLACE_INFO[c.marketplace].nome,
               cor: MARKETPLACE_INFO[c.marketplace].cor,
             }))}
+            existentes={Object.entries(
+              todosPublicados.reduce<Record<number, Set<string>>>((acc, a) => ((acc[a.contaId] ??= new Set()).add(a.idExterno ?? ""), acc), {}),
+            ).map(([contaId, ids]) => ({ contaId: Number(contaId), quantidade: ids.size }))}
             variacoes={variacoes
               .filter((v) => v.ativo)
               .map((v) => ({
