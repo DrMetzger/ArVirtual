@@ -39,6 +39,47 @@ export type FiltroPedidos = {
   reconferir?: string[];
 };
 
+export const CAMPOS_ANUNCIO = {
+  titulo: "Título",
+  descricao: "Descrição",
+  fotos: "Fotos",
+  preco: "Preço",
+  estoque: "Estoque",
+  video: "Vídeo",
+} as const;
+export type CampoAnuncio = keyof typeof CAMPOS_ANUNCIO;
+
+export type MudancasAnuncio = {
+  titulo?: string;
+  descricao?: string;
+  /** URLs públicas das fotos, na ordem (a primeira é a capa). */
+  fotos?: string[];
+  preco?: number;
+  estoque?: number;
+  /** URL do vídeo MP4 (só a Shopee aceita vídeo pela API). */
+  video?: string;
+};
+
+export type ResultadoAtualizacao = { feitos: CampoAnuncio[]; falhas: { campo: CampoAnuncio; motivo: string }[]; avisos: string[] };
+
+/** Roda cada campo pedido separadamente e junta o que deu certo e o que a plataforma recusou. */
+export async function aplicarCampos(passos: [CampoAnuncio, (() => Promise<unknown>) | false | 0 | "" | undefined][]): Promise<ResultadoAtualizacao> {
+  const r: ResultadoAtualizacao = { feitos: [], falhas: [], avisos: [] };
+  for (const [campo, passo] of passos) {
+    if (!passo) continue;
+    try {
+      await passo();
+      r.feitos.push(campo);
+    } catch (e) {
+      r.falhas.push({ campo, motivo: (e as Error).message.replace(/^[\w ]+ \(\d+\):\s*/, "") });
+    }
+  }
+  return r;
+}
+
+/** Foto em JPEG para quem não aceita PNG/WEBP (rota que converte na hora). */
+export const fotoJpeg = (url: string) => (/\.jpe?g$/i.test(url) ? url : url.replace("/uploads/", "/uploads/jpg/"));
+
 export type ResultadoAnuncio = { idExterno: string; link: string; aviso?: string };
 
 /** Anúncio que já existe na conta do marketplace (criado lá ou em outro sistema). */
@@ -110,8 +151,11 @@ export interface MarketplaceAdapter {
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
-  /** Troca título e/ou descrição de um anúncio que já existe. Devolve avisos do que a plataforma não deixou mudar. */
-  atualizar(conta: ContaComToken, idExterno: string, mudancas: { titulo?: string; descricao?: string }): Promise<string[]>;
+  /**
+   * Troca, num anúncio que já existe, só o que vier em `mudancas`. Cada campo vai separado: o que a plataforma
+   * recusar volta como falha (com o motivo) e não impede os outros.
+   */
+  atualizar(conta: ContaComToken, idExterno: string, mudancas: MudancasAnuncio): Promise<ResultadoAtualizacao>;
 }
 
 export class MarketplaceError extends Error {}

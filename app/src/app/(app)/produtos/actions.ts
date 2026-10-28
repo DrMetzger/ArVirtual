@@ -12,7 +12,7 @@ import { requireUser } from "@/lib/auth";
 import { getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
-import type { AnuncioExterno } from "@/lib/marketplaces/types";
+import { CAMPOS_ANUNCIO, type AnuncioExterno, type CampoAnuncio, type MudancasAnuncio } from "@/lib/marketplaces/types";
 import { adapter, contaComToken } from "@/lib/marketplaces";
 import { movimentar } from "@/lib/estoque";
 import { PASTA_IMPRESSAO, salvarImagem, salvarVideo } from "@/lib/uploads";
@@ -411,8 +411,9 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
 }
 
 /**
- * Troca título e/ou descrição dos anúncios que já existem, escolhendo por conta o que muda
- * (campos "atualizar_<contaId>" = "titulo" / "descricao"). Variação leva o título + o valor dela, como ao publicar.
+ * Atualiza os anúncios que já existem, escolhendo por conta o que muda (campos "atualizar_<contaId>":
+ * titulo, descricao, fotos, preco, estoque, video). Título/descrição vêm da tela; fotos, vídeo e estoque do cadastro;
+ * preço da tela de cada plataforma (variação leva a diferença dela, como ao publicar).
  */
 export async function atualizarAnuncios(produtoId: string, form: FormData): Promise<ResultadoPublicacao[]> {
   await requireUser();
@@ -429,46 +430,53 @@ export async function atualizarAnuncios(produtoId: string, form: FormData): Prom
 
   const resultados: ResultadoPublicacao[] = [];
   for (const conta of contas) {
-    const campos = form.getAll(`atualizar_${conta.id}`).map(String);
-    const querTitulo = campos.includes("titulo") && Boolean(titulo);
-    const querDescricao = campos.includes("descricao") && Boolean(descricao);
+    const campos = new Set(form.getAll(`atualizar_${conta.id}`).map(String).filter((c): c is CampoAnuncio => c in CAMPOS_ANUNCIO));
+    if (!campos.size) continue;
     const a = adapter(conta.marketplace);
-    if (campos.length && !querTitulo && !querDescricao) {
-      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: false, mensagem: "O título/descrição marcado está em branco: nada foi alterado." });
-      continue;
-    }
-    if (!querTitulo && !querDescricao) continue;
+    const rotuloConta = `${a.nome} · ${conta.nome}`;
+    const vazios = [campos.has("titulo") && !titulo && "título", campos.has("descricao") && !descricao && "descrição", campos.has("video") && !p.videos.length && "vídeo"].filter(Boolean);
+    if (vazios.length) resultados.push({ conta: rotuloConta, ok: false, mensagem: `Sem ${vazios.join(", ")} para enviar: esse campo não foi alterado.` });
     const daConta = publicados.filter((x) => x.contaId === conta.id && x.idExterno);
     // O mesmo anúncio pode estar no histórico mais de uma vez (publicado e depois vinculado): atualiza uma vez só.
     const unicos = daConta.filter((x, i) => daConta.findIndex((y) => y.idExterno === x.idExterno) === i);
     if (!unicos.length) {
-      resultados.push({ conta: `${a.nome} · ${conta.nome}`, ok: false, mensagem: "Este produto não tem anúncio nesta conta." });
+      resultados.push({ conta: rotuloConta, ok: false, mensagem: "Este produto não tem anúncio nesta conta." });
       continue;
     }
+    const naTela = parseDecimal(form.get(`preco_${conta.marketplace}`));
     const token = await contaComToken(conta).catch((e: Error) => e);
     for (const an of unicos) {
-      const item = itens.find((x) => x.id === an.produtoId);
-      const rotulo = `${a.nome} · ${conta.nome}${p.temVariacoes && item ? ` · ${item.cor || item.sku}` : ""}`;
-      const mudou = querTitulo && querDescricao ? "Título e descrição atualizados" : querTitulo ? "Título atualizado" : "Descrição atualizada";
+      const item = itens.find((x) => x.id === an.produtoId) ?? p;
+      const variacao = p.temVariacoes && item.id !== p.id;
+      const diferenca = variacao ? item.preco - p.preco : 0;
+      const preco = (naTela ? Math.round((naTela + diferenca) * 100) / 100 : 0) || item.precosCanal[conta.marketplace] || item.preco;
+      const mudancas: MudancasAnuncio = {
+        ...(campos.has("titulo") && titulo ? { titulo: variacao ? `${titulo} ${item.cor}`.trim() : titulo } : {}),
+        ...(campos.has("descricao") && descricao ? { descricao } : {}),
+        ...(campos.has("fotos") ? { fotos: item.imagens.length ? item.imagens : p.imagens } : {}),
+        ...(campos.has("preco") ? { preco } : {}),
+        ...(campos.has("estoque") ? { estoque: item.estoque } : {}),
+        ...(campos.has("video") && p.videos[0] ? { video: p.videos[0] } : {}),
+      };
+      if (!Object.keys(mudancas).length) continue;
+      const rotulo = `${rotuloConta}${variacao ? ` · ${item.cor || item.sku}` : ""}`;
       try {
         if (token instanceof Error) throw token;
-        const avisos = await a.atualizar(token, an.idExterno!, {
-          titulo: querTitulo ? (p.temVariacoes && item ? `${titulo} ${item.cor}`.trim() : titulo) : undefined,
-          descricao: querDescricao ? descricao : undefined,
-        });
-        const recusouTitulo = avisos.some((x) => x.startsWith("título não alterado"));
-        resultados.push({
-          conta: rotulo,
-          ok: !recusouTitulo || querDescricao,
-          mensagem: `${recusouTitulo ? (querDescricao ? "Descrição atualizada" : "Nada alterado") : mudou} (${an.idExterno})${avisos.length ? `. ${avisos.map((x) => x[0]!.toUpperCase() + x.slice(1)).join(" ")}` : ""}`,
-          link: an.link ?? undefined,
-        });
+        const r = await a.atualizar(token, an.idExterno!, mudancas);
+        if (r.feitos.includes("preco")) await db.update(anuncios).set({ preco }).where(eq(anuncios.id, an.id));
+        const nomes = (cs: CampoAnuncio[]) => cs.map((c) => CAMPOS_ANUNCIO[c].toLowerCase()).join(", ");
+        const partes = [
+          r.feitos.length ? `Atualizado: ${nomes(r.feitos)}.` : "",
+          ...r.falhas.map((f) => `${CAMPOS_ANUNCIO[f.campo]} não alterado: ${f.motivo}.`),
+          ...r.avisos,
+        ].filter(Boolean);
+        resultados.push({ conta: `${rotulo} (${an.idExterno})`, ok: r.feitos.length > 0 && !r.falhas.length, mensagem: partes.join(" "), link: an.link ?? undefined });
       } catch (e) {
         resultados.push({ conta: rotulo, ok: false, mensagem: (e as Error).message });
       }
     }
   }
-  if (!resultados.length) return [{ conta: "-", ok: false, mensagem: "Marque o que atualizar (título e/ou descrição) em ao menos uma plataforma." }];
+  if (!resultados.length) return [{ conta: "-", ok: false, mensagem: "Marque o que atualizar em ao menos uma plataforma." }];
   return resultados;
 }
 

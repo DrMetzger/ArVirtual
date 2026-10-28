@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
@@ -204,12 +204,30 @@ export const magalu: MarketplaceAdapter = {
     };
   },
 
-  async atualizar(conta, sku, { titulo, descricao }) {
-    await api(`/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`, conta.accessToken, {
-      method: "PATCH",
-      body: JSON.stringify({ ...(titulo ? { title: titulo.slice(0, 150) } : {}), ...(descricao ? { description: descricao.slice(0, 7000) } : {}) }),
-    });
-    return ["o Magalu analisa a alteração antes de mostrar no site."];
+  async atualizar(conta, sku, m) {
+    const caminho = (recurso: string) => `/seller/v1/portfolios/${recurso}/${encodeURIComponent(sku)}`;
+    const patch = (recurso: string, body: object) => api(caminho(recurso), conta.accessToken, { method: "PATCH", body: JSON.stringify(body) });
+    let canal: string | undefined;
+    const canalDaLoja = async () =>
+      (canal ??= (await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken)).channel?.id) ??
+      Promise.reject(new MarketplaceError("Magalu não informou o canal da loja."));
+    const r = await aplicarCampos([
+      ["titulo", m.titulo !== undefined && (() => patch("skus", { title: m.titulo!.slice(0, 150) }))],
+      ["descricao", m.descricao !== undefined && (() => patch("skus", { description: m.descricao!.slice(0, 7000) }))],
+      // O Magalu só aceita JPEG.
+      ["fotos", m.fotos?.length && (() => patch("skus", { images: m.fotos!.slice(0, 30).map((u) => ({ reference: fotoJpeg(u), type: "image/jpeg" })) }))],
+      [
+        "preco",
+        m.preco !== undefined &&
+          (async () => {
+            const centavos = Math.round(m.preco! * 100);
+            await patch("prices", { channel: { id: await canalDaLoja() }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos });
+          }),
+      ],
+      ["estoque", m.estoque !== undefined && (async () => patch("stocks", { channel: { id: await canalDaLoja() }, type: "AVAILABLE", quantity: Math.max(0, m.estoque!) }))],
+    ]);
+    if (r.feitos.some((c) => c === "titulo" || c === "descricao" || c === "fotos")) r.avisos.push("O Magalu analisa a alteração do cadastro antes de mostrar no site.");
+    return r;
   },
 
   async anuncios(conta) {

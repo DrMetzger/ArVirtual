@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { getSettings } from "@/lib/settings";
 import { UPLOAD_DIR } from "@/lib/uploads";
-import { lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
 
 // Shopee Open Platform v2: https://open.shopee.com/documents
 // Toda chamada é assinada com HMAC-SHA256(partner_key, partner_id + path + timestamp [+ access_token + shop_id]).
@@ -265,12 +265,34 @@ export const shopee: MarketplaceAdapter = {
     return { idExterno: itemId, link: `https://shopee.com.br/product/${conta.idExterno}/${itemId}`, aviso };
   },
 
-  async atualizar(conta, id, { titulo, descricao }) {
-    await shopCall(conta, "/api/v2/product/update_item", {
-      method: "POST",
-      body: { item_id: Number(id), ...(titulo ? { item_name: titulo.slice(0, 120) } : {}), ...(descricao ? { description: descricao.slice(0, 3000) } : {}) },
-    });
-    return [];
+  async atualizar(conta, id, m) {
+    const itemId = Number(id);
+    const atualizarItem = (body: object) => shopCall(conta, "/api/v2/product/update_item", { method: "POST", body: { item_id: itemId, ...body } });
+    return aplicarCampos([
+      ["titulo", m.titulo !== undefined && (() => atualizarItem({ item_name: m.titulo!.slice(0, 120) }))],
+      ["descricao", m.descricao !== undefined && (() => atualizarItem({ description: m.descricao!.slice(0, 3000) }))],
+      [
+        "fotos",
+        m.fotos?.length &&
+          (async () => {
+            const ids: string[] = [];
+            for (const u of m.fotos!.slice(0, 9)) ids.push(await enviarImagem(conta, u));
+            await atualizarItem({ image: { image_id_list: ids } });
+          }),
+      ],
+      ["video", m.video && (async () => atualizarItem({ video_upload_id: [await enviarVideo(conta, m.video!)] }))],
+      // Anúncios publicados pelo ERP não têm modelos (cada variação é um item): model_id 0.
+      ["preco", m.preco !== undefined && (() => shopCall(conta, "/api/v2/product/update_price", { method: "POST", body: { item_id: itemId, price_list: [{ model_id: 0, original_price: m.preco }] } }))],
+      [
+        "estoque",
+        m.estoque !== undefined &&
+          (() =>
+            shopCall(conta, "/api/v2/product/update_stock", {
+              method: "POST",
+              body: { item_id: itemId, stock_list: [{ model_id: 0, seller_stock: [{ stock: Math.max(0, m.estoque!) }] }] },
+            })),
+      ],
+    ]);
   },
 
   async anuncios(conta) {
