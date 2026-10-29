@@ -26,7 +26,7 @@ export function ImagensField({ iniciais, produtoId, sku }: { iniciais: string[];
       <div className="grid gap-4 p-5">
         <input type="hidden" name="ordemImagens" value={m.ordem} />
         <input ref={m.inputArquivos} type="file" name="novasImagens" multiple className="hidden" tabIndex={-1} aria-hidden />
-        <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
+        <div data-fotos-produto className="grid grid-cols-3 gap-3 sm:grid-cols-5">
           {m.itens.map((img, i) => (
             <div
               key={img.chave}
