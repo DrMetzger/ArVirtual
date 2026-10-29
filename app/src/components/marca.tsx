@@ -4,9 +4,10 @@ import { cn } from "@/lib/utils";
 // Canal de venda: um dos marketplaces ou a loja própria (Sincrolab).
 export type Canal = Marketplace | "loja";
 
-export const CANAIS: Record<Canal, { nome: string; logo: string; logoEscuro?: string; logoClaro?: string; icone: string }> = {
+export const CANAIS: Record<Canal, { nome: string; logo: string; logoEscuro?: string; logoClaro?: string; icone: string; iconeMenor?: boolean }> = {
   mercadolivre: { nome: "Mercado Livre", logo: "/marcas/mercadolivre.png", logoEscuro: "/marcas/mercadolivre-escuro.png", icone: "/marcas/mercadolivre-icone.png" },
-  shopee: { nome: "Shopee", logo: "/marcas/shopee.png", icone: "/marcas/shopee-icone.png" },
+  // A sacola da Shopee ocupa o quadrado inteiro: um pouco menor para ficar do tamanho dos outros ícones.
+  shopee: { nome: "Shopee", logo: "/marcas/shopee.png", icone: "/marcas/shopee-icone.png", iconeMenor: true },
   magalu: { nome: "Magalu", logo: "/marcas/magalu.png", icone: "/marcas/magalu-icone.png" },
   // O logo original tem o texto branco: no tema claro usa a versão com texto azul-marinho.
   loja: { nome: "Sincrolab", logo: "/marcas/sincrolab.png", logoClaro: "/marcas/sincrolab-claro.png", icone: "/marcas/sincrolab-icone.png" },
@@ -17,7 +18,7 @@ export function MarcaIcone({ canal, className }: { canal: Canal; className?: str
   const c = CANAIS[canal];
   return (
     <span title={c.nome} className={cn("grid size-6 shrink-0 place-items-center rounded-md bg-white p-[3px] shadow-sm ring-1 ring-black/10", className)}>
-      <img src={c.icone} alt={c.nome} className="size-full object-contain" />
+      <img src={c.icone} alt={c.nome} className={cn("size-full object-contain", c.iconeMenor && "scale-[0.72]")} />
     </span>
   );
 }
