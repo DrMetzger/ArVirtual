@@ -461,6 +461,13 @@ export const afiliadosComissoes = pgTable(
     /** Status do pedido na Shopee: UNPAID, PENDING, COMPLETED, CANCELLED. */
     status: text("status").notNull().default(""),
     subId: text("sub_id").notNull().default(""),
+    /** Canal da venda como a Shopee informa (Shopee Vídeo, redes sociais, live...). */
+    canal: text("canal").notNull().default(""),
+    /** Comprador novo ou que já comprava na Shopee (NEW / EXISTING). */
+    compradorTipo: text("comprador_tipo").notNull().default(""),
+    dispositivo: text("dispositivo").notNull().default(""),
+    imagem: text("imagem").notNull().default(""),
+    clicadoEm: timestamp("clicado_em", { withTimezone: true }),
     compraEm: timestamp("compra_em", { withTimezone: true }),
     dados: jsonb("dados"),
     atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),

@@ -1,4 +1,4 @@
-import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, sql } from "drizzle-orm";
 import { BadgePercent, Link2, Search, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -11,29 +11,24 @@ import { afiliadosConfigurado } from "@/lib/afiliados";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
 import { adicionarPorLink } from "./actions";
+import { PainelAfiliados, PERIODOS, type Periodo } from "./painel";
 import { STATUS_PRODUTO } from "./status";
 
 export const metadata: Metadata = { title: "Afiliados Shopee" };
 
-export default async function AfiliadosPage({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string; status?: string }> }) {
+export default async function AfiliadosPage({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string; status?: string; periodo?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  // Início do mês no horário de Brasília.
-  const inicioMes = new Date(`${new Date().toLocaleDateString("sv-SE", { timeZone: "America/Sao_Paulo" }).slice(0, 8)}01T00:00:00-03:00`);
+  const periodo = (sp.periodo && sp.periodo in PERIODOS ? sp.periodo : "30d") as Periodo;
   const filtro = sp.status && sp.status in STATUS_PRODUTO ? (sp.status as keyof typeof STATUS_PRODUTO) : undefined;
 
-  const [configurado, produtos, mes, porItem, videos] = await Promise.all([
+  const [configurado, produtos, porItem, videos] = await Promise.all([
     afiliadosConfigurado(),
     db
       .select()
       .from(afiliadosProdutos)
       .where(filtro ? eq(afiliadosProdutos.status, filtro) : undefined)
       .orderBy(desc(afiliadosProdutos.atualizadoEm)),
-    db
-      .select({ status: afiliadosComissoes.status, comissao: sql<number>`sum(${afiliadosComissoes.comissao})::float`, pedidos: sql<number>`count(distinct ${afiliadosComissoes.orderId})::int` })
-      .from(afiliadosComissoes)
-      .where(gte(afiliadosComissoes.compraEm, inicioMes))
-      .groupBy(afiliadosComissoes.status),
     // Vendas e comissão que cada produto já gerou (todas as datas).
     db
       .select({ itemId: afiliadosComissoes.itemId, comissao: sql<number>`sum(${afiliadosComissoes.comissao})::float`, vendas: sql<number>`sum(${afiliadosComissoes.quantidade})::int` })
@@ -46,9 +41,6 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
       .where(and(inArray(afiliadosVideos.status, ["bruto", "editado", "postado"])))
       .groupBy(afiliadosVideos.produtoId),
   ]);
-  const doMes = (s?: string) => mes.filter((m) => (s ? m.status === s : m.status !== "CANCELLED")).reduce((t, m) => t + m.comissao, 0);
-  const pedidosMes = mes.filter((m) => m.status !== "CANCELLED").reduce((t, m) => t + m.pedidos, 0);
-
   return (
     <>
       <PageHeader
@@ -78,12 +70,7 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
           </Alert>
         ) : null}
 
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-          <Kpi titulo="Comissão do mês" valor={formatBRL(doMes())} detalhe="Estimada, sem os cancelados" destaque href="/afiliados/comissoes" />
-          <Kpi titulo="Concluída no mês" valor={formatBRL(doMes("COMPLETED"))} detalhe="Pedidos entregues e confirmados" />
-          <Kpi titulo="Pedidos no mês" valor={String(pedidosMes)} detalhe="Compras pelos seus links" />
-          <Kpi titulo="Divulgando" valor={String(produtos.filter((p) => p.status === "divulgando").length)} detalhe={`${produtos.length} produto(s) na lista`} />
-        </div>
+        <PainelAfiliados periodo={periodo} />
 
         <Card>
           <CardHeader title="Adicionar pelo link" description="Cole o link de qualquer produto da Shopee: o ERP busca a comissão e gera o seu link de afiliado." />
@@ -160,15 +147,4 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
       </div>
     </>
   );
-}
-
-function Kpi({ titulo, valor, detalhe, destaque, href }: { titulo: string; valor: string; detalhe: string; destaque?: boolean; href?: string }) {
-  const corpo = (
-    <Card className={cn("p-4 sm:p-5 transition-colors", destaque && "border-gold/50", href && "hover:border-gold/60")}>
-      <p className="text-xs font-semibold tracking-wider text-muted uppercase">{titulo}</p>
-      <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", destaque && "text-gold")}>{valor}</p>
-      <p className="mt-1 text-xs text-muted">{detalhe}</p>
-    </Card>
-  );
-  return href ? <Link href={href}>{corpo}</Link> : corpo;
 }
