@@ -2,25 +2,32 @@
 
 import { CheckCircle2, Loader2, Sparkles } from "lucide-react";
 import { useEffect, useState, useTransition } from "react";
-import { Alert, Button, Field, Input } from "@/components/ui";
+import { Alert, Button, Field, Input, Select } from "@/components/ui";
 import { onlyDigits } from "@/lib/utils";
 import { sugerirNcmIA } from "./actions";
 import type { SugestaoNcm } from "@/lib/fiscal/ncm";
 
 type Ncm = { codigo: string; descricao: string; aliquotaIpi: number | null; pendente: boolean; fonte: string };
+export type NcmCadastrado = { codigo: string; descricao: string };
 
-/** NCM com descrição oficial (cadastro ou IA) e sugestão pela descrição do produto. */
-export function NcmField({
-  defaultValue,
-  sugestoesIA,
-  valorIA,
-}: {
-  defaultValue?: string;
-  /** Sugestões vindas do "Gerar com IA" do cadastro (a 1ª já entra no campo). */
-  sugestoesIA?: SugestaoNcm[];
-  valorIA?: string;
-}) {
+/** NCMs já cadastrados (com descrição), para escolher numa lista. */
+export function useNcmsCadastrados() {
+  const [lista, setLista] = useState<NcmCadastrado[]>([]);
+  useEffect(() => {
+    fetch("/api/ncm")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setLista)
+      .catch(() => undefined);
+  }, []);
+  return lista;
+}
+
+/** NCM escolhido na lista dos cadastrados (ou digitado, se for um novo), com a descrição oficial. */
+export function NcmField({ defaultValue, valorIA }: { defaultValue?: string; /** NCM escolhido na janela "Gerar com IA". */ valorIA?: string }) {
   const [codigo, setCodigo] = useState(defaultValue ?? "");
+  const cadastrados = useNcmsCadastrados();
+  const [digitar, setDigitar] = useState(false);
+  const naLista = cadastrados.some((n) => n.codigo === codigo);
   const [info, setInfo] = useState<Ncm | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [sugestoes, setSugestoes] = useState<SugestaoNcm[]>([]);
@@ -29,8 +36,9 @@ export function NcmField({
 
   useEffect(() => {
     if (valorIA) setCodigo(valorIA);
-    if (sugestoesIA && sugestoesIA.length > 1) setSugestoes(sugestoesIA);
-  }, [valorIA, sugestoesIA]);
+  }, [valorIA]);
+  // Lista carregada e o NCM do produto não está nela: mostra o campo para digitar.
+  const modoDigitar = digitar || !cadastrados.length || (codigo.length > 0 && !naLista);
 
   useEffect(() => {
     const c = onlyDigits(codigo);
@@ -60,19 +68,49 @@ export function NcmField({
   return (
     <div className="grid gap-2 sm:col-span-6">
       <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-end">
-        <Field label="NCM" hint="8 dígitos. A descrição oficial e o IPI vêm do cadastro de NCM ou da IA.">
-          <Input
-            name="ncm"
-            value={codigo}
-            onChange={(e) => setCodigo(onlyDigits(e.target.value).slice(0, 8))}
-            required
-            inputMode="numeric"
-            placeholder="39264000"
-          />
-        </Field>
-        <Button type="button" variant="outline" onClick={sugerir} disabled={sugerindo} className="sm:mb-5">
-          {sugerindo ? <Loader2 className="animate-spin" /> : <Sparkles className="text-gold" />} Sugerir NCM com IA
-        </Button>
+        {modoDigitar ? (
+          <Field label="NCM" hint="8 dígitos. Um NCM novo entra no cadastro de NCM e a IA completa a descrição.">
+            <Input
+              name="ncm"
+              value={codigo}
+              onChange={(e) => setCodigo(onlyDigits(e.target.value).slice(0, 8))}
+              required
+              inputMode="numeric"
+              placeholder="39264000"
+              autoFocus={digitar}
+            />
+          </Field>
+        ) : (
+          <Field label="NCM" hint="Escolha um dos NCMs cadastrados.">
+            <Select
+              name="ncm"
+              value={codigo}
+              required
+              onChange={(e) => (e.target.value === "*" ? (setDigitar(true), setCodigo("")) : setCodigo(e.target.value))}
+            >
+              <option value="">Escolha o NCM...</option>
+              {cadastrados.map((n) => (
+                <option key={n.codigo} value={n.codigo}>
+                  {n.codigo}
+                      {n.descricao ? ` · ${n.descricao}` : ""}
+                </option>
+              ))}
+              <option value="*">Outro NCM (digitar)...</option>
+            </Select>
+          </Field>
+        )}
+        {modoDigitar ? (
+          <div className="flex gap-2 sm:mb-5">
+            {cadastrados.length ? (
+              <Button type="button" variant="outline" onClick={() => (setDigitar(false), setCodigo(""))}>
+                Escolher da lista
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" onClick={sugerir} disabled={sugerindo}>
+              {sugerindo ? <Loader2 className="animate-spin" /> : <Sparkles className="text-gold" />} Sugerir com IA
+            </Button>
+          </div>
+        ) : null}
       </div>
       {buscando ? (
         <p className="flex items-center gap-2 text-xs text-muted">
