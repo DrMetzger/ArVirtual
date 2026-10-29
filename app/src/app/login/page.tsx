@@ -2,12 +2,16 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import { Alert } from "@/components/ui";
 import { ThemeToggle } from "@/components/ui/client";
+import { headers } from "next/headers";
+import { BaixarApp } from "@/components/baixar-app";
+import { dentroDoApp, infoApp } from "@/lib/app-android";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Entrar" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string; expirou?: string }> }) {
   const { de, expirou } = await searchParams;
+  const app = dentroDoApp((await headers()).get("user-agent")) ? null : await infoApp();
   return (
     <main className="relative grid min-h-dvh lg:grid-cols-2">
       <section className="relative hidden overflow-hidden bg-sidebar p-12 text-white lg:flex lg:flex-col lg:justify-between">
@@ -58,6 +62,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </div>
           ) : null}
           <LoginForm redirectTo={de && de.startsWith("/") && !de.startsWith("//") ? de : "/"} />
+          {app ? <BaixarApp info={app} className="mt-8" /> : null}
         </div>
       </section>
     </main>

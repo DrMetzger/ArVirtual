@@ -9,6 +9,8 @@ export async function proxy(req: NextRequest) {
   const isLogin = req.nextUrl.pathname === "/login" || req.nextUrl.pathname.startsWith("/login/");
   // Termos e privacidade são públicos (links mostrados pelos marketplaces no consentimento).
   if (["/termos", "/privacidade"].includes(req.nextUrl.pathname)) return NextResponse.next();
+  // Download do app Android: oferecido na tela de login, antes de entrar.
+  if (req.nextUrl.pathname === "/baixar/android") return NextResponse.next();
 
   if (!session && !isLogin) {
     if (req.nextUrl.pathname.startsWith("/api/")) {
@@ -25,5 +27,5 @@ export async function proxy(req: NextRequest) {
 export const config = {
   // Fora: arquivos estáticos, imagens de produto (públicas p/ marketplaces), a checagem de saúde e as
   // rotas internas (chamadas pelo próprio servidor, com chave própria) e os avisos dos marketplaces.
-  matcher: ["/((?!_next/|api/health|api/interno/|api/marketplaces/[^/]+/notificacoes|uploads/|marcas/|icon.png|apple-icon.png|logo).*)"],
+  matcher: ["/((?!_next/|api/health|api/interno/|api/marketplaces/[^/]+/notificacoes|uploads/|marcas/|icon.png|apple-icon.png|app-android.png|logo).*)"],
 };

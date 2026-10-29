@@ -28,6 +28,7 @@ import {
   X,
   type LucideIcon,
   BadgePercent,
+  Smartphone,
 } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
@@ -217,9 +218,27 @@ function NavLinks({ recolhido, onNavigate }: { recolhido?: boolean; onNavigate?:
   );
 }
 
-function Rodape({ usuario, recolhido, onNavigate }: { usuario: Usuario; recolhido?: boolean; onNavigate?: () => void }) {
+function Rodape({ usuario, recolhido, onNavigate, appAndroid }: { usuario: Usuario; recolhido?: boolean; onNavigate?: () => void; appAndroid?: string }) {
   return (
     <div className="mt-auto grid gap-2">
+      {appAndroid ? (
+        // Download do APK (link comum: é um arquivo, não uma página).
+        <a
+          href="/baixar/android"
+          title={`Baixar o app Android (versão ${appAndroid})`}
+          className={cn(
+            "group flex items-center gap-3 rounded-xl py-2.5 text-sm font-medium text-sidebar-fg transition-colors hover:bg-white/5 hover:text-white",
+            recolhido ? "justify-center px-0" : "px-3",
+          )}
+        >
+          <Smartphone className="size-[18px] text-[#e6c158] opacity-90 group-hover:opacity-100" />
+          {recolhido ? null : (
+            <span className="flex-1">
+              App Android <span className="text-xs text-sidebar-fg/70">v{appAndroid}</span>
+            </span>
+          )}
+        </a>
+      ) : null}
       <Link_ item={CONFIGURACOES} recolhido={recolhido} onNavigate={onNavigate} />
       <div className={cn("flex items-center gap-3 rounded-xl bg-white/5", recolhido ? "flex-col p-2" : "p-3")}>
         <div
@@ -247,7 +266,18 @@ function Rodape({ usuario, recolhido, onNavigate }: { usuario: Usuario; recolhid
   );
 }
 
-export function Sidebar({ usuario, recolhidoInicial, children }: { usuario: Usuario; recolhidoInicial: boolean; children: React.ReactNode }) {
+export function Sidebar({
+  usuario,
+  recolhidoInicial,
+  appAndroid,
+  children,
+}: {
+  usuario: Usuario;
+  recolhidoInicial: boolean;
+  /** Versão do APK disponível para baixar (vazio dentro do próprio app ou sem APK). */
+  appAndroid?: string;
+  children: React.ReactNode;
+}) {
   const [open, setOpen] = useState(false);
   const [recolhido, setRecolhido] = useState(recolhidoInicial);
   const pathname = usePathname();
@@ -279,7 +309,7 @@ export function Sidebar({ usuario, recolhidoInicial, children }: { usuario: Usua
           {recolhido ? <PanelLeftOpen className="size-3.5" /> : <PanelLeftClose className="size-3.5" />}
         </button>
         <NavLinks recolhido={recolhido} />
-        <Rodape usuario={usuario} recolhido={recolhido} />
+        <Rodape usuario={usuario} recolhido={recolhido} appAndroid={appAndroid} />
       </aside>
 
       {/* Mobile */}
@@ -300,7 +330,7 @@ export function Sidebar({ usuario, recolhidoInicial, children }: { usuario: Usua
               </button>
             </div>
             <NavLinks onNavigate={() => setOpen(false)} />
-            <Rodape usuario={usuario} onNavigate={() => setOpen(false)} />
+            <Rodape usuario={usuario} onNavigate={() => setOpen(false)} appAndroid={appAndroid} />
           </aside>
         </div>
       ) : null}
