@@ -3,14 +3,13 @@
 import { ImageOff, Loader2, Sparkles, X } from "lucide-react";
 import { useState } from "react";
 import { Alert, Button, Field, Input, Select, Textarea } from "@/components/ui";
-import type { SugestaoNcm } from "@/lib/fiscal/ncm";
+import { useNcmsCadastrados } from "./ncm-field";
 
-export type ResultadoIA = { titulo?: string; descricao?: string; ncms?: SugestaoNcm[] };
+export type ResultadoIA = { titulo?: string; descricao?: string; ncm?: string };
 
 const CAMPOS = [
   ["titulo", "Título"],
   ["descricao", "Descrição"],
-  ["ncm", "NCM"],
 ] as const;
 type Campo = (typeof CAMPOS)[number][0];
 const MATERIAIS = ["PLA", "PLA+", "PLA Silk", "PLA Matte", "PETG", "ABS", "ASA", "TPU", "Outro"];
@@ -46,12 +45,14 @@ async function reduzir(src: string): Promise<string | null> {
   return c.toDataURL("image/jpeg", 0.85);
 }
 
-/** Botão "Gerar com IA": analisa as fotos + o que o vendedor conta e preenche título, descrição e NCM. */
+/** Botão "Gerar com IA": analisa as fotos + o que o vendedor conta e preenche título e descrição; o NCM é escolhido na lista. */
 export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
   const [aberto, setAberto] = useState(false);
   const [fotos, setFotos] = useState<string[]>([]);
   const [texto, setTexto] = useState("");
-  const [campos, setCampos] = useState<Record<Campo, boolean>>({ titulo: true, descricao: true, ncm: true });
+  const [campos, setCampos] = useState<Record<Campo, boolean>>({ titulo: true, descricao: true });
+  const ncms = useNcmsCadastrados();
+  const [ncm, setNcm] = useState("");
   const [medidas, setMedidas] = useState({ altura: "", largura: "", profundidade: "" });
   const [quantidade, setQuantidade] = useState("1");
   const [material, setMaterial] = useState("PLA");
@@ -67,12 +68,17 @@ export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
       largura: m.largura || semZero(valorDoForm("larguraCm")),
       profundidade: m.profundidade || semZero(valorDoForm("comprimentoCm")),
     }));
+    setNcm(valorDoForm("ncm"));
     const mat = valorDoForm("material");
     if (mat && MATERIAIS.includes(mat)) setMaterial(mat);
     setAberto(true);
   }
 
   async function gerar() {
+    if (!campos.titulo && !campos.descricao) {
+      aplicar({ ncm });
+      return setAberto(false);
+    }
     if (texto.trim().length < 3) return setErro("Conte em poucas palavras o que você está vendendo.");
     setGerando(true);
     setErro("");
@@ -95,7 +101,7 @@ export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
       });
       const r = (await res.json().catch(() => ({ erro: "Resposta inválida do servidor." }))) as ResultadoIA & { erro?: string };
       if (!res.ok || r.erro) throw new Error(r.erro ?? "Falha ao gerar.");
-      aplicar({ titulo: campos.titulo ? r.titulo : undefined, descricao: campos.descricao ? r.descricao : undefined, ncms: campos.ncm ? r.ncms : undefined });
+      aplicar({ titulo: campos.titulo ? r.titulo : undefined, descricao: campos.descricao ? r.descricao : undefined, ncm });
       setAberto(false);
     } catch (e) {
       setErro((e as Error).message);
@@ -118,7 +124,7 @@ export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
               </span>
               <div className="flex-1">
                 <p className="font-display text-lg font-bold">Vamos analisar suas fotos</p>
-                <p className="text-sm text-muted">A IA olha as fotos e o que você contar e cria o título, a descrição e o NCM de uma vez.</p>
+                <p className="text-sm text-muted">A IA olha as fotos e o que você contar e cria o título e a descrição. O NCM você escolhe na lista.</p>
               </div>
               <Button type="button" variant="ghost" size="icon" onClick={() => setAberto(false)} disabled={gerando} aria-label="Fechar">
                 <X />
@@ -171,6 +177,18 @@ export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
                   ))}
                 </Select>
               </Field>
+              <Field label="NCM" className="col-span-3">
+                <Select value={ncm} onChange={(e) => setNcm(e.target.value)}>
+                  <option value="">Escolha o NCM...</option>
+                  {ncm && !ncms.some((n) => n.codigo === ncm) ? <option value={ncm}>{ncm}</option> : null}
+                  {ncms.map((n) => (
+                    <option key={n.codigo} value={n.codigo}>
+                      {n.codigo}
+                      {n.descricao ? ` · ${n.descricao}` : ""}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
             </div>
 
             <div className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
@@ -188,7 +206,7 @@ export function CadastroIA({ aplicar }: { aplicar: (r: ResultadoIA) => void }) {
               <Button type="button" variant="outline" onClick={() => setAberto(false)} disabled={gerando}>
                 Cancelar
               </Button>
-              <Button type="button" variant="gold" onClick={gerar} disabled={gerando || !Object.values(campos).some(Boolean)}>
+              <Button type="button" variant="gold" onClick={gerar} disabled={gerando || (!Object.values(campos).some(Boolean) && !ncm)}>
                 {gerando ? <Loader2 className="animate-spin" /> : <Sparkles />} {gerando ? "Analisando suas fotos..." : "Gerar"}
               </Button>
             </div>

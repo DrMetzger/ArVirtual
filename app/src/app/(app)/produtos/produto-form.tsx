@@ -54,7 +54,7 @@ export function ProdutoForm({
   const aplicarIA = (r: ResultadoIA) => {
     if (r.titulo) setNome(r.titulo);
     if (r.descricao) setDescricao(r.descricao);
-    setIa(r);
+    setIa({ ...r, ncm: r.ncm || undefined });
   };
   const [precosCanal, setPrecosCanal] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(produto?.precosCanal ?? {}).map(([k, v]) => [k, v ? formatValor(v) : ""])),
@@ -139,7 +139,7 @@ export function ProdutoForm({
             </Field>
             {ia ? (
               <div className="sm:col-span-6">
-                <Alert tone="gold">Preenchido pela IA{ia.ncms?.length ? " (título, descrição e NCM)" : ""}: confira e ajuste antes de salvar. O NCM sempre vale confirmar com o contador.</Alert>
+                <Alert tone="gold">Preenchido pela IA: confira o título e a descrição antes de salvar.</Alert>
               </div>
             ) : null}
             <Field label="Descrição" className="sm:col-span-6" hint="Use “Gerar com IA” para criar título, descrição e NCM pelas fotos.">
@@ -197,7 +197,7 @@ export function ProdutoForm({
         <Card>
           <CardHeader title="Fiscal" description="O NCM define a regra da matriz fiscal, o IPI e os tributos aproximados da nota." />
           <div className="grid gap-4 p-5 sm:grid-cols-6">
-            <NcmField defaultValue={produto?.ncm} valorIA={ia?.ncms?.[0]?.ncm} sugestoesIA={ia?.ncms} />
+            <NcmField defaultValue={produto?.ncm} valorIA={ia?.ncm} />
             <Field label="CEST" className="sm:col-span-3" hint="Só se houver substituição tributária">
               <Input name="cest" defaultValue={produto?.cest} inputMode="numeric" />
             </Field>
