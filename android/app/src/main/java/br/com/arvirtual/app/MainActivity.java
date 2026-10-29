@@ -16,6 +16,8 @@ import android.os.Bundle;
 import android.os.Environment;
 import android.os.Looper;
 import android.view.ViewGroup;
+import android.view.WindowInsets;
+import android.widget.FrameLayout;
 import android.webkit.CookieManager;
 import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
@@ -62,8 +64,30 @@ public class MainActivity extends Activity {
         super.onCreate(estado);
         web = new WebView(this);
         web.setBackgroundColor(Color.parseColor("#0A1A33"));
-        web.setLayoutParams(new ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
-        setContentView(web);
+        // Moldura com o azul do ERP: o Android 15 desenha o app por baixo da barra de status (hora, bateria) e da
+        // barra de navegação; o espaço delas (e o do teclado) vira margem, então nada fica cortado ou sobreposto.
+        FrameLayout moldura = new FrameLayout(this);
+        moldura.setBackgroundColor(Color.parseColor("#0A1A33"));
+        moldura.addView(web, new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+        moldura.setOnApplyWindowInsetsListener((v, insets) -> {
+            int topo, baixo, esq, dir;
+            if (Build.VERSION.SDK_INT >= 30) {
+                android.graphics.Insets barras = insets.getInsets(WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout());
+                android.graphics.Insets teclado = insets.getInsets(WindowInsets.Type.ime());
+                topo = barras.top;
+                esq = barras.left;
+                dir = barras.right;
+                baixo = Math.max(barras.bottom, teclado.bottom);
+            } else {
+                topo = insets.getSystemWindowInsetTop();
+                esq = insets.getSystemWindowInsetLeft();
+                dir = insets.getSystemWindowInsetRight();
+                baixo = insets.getSystemWindowInsetBottom();
+            }
+            v.setPadding(esq, topo, dir, baixo);
+            return insets;
+        });
+        setContentView(moldura);
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
