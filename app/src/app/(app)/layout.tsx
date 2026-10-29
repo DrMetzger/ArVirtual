@@ -1,5 +1,7 @@
 import { cookies, headers } from "next/headers";
 import { Sidebar } from "@/components/sidebar";
+import { RegistrarAparelho } from "@/components/registrar-aparelho";
+import { TabelasResponsivas } from "@/components/tabelas-responsivas";
 import { dentroDoApp, infoApp } from "@/lib/app-android";
 import { requireUser } from "@/lib/auth";
 import { COOKIE_MENU } from "@/lib/menu";
@@ -18,6 +20,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
 
   return (
     <div className="min-h-dvh">
+      <TabelasResponsivas />
+      <RegistrarAparelho />
       <Sidebar usuario={{ nome: user.nome, papel: user.papel, iniciais }} recolhidoInicial={recolhido} appAndroid={app?.versao}>
         {children}
       </Sidebar>

@@ -68,7 +68,7 @@ export default async function ComissoesPage({ searchParams }: { searchParams: Pr
           </form>
         </Card>
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <Resumo titulo="Estimada" valor={soma((s) => s !== "CANCELLED")} detalhe="Tudo menos cancelados" destaque />
           <Resumo titulo="Concluída" valor={soma((s) => s === "COMPLETED")} detalhe="Confirmada pela Shopee" />
           <Resumo titulo="Pendente" valor={soma((s) => s === "PENDING" || s === "UNPAID")} detalhe="Aguardando entrega/pagamento" />
@@ -131,9 +131,9 @@ export default async function ComissoesPage({ searchParams }: { searchParams: Pr
 
 function Resumo({ titulo, valor, detalhe, destaque }: { titulo: string; valor: number; detalhe: string; destaque?: boolean }) {
   return (
-    <Card className={cn("p-5", destaque && "border-gold/50")}>
+    <Card className={cn("p-4 sm:p-5", destaque && "border-gold/50")}>
       <p className="text-xs font-semibold tracking-wider text-muted uppercase">{titulo}</p>
-      <p className={cn("mt-2 font-display text-2xl font-extrabold", destaque && "text-gold")}>{formatBRL(valor)}</p>
+      <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", destaque && "text-gold")}>{formatBRL(valor)}</p>
       <p className="mt-1 text-xs text-muted">{detalhe}</p>
     </Card>
   );

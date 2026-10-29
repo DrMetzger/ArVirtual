@@ -72,7 +72,7 @@ export async function ListaTitulos({ tipo, f = "abertos", q = "" }: { tipo: "rec
         ].map(([t, v, d, alerta]) => (
           <Card key={t as string} className={cn("p-5", alerta && "border-red/40")}>
             <p className="text-xs font-semibold tracking-wider text-muted uppercase">{t as string}</p>
-            <p className={cn("mt-2 font-display text-2xl font-extrabold", alerta && "text-red")}>{formatBRL(v as number)}</p>
+            <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", alerta && "text-red")}>{formatBRL(v as number)}</p>
             <p className="mt-1 text-xs text-muted">{d as string}</p>
           </Card>
         ))}

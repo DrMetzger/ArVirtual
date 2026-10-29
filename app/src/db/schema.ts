@@ -468,6 +468,33 @@ export const afiliadosComissoes = pgTable(
   (t) => [uniqueIndex("afiliados_comissoes_item_idx").on(t.conversionId, t.orderId, t.itemId)],
 );
 
+/**
+ * Celular/tablet com o app Android: o próprio app gera o id e manda modelo, bateria e localização.
+ * Aparelho bloqueado não entra no sistema (nem com usuário e senha certos).
+ */
+export const aparelhos = pgTable("aparelhos", {
+  id: text("id").primaryKey(),
+  usuarioId: uuid("usuario_id").references(() => usuarios.id, { onDelete: "set null" }),
+  usuarioNome: text("usuario_nome").notNull().default(""),
+  fabricante: text("fabricante").notNull().default(""),
+  modelo: text("modelo").notNull().default(""),
+  android: text("android").notNull().default(""),
+  versaoApp: text("versao_app").notNull().default(""),
+  bateria: integer("bateria"),
+  carregando: boolean("carregando").notNull().default(false),
+  latitude: numeric("latitude", { precision: 10, scale: 7, mode: "number" }),
+  longitude: numeric("longitude", { precision: 10, scale: 7, mode: "number" }),
+  precisaoM: integer("precisao_m"),
+  localizadoEm: timestamp("localizado_em", { withTimezone: true }),
+  notificacoes: boolean("notificacoes").notNull().default(false),
+  ip: text("ip").notNull().default(""),
+  ultimoAcesso: timestamp("ultimo_acesso", { withTimezone: true }).notNull().defaultNow(),
+  bloqueado: boolean("bloqueado").notNull().default(false),
+  bloqueadoEm: timestamp("bloqueado_em", { withTimezone: true }),
+  bloqueadoPor: text("bloqueado_por").notNull().default(""),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
 /** Arquivos de impressão do produto (3MF, STL, G-code...): ficam no servidor para quem vai imprimir baixar. */
 export const arquivosProduto = pgTable(
   "arquivos_produto",

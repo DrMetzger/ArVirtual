@@ -90,13 +90,13 @@ export function VincularAnuncios({
             key={c.id}
             href={`/marketplaces/anuncios?conta=${c.id}`}
             className={cn(
-              "flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold",
+              "flex max-w-full items-center gap-2 rounded-xl border px-3 py-2 text-sm font-semibold",
               c.id === contaId ? "border-gold bg-gold/10" : "border-border hover:border-gold/60",
             )}
           >
             <MarcaIcone canal={c.marketplace} />
             {c.marketplaceNome}
-            <span className="font-normal text-muted">{c.nome}</span>
+            <span className="min-w-0 truncate font-normal text-muted">{c.nome}</span>
           </Link>
         ))}
       </div>
@@ -105,7 +105,7 @@ export function VincularAnuncios({
 
       <Card>
         <div className="flex flex-wrap items-center gap-3 border-b border-border p-4">
-          <div className="relative min-w-[200px] flex-1">
+          <div className="relative min-w-0 flex-1 basis-56">
             <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted" />
             <Input value={termo} onChange={(e) => setTermo(e.target.value)} placeholder="Buscar por título, SKU ou código do anúncio" className="pl-9" />
           </div>
@@ -142,7 +142,7 @@ export function VincularAnuncios({
               const ocupado = salvando.includes(a.idExterno);
               return (
                 <div key={a.idExterno} className="flex flex-wrap items-center gap-3 px-4 py-3">
-                  <div className="flex min-w-[240px] flex-[2] items-center gap-3">
+                  <div className="flex min-w-0 flex-[2] basis-60 items-center gap-3">
                     <div className="grid size-14 shrink-0 place-items-center overflow-hidden rounded-lg border border-border bg-white">
                       {a.imagem ? <img src={a.imagem} alt="" className="size-full object-cover" /> : <Package className="size-6 text-muted" />}
                     </div>
@@ -159,7 +159,7 @@ export function VincularAnuncios({
                       </p>
                     </div>
                   </div>
-                  <div className="grid min-w-[260px] flex-1 gap-1">
+                  <div className="grid min-w-0 flex-1 basis-64 gap-1">
                     <div className="flex items-center gap-2">
                       <BuscaSelect
                         valor={atual ? (porId.get(atual) ?? null) : null}
