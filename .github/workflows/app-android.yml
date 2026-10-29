@@ -1,0 +1,92 @@
+name: App Android (APK)
+
+# Gera o APK do app Android e publica no ERP (botão de download no login e no menu).
+on:
+  push:
+    branches: [main]
+    paths:
+      - "android/**"
+      - ".github/workflows/app-android.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-android
+  cancel-in-progress: false
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    env:
+      VM_HOST: ${{ secrets.VM_HOST }}
+      VM_USER: ${{ secrets.VM_USER || 'root' }}
+      VM_PORT: ${{ secrets.VM_PORT || '22' }}
+      SSHPASS: ${{ secrets.VM_PSW }}
+      VM_DIR: ${{ vars.VM_APP_DIR || '/opt/arvirtual-app' }}
+      # Chave de assinatura fora da pasta do deploy (o rsync de lá apaga o que não está no repositório).
+      CHAVE_DIR: /opt/arvirtual-android
+      VERSAO_APP: ${{ github.run_number }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.14.3"
+
+      - name: Acesso à VM
+        run: |
+          [ -n "$VM_HOST" ] && [ -n "$SSHPASS" ] || { echo "::error::Faltam os secrets VM_HOST/VM_PSW"; exit 1; }
+          sudo apt-get install -y -qq sshpass >/dev/null
+          echo "SSH=sshpass -e ssh -p $VM_PORT -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $VM_USER@$VM_HOST" >> "$GITHUB_ENV"
+
+      # A mesma chave sempre: com outra, o Android não instala a versão nova por cima da antiga.
+      - name: Chave de assinatura (guardada na VM; criada na primeira vez)
+        run: |
+          mkdir -p "$RUNNER_TEMP/assinatura"
+          JKS="$RUNNER_TEMP/assinatura/arvirtual.jks"
+          if $SSH "test -s $CHAVE_DIR/arvirtual.jks && test -s $CHAVE_DIR/senha"; then
+            $SSH "cat $CHAVE_DIR/arvirtual.jks" > "$JKS"
+            SENHA="$($SSH "cat $CHAVE_DIR/senha")"
+          else
+            SENHA="$(openssl rand -hex 24)"
+            keytool -genkeypair -keystore "$JKS" -storepass "$SENHA" -keypass "$SENHA" -alias arvirtual \
+              -keyalg RSA -keysize 4096 -validity 20000 -dname "CN=ArVirtual, O=ArVirtual, L=Sao Jose do Rio Preto, ST=SP, C=BR"
+            $SSH "mkdir -p $CHAVE_DIR && chmod 700 $CHAVE_DIR"
+            $SSH "cat > $CHAVE_DIR/arvirtual.jks && chmod 600 $CHAVE_DIR/arvirtual.jks" < "$JKS"
+            printf '%s' "$SENHA" | $SSH "cat > $CHAVE_DIR/senha && chmod 600 $CHAVE_DIR/senha"
+            echo "Chave de assinatura criada e guardada na VM."
+          fi
+          echo "::add-mask::$SENHA"
+          echo "ANDROID_KEYSTORE=$JKS" >> "$GITHUB_ENV"
+          echo "ANDROID_KEYSTORE_SENHA=$SENHA" >> "$GITHUB_ENV"
+
+      - name: Gerar o APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease
+
+      - name: Publicar no ERP
+        run: |
+          APK=android/app/build/outputs/apk/release/app-release.apk
+          test -s "$APK"
+          TAMANHO=$(stat -c %s "$APK")
+          printf '{"versao":"1.0.%s","data":"%s","tamanho":%s}' "$VERSAO_APP" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$TAMANHO" > info.json
+          # Grava no volume de uploads do container (troca atômica: quem estiver baixando não pega arquivo pela metade).
+          # Se o deploy do site estiver reiniciando o container nesse momento, tenta de novo.
+          enviar() {
+            $SSH "cd $VM_DIR && docker compose exec -T -u root app sh -c 'mkdir -p /app/uploads/app && cat > /app/uploads/app/arvirtual.apk.novo'" < "$APK" &&
+            $SSH "cd $VM_DIR && docker compose exec -T -u root app sh -c 'cat > /app/uploads/app/arvirtual.json.novo'" < info.json &&
+            $SSH "cd $VM_DIR && docker compose exec -T -u root app sh -c 'cd /app/uploads/app && mv arvirtual.apk.novo arvirtual.apk && mv arvirtual.json.novo arvirtual.json && chown -R app:app /app/uploads/app'"
+          }
+          for tentativa in 1 2 3 4 5 6; do
+            enviar && break
+            [ "$tentativa" = 6 ] && { echo "::error::Não foi possível gravar o APK no servidor"; exit 1; }
+            echo "Servidor ocupado (deploy?), nova tentativa em 30 s..."; sleep 30
+          done
+          echo "APK 1.0.$VERSAO_APP publicado ($TAMANHO bytes)."

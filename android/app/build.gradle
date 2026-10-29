@@ -1,0 +1,47 @@
+plugins {
+    id "com.android.application"
+}
+
+// Versão vem do build (número da execução no GitHub Actions); local = 1.
+def numero = (System.getenv("VERSAO_APP") ?: "1") as Integer
+
+android {
+    namespace "br.com.arvirtual.app"
+    compileSdk 35
+
+    defaultConfig {
+        applicationId "br.com.arvirtual.app"
+        minSdk 24
+        targetSdk 35
+        versionCode numero
+        versionName "1.0.${numero}"
+    }
+
+    // Assinatura: a mesma chave sempre (senão o Android não deixa atualizar por cima). Fica guardada na VM.
+    signingConfigs {
+        release {
+            storeFile file(System.getenv("ANDROID_KEYSTORE") ?: "nao-configurado.jks")
+            storePassword System.getenv("ANDROID_KEYSTORE_SENHA") ?: ""
+            keyAlias System.getenv("ANDROID_KEY_ALIAS") ?: "arvirtual"
+            keyPassword System.getenv("ANDROID_KEYSTORE_SENHA") ?: ""
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile("proguard-android-optimize.txt")
+            signingConfig signingConfigs.release
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
