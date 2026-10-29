@@ -66,6 +66,15 @@ export type Oferta = {
   avaliacao: number;
   linkProduto: string;
   linkOferta: string;
+  /** Parte da comissão paga pelo vendedor (campanha AMS) e pela Shopee, em fração. */
+  comissaoVendedor: number;
+  comissaoShopee: number;
+  /** Desconto do produto em % (0 se não tiver). */
+  desconto: number;
+  /** Shopee Mall, Indicado... */
+  tiposLoja: string[];
+  /** Fim da oferta de comissão (ISO), se a Shopee informar. */
+  ofertaAte: string;
 };
 
 type NoOferta = {
@@ -82,9 +91,17 @@ type NoOferta = {
   ratingStar: string;
   productLink: string;
   offerLink: string;
+  sellerCommissionRate?: string;
+  shopeeCommissionRate?: string;
+  priceDiscountRate?: number | string;
+  shopType?: number[] | number | null;
+  periodEndTime?: number;
 };
 
-const CAMPOS_OFERTA = "itemId shopId productName imageUrl shopName priceMin priceMax commissionRate commission sales ratingStar productLink offerLink";
+const CAMPOS_OFERTA =
+  "itemId shopId productName imageUrl shopName priceMin priceMax commissionRate commission sales ratingStar productLink offerLink sellerCommissionRate shopeeCommissionRate priceDiscountRate shopType periodEndTime";
+
+const TIPOS_LOJA: Record<number, string> = { 1: "Shopee Mall", 2: "Loja Indicada", 4: "Indicada+" };
 
 function oferta(n: NoOferta): Oferta {
   const min = Number(n.priceMin) || 0;
@@ -104,6 +121,11 @@ function oferta(n: NoOferta): Oferta {
     avaliacao: Number(n.ratingStar) || 0,
     linkProduto: n.productLink,
     linkOferta: n.offerLink,
+    comissaoVendedor: Number(n.sellerCommissionRate) || 0,
+    comissaoShopee: Number(n.shopeeCommissionRate) || 0,
+    desconto: Number(n.priceDiscountRate) || 0,
+    tiposLoja: (Array.isArray(n.shopType) ? n.shopType : n.shopType ? [n.shopType] : []).map((t) => TIPOS_LOJA[t]).filter((t): t is string => Boolean(t)),
+    ofertaAte: n.periodEndTime ? new Date(n.periodEndTime * 1000).toISOString() : "",
   };
 }
 
@@ -116,9 +138,21 @@ export const ORDENS = {
 } as const;
 
 /** Busca produtos com oferta de comissão (por palavra-chave ou pelo item). */
-export async function buscarOfertas(opcoes: { termo?: string; itemId?: string; shopId?: string; ordem?: keyof typeof ORDENS; pagina?: number }) {
+export async function buscarOfertas(opcoes: {
+  termo?: string;
+  itemId?: string;
+  shopId?: string;
+  ordem?: keyof typeof ORDENS;
+  pagina?: number;
+  /** Só produtos com comissão extra paga pelo vendedor (campanha AMS). */
+  extraVendedor?: boolean;
+  /** Só vendedores destaque da Shopee. */
+  vendedorDestaque?: boolean;
+}) {
   const args = [
     opcoes.termo ? `keyword: ${str(opcoes.termo)}` : "",
+    opcoes.extraVendedor ? "isAMSOffer: true" : "",
+    opcoes.vendedorDestaque ? "isKeySeller: true" : "",
     opcoes.itemId ? `itemId: ${Number(opcoes.itemId)}` : "",
     opcoes.shopId ? `shopId: ${Number(opcoes.shopId)}` : "",
     `sortType: ${ORDENS[opcoes.ordem ?? "relevancia"]}`,
@@ -167,12 +201,24 @@ export async function idsDoLink(link: string): Promise<{ shopId: string; itemId:
 type NoConversao = {
   conversionId: number | string;
   purchaseTime: number;
+  clickTime?: number;
   utmContent?: string;
+  buyerType?: string;
+  device?: string;
   orders?: {
     orderId: string;
     orderStatus: string;
-    shopName?: string;
-    items?: { itemId: number | string; itemName: string; itemPrice: string; qty: number; itemTotalCommission?: string; actualAmount?: string }[];
+    items?: {
+      itemId: number | string;
+      itemName: string;
+      itemPrice: string;
+      qty: number;
+      itemTotalCommission?: string;
+      actualAmount?: string;
+      shopName?: string;
+      imageUrl?: string;
+      channelType?: string;
+    }[];
   }[];
 };
 
@@ -191,19 +237,24 @@ export async function sincronizarComissoes(desde: Date, ate = new Date()) {
       scroll ? `scrollId: ${str(scroll)}` : "",
     ].filter(Boolean);
     const r = await chamar<{ conversionReport: { nodes: NoConversao[]; pageInfo: { hasNextPage: boolean; scrollId: string } } }>(
-      `{ conversionReport(${args.join(", ")}) { nodes { conversionId purchaseTime utmContent orders { orderId orderStatus shopName items { itemId itemName itemPrice qty itemTotalCommission actualAmount } } } pageInfo { hasNextPage scrollId } } }`,
+      `{ conversionReport(${args.join(", ")}) { nodes { conversionId purchaseTime clickTime utmContent buyerType device orders { orderId orderStatus items { itemId itemName itemPrice qty itemTotalCommission actualAmount shopName imageUrl channelType } } } pageInfo { hasNextPage scrollId } } }`,
     );
     for (const n of r.conversionReport.nodes) {
       for (const o of n.orders ?? []) {
         for (const it of o.items ?? []) {
           const valores = {
             itemNome: it.itemName ?? "",
-            loja: o.shopName ?? "",
+            loja: it.shopName ?? "",
             quantidade: Number(it.qty) || 1,
             valor: Number(it.actualAmount ?? it.itemPrice) || 0,
             comissao: Number(it.itemTotalCommission) || 0,
             status: o.orderStatus ?? "",
             subId: n.utmContent ?? "",
+            canal: it.channelType ?? "",
+            compradorTipo: n.buyerType ?? "",
+            dispositivo: n.device ?? "",
+            imagem: it.imageUrl ?? "",
+            clicadoEm: n.clickTime ? new Date(Number(n.clickTime) * 1000) : null,
             compraEm: new Date(Number(n.purchaseTime) * 1000),
             dados: { conversao: { ...n, orders: undefined }, pedido: { ...o, items: undefined }, item: it },
             atualizadoEm: new Date(),

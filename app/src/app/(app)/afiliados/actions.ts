@@ -199,5 +199,6 @@ export async function sincronizarComissoesAgora(form: FormData) {
   }
   revalidatePath("/afiliados");
   revalidatePath("/afiliados/comissoes");
-  voltarCom(`/afiliados/comissoes?de=${form.get("de") ?? ""}&ate=${form.get("ate") ?? ""}`, ...msg);
+  const voltar = String(form.get("voltar") ?? "");
+  voltarCom(voltar.startsWith("/afiliados") ? voltar : `/afiliados/comissoes?de=${form.get("de") ?? ""}&ate=${form.get("ate") ?? ""}`, ...msg);
 }
