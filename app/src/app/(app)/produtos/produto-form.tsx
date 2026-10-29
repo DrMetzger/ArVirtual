@@ -10,6 +10,7 @@ import { custoComposicao, gramasTotais, type ParametrosImpressao } from "@/lib/i
 import type { ParametrosPreco } from "@/lib/precificacao";
 import { formatBRL, formatValor, parseDecimal } from "@/lib/utils";
 import { salvarProduto } from "./actions";
+import { CadastroIA, type ResultadoIA } from "./cadastro-ia";
 import { NcmField } from "./ncm-field";
 import { ImagensField } from "./imagens-field";
 import { PrecosCanal } from "./precos-canal";
@@ -47,6 +48,14 @@ export function ProdutoForm({
 }) {
   const [temVariacoes, setTemVariacoes] = useState(produto?.temVariacoes ?? false);
   const [sku, setSku] = useState(produto?.sku ?? "");
+  const [nome, setNome] = useState(produto?.nome ?? "");
+  const [descricao, setDescricao] = useState(produto?.descricao ?? "");
+  const [ia, setIa] = useState<ResultadoIA | null>(null);
+  const aplicarIA = (r: ResultadoIA) => {
+    if (r.titulo) setNome(r.titulo);
+    if (r.descricao) setDescricao(r.descricao);
+    setIa(r);
+  };
   const [precosCanal, setPrecosCanal] = useState<Record<string, string>>(() =>
     Object.fromEntries(Object.entries(produto?.precosCanal ?? {}).map(([k, v]) => [k, v ? formatValor(v) : ""])),
   );
@@ -100,7 +109,8 @@ export function ProdutoForm({
           <CardHeader
             title="Identificação"
             action={
-              <div className="flex items-center gap-2 text-sm">
+              <div className="flex flex-wrap items-center gap-2 text-sm">
+                <CadastroIA aplicar={aplicarIA} />
                 <span className="font-semibold">Tem variações?</span>
                 <div className="flex rounded-xl border border-border bg-surface p-0.5">
                   {[
@@ -125,10 +135,15 @@ export function ProdutoForm({
               <Input name="sku" value={sku} onChange={(e) => setSku(e.target.value)} required placeholder="ARV-0001" />
             </Field>
             <Field label="Nome do produto" className="sm:col-span-4">
-              <Input name="nome" defaultValue={produto?.nome} required />
+              <Input name="nome" value={nome} onChange={(e) => setNome(e.target.value)} required />
             </Field>
-            <Field label="Descrição" className="sm:col-span-6" hint="Use o Assistente IA na página do produto para gerar a descrição do anúncio.">
-              <Textarea name="descricao" defaultValue={produto?.descricao} rows={5} />
+            {ia ? (
+              <div className="sm:col-span-6">
+                <Alert tone="gold">Preenchido pela IA{ia.ncms?.length ? " (título, descrição e NCM)" : ""}: confira e ajuste antes de salvar. O NCM sempre vale confirmar com o contador.</Alert>
+              </div>
+            ) : null}
+            <Field label="Descrição" className="sm:col-span-6" hint="Use “Gerar com IA” para criar título, descrição e NCM pelas fotos.">
+              <Textarea name="descricao" value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={descricao.split("\n").length > 5 ? 10 : 5} />
             </Field>
             <Field label="GTIN / EAN" className="sm:col-span-2" hint="Deixe vazio se não tiver">
               <Input name="gtin" defaultValue={produto?.gtin} inputMode="numeric" />
@@ -182,7 +197,7 @@ export function ProdutoForm({
         <Card>
           <CardHeader title="Fiscal" description="O NCM define a regra da matriz fiscal, o IPI e os tributos aproximados da nota." />
           <div className="grid gap-4 p-5 sm:grid-cols-6">
-            <NcmField defaultValue={produto?.ncm} />
+            <NcmField defaultValue={produto?.ncm} valorIA={ia?.ncms?.[0]?.ncm} sugestoesIA={ia?.ncms} />
             <Field label="CEST" className="sm:col-span-3" hint="Só se houver substituição tributária">
               <Input name="cest" defaultValue={produto?.cest} inputMode="numeric" />
             </Field>

@@ -10,13 +10,27 @@ import type { SugestaoNcm } from "@/lib/fiscal/ncm";
 type Ncm = { codigo: string; descricao: string; aliquotaIpi: number | null; pendente: boolean; fonte: string };
 
 /** NCM com descrição oficial (cadastro ou IA) e sugestão pela descrição do produto. */
-export function NcmField({ defaultValue }: { defaultValue?: string }) {
+export function NcmField({
+  defaultValue,
+  sugestoesIA,
+  valorIA,
+}: {
+  defaultValue?: string;
+  /** Sugestões vindas do "Gerar com IA" do cadastro (a 1ª já entra no campo). */
+  sugestoesIA?: SugestaoNcm[];
+  valorIA?: string;
+}) {
   const [codigo, setCodigo] = useState(defaultValue ?? "");
   const [info, setInfo] = useState<Ncm | null>(null);
   const [buscando, setBuscando] = useState(false);
   const [sugestoes, setSugestoes] = useState<SugestaoNcm[]>([]);
   const [erro, setErro] = useState("");
   const [sugerindo, start] = useTransition();
+
+  useEffect(() => {
+    if (valorIA) setCodigo(valorIA);
+    if (sugestoesIA && sugestoesIA.length > 1) setSugestoes(sugestoesIA);
+  }, [valorIA, sugestoesIA]);
 
   useEffect(() => {
     const c = onlyDigits(codigo);
