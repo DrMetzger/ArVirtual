@@ -70,7 +70,7 @@ export default async function ProducaoPage() {
                         {c.filamentos.length ? (
                           <span className="grid gap-0.5">
                             {c.filamentos.map((f) => (
-                              <span key={f.id} className="flex items-center gap-2 whitespace-nowrap">
+                              <span key={f.id} className="flex flex-wrap items-center gap-x-2">
                                 <span className="size-3 rounded-full border border-border" style={{ background: f.corHex }} />
                                 {f.material} {f.cor}
                                 {c.filamentos.length > 1 ? <span className="text-xs text-muted">{f.gramas} g</span> : null}

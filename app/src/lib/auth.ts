@@ -1,13 +1,16 @@
 import "server-only";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { aparelhoBloqueado, idDoAparelho } from "./aparelhos";
 import { SESSION_COOKIE, verifySession } from "./session";
 
 /** Sessão atual; redireciona para o login se não houver. Use em toda página/ação protegida. */
 export const requireUser = cache(async () => {
   const session = await verifySession((await cookies()).get(SESSION_COOKIE)?.value);
   if (!session) redirect("/login");
+  // Celular bloqueado em Configurações › Aparelhos perde o acesso na hora (até com a sessão aberta).
+  if (await aparelhoBloqueado(idDoAparelho((await headers()).get("user-agent")))) redirect("/bloqueado");
   return session;
 });
 

@@ -75,7 +75,7 @@ export default async function BuscarAfiliadosPage({ searchParams }: { searchPara
         ) : !ofertas.length && !erro ? (
           <EmptyState icon={<Search />} title="Nada encontrado" description="Tente outras palavras." />
         ) : (
-          <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
             {ofertas.map((o) => (
               <Card key={o.itemId} className="flex flex-col overflow-hidden">
                 <a href={o.linkProduto} target="_blank" rel="noreferrer" className="block aspect-square bg-surface-2">

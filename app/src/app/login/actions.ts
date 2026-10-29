@@ -1,8 +1,9 @@
 "use server";
 
+import { aparelhoBloqueado, idDoAparelho } from "@/lib/aparelhos";
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { usuarios } from "@/db/schema";
@@ -34,6 +35,10 @@ export async function login(_: unknown, form: FormData): Promise<Estado> {
   const email = String(form.get("email") ?? "").trim().toLowerCase();
   const senha = String(form.get("senha") ?? "");
   const destino = destinoSeguro(String(form.get("redirectTo") ?? "/"));
+  // Celular bloqueado em Configurações › Aparelhos não entra, nem com a senha certa.
+  if (await aparelhoBloqueado(idDoAparelho((await headers()).get("user-agent")))) {
+    return { erro: "Este aparelho foi bloqueado pelo administrador. Fale com ele para liberar." };
+  }
 
   const user = await db.query.usuarios.findFirst({ where: eq(usuarios.email, email) });
   // Compara mesmo sem usuário para não revelar quais e-mails existem pelo tempo de resposta.

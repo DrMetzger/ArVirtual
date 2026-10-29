@@ -141,7 +141,7 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
         {f.ok ? <Alert tone="green">{f.ok}</Alert> : null}
         {f.erro ? <Alert>{f.erro}</Alert> : null}
 
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
           <Kpi titulo="Pedidos" valor={String(pedidos.length)} detalhe={PERIODOS.find(([v]) => v === periodo)![1]} />
           <Kpi titulo="Faturamento" valor={formatBRL(faturamento)} detalhe="Pagos, enviados e entregues" />
           <Kpi titulo="Ticket médio" valor={formatBRL(validos.length ? faturamento / validos.length : 0)} detalhe={`${validos.length} pedido(s) pagos`} />
@@ -311,9 +311,9 @@ export default async function PedidosPage({ searchParams }: { searchParams: Prom
 
 function Kpi({ titulo, valor, detalhe, destaque, href }: { titulo: string; valor: string; detalhe: string; destaque?: boolean; href?: string }) {
   const corpo = (
-    <Card className={cn("p-5 transition-colors", destaque && "border-gold/50", href && "hover:border-gold/60")}>
+    <Card className={cn("p-4 sm:p-5 transition-colors", destaque && "border-gold/50", href && "hover:border-gold/60")}>
       <p className="text-xs font-semibold tracking-wider text-muted uppercase">{titulo}</p>
-      <p className={cn("mt-2 font-display text-2xl font-extrabold", destaque && "text-gold")}>{valor}</p>
+      <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", destaque && "text-gold")}>{valor}</p>
       <p className="mt-1 text-xs text-muted">{detalhe}</p>
     </Card>
   );

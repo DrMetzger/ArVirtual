@@ -40,29 +40,29 @@ export default async function FinanceiroPage() {
           </>
         }
       />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-5">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Card className="p-4 sm:p-5">
           <p className="text-xs font-semibold tracking-wider text-muted uppercase">Saldo em caixa</p>
-          <p className={cn("mt-2 font-display text-2xl font-extrabold", fluxo.saldoHoje < 0 && "text-red")}>{formatBRL(fluxo.saldoHoje)}</p>
+          <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", fluxo.saldoHoje < 0 && "text-red")}>{formatBRL(fluxo.saldoHoje)}</p>
           <p className="mt-1 text-xs text-muted">{contas.filter((c) => c.ativo).length} conta(s)</p>
         </Card>
         <Link href="/financeiro/receber">
-          <Card className="p-5 hover:border-gold/60">
+          <Card className="p-4 sm:p-5 hover:border-gold/60">
             <p className="text-xs font-semibold tracking-wider text-muted uppercase">A receber</p>
-            <p className="mt-2 font-display text-2xl font-extrabold text-green">{formatBRL(soma("receber"))}</p>
+            <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl text-green">{formatBRL(soma("receber"))}</p>
             <p className="mt-1 text-xs text-muted">{formatBRL(soma("receber", vencidos))} vencido</p>
           </Card>
         </Link>
         <Link href="/financeiro/pagar">
-          <Card className="p-5 hover:border-gold/60">
+          <Card className="p-4 sm:p-5 hover:border-gold/60">
             <p className="text-xs font-semibold tracking-wider text-muted uppercase">A pagar</p>
-            <p className="mt-2 font-display text-2xl font-extrabold text-red">{formatBRL(soma("pagar"))}</p>
+            <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl text-red">{formatBRL(soma("pagar"))}</p>
             <p className="mt-1 text-xs text-muted">{formatBRL(soma("pagar", vencidos))} vencido</p>
           </Card>
         </Link>
-        <Card className="p-5">
+        <Card className="p-4 sm:p-5">
           <p className="text-xs font-semibold tracking-wider text-muted uppercase">Saldo projetado (12 semanas)</p>
-          <p className={cn("mt-2 font-display text-2xl font-extrabold", projetado < 0 ? "text-red" : "text-gold")}>{formatBRL(projetado)}</p>
+          <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", projetado < 0 ? "text-red" : "text-gold")}>{formatBRL(projetado)}</p>
           <p className="mt-1 text-xs text-muted">Caixa + a receber − a pagar</p>
         </Card>
       </div>

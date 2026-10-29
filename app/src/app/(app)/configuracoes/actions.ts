@@ -7,8 +7,9 @@ import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { db } from "@/db";
-import { certificadoDigital, contasEmail, empresa, notas, usuarios } from "@/db/schema";
+import { aparelhos, certificadoDigital, contasEmail, empresa, notas, usuarios } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth";
+import { esquecerBloqueio } from "@/lib/aparelhos";
 import { encrypt } from "@/lib/crypto";
 import { lerCertificado } from "@/lib/fiscal/certificado";
 import { certificateFromPfx } from "@/lib/nfe/sefaz";
@@ -344,4 +345,23 @@ export async function desativar2fa(_: FormState, form: FormData): Promise<FormSt
   } catch (e) {
     return falha(e);
   }
+}
+
+/** Bloqueia (ou libera) o celular: bloqueado, ele sai do sistema na hora e não entra mais, nem com a senha. */
+export async function bloquearAparelho(id: string, bloquear: boolean) {
+  const admin = await requireAdmin();
+  await db
+    .update(aparelhos)
+    .set(bloquear ? { bloqueado: true, bloqueadoEm: new Date(), bloqueadoPor: admin.nome } : { bloqueado: false, bloqueadoEm: null, bloqueadoPor: "" })
+    .where(eq(aparelhos.id, id));
+  esquecerBloqueio(id);
+  revalidatePath("/configuracoes");
+}
+
+/** Tira da lista (se o app abrir de novo, ele volta a aparecer; bloqueado não é removido para continuar barrado). */
+export async function removerAparelho(id: string) {
+  await requireAdmin();
+  await db.delete(aparelhos).where(and(eq(aparelhos.id, id), eq(aparelhos.bloqueado, false)));
+  esquecerBloqueio(id);
+  revalidatePath("/configuracoes");
 }

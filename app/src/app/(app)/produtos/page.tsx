@@ -146,7 +146,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   <td className="text-right whitespace-nowrap text-muted">{p.custo ? formatBRL(p.custo) : "—"}</td>
                   <td className="text-right whitespace-nowrap">
                     <span className="font-semibold">{formatBRL(p.preco)}</span>
-                    <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
+                    <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} className="justify-end max-md:justify-start" />
                   </td>
                   <td className="text-right whitespace-nowrap">{p.custo && p.preco ? `${Math.round((p.preco / p.custo - 1) * 100)}%` : "—"}</td>
                   <td className={cn("text-right", p.estoque <= 0 && "font-semibold text-red")}>{p.estoque}</td>
@@ -157,7 +157,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
           </table>
         </Card>
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
           {lista.map((p) => (
             <Link key={p.id} href={`/produtos/${p.id}`} className="group">
               <Card className="h-full overflow-hidden transition group-hover:-translate-y-1 group-hover:border-gold">
@@ -177,20 +177,17 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   ) : null}
                   {p.anuncios.length ? <Bandeiras canais={p.anuncios} className="absolute right-3 top-3" /> : null}
                 </div>
-                <div className="grid gap-1 p-4">
-                  <p className="font-mono text-xs text-muted">{p.sku}</p>
-                  <p className="line-clamp-2 font-semibold">{p.nome}</p>
-                  <div className="mt-2 flex items-end justify-between">
-                    <div>
-                      <p className="text-lg font-extrabold text-primary">{formatBRL(p.preco)}</p>
-                      <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
-                      {p.custo ? <p className="text-xs text-muted">custo {formatBRL(p.custo)}</p> : null}
-                    </div>
-                    <div className="text-right text-xs text-muted">
-                      {p.material ? <p>{p.material}</p> : null}
-                      <p className={p.estoque <= 0 ? "font-semibold text-red" : ""}>{p.estoque} em estoque</p>
-                    </div>
-                  </div>
+                {/* Preço, preços por plataforma e estoque em linhas próprias: nada é espremido em cartão estreito (celular). */}
+                <div className="grid min-w-0 gap-1 p-3 sm:p-4">
+                  <p className="truncate font-mono text-[11px] text-muted sm:text-xs">{p.sku}</p>
+                  <p className="line-clamp-2 text-sm font-semibold sm:text-base">{p.nome}</p>
+                  <p className="mt-1 text-base font-extrabold text-primary sm:text-lg">{formatBRL(p.preco)}</p>
+                  <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
+                  <p className="flex flex-wrap gap-x-2 text-[11px] text-muted sm:text-xs">
+                    {p.custo ? <span>custo {formatBRL(p.custo)}</span> : null}
+                    {p.material ? <span>{p.material}</span> : null}
+                    <span className={p.estoque <= 0 ? "font-semibold text-red" : ""}>{p.estoque} em estoque</span>
+                  </p>
                 </div>
               </Card>
             </Link>
@@ -202,11 +199,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
 }
 
 /** Preço de cada marketplace (quando diferente do preço da loja). */
-function PrecosPlataforma({ precos, padrao }: { precos: Partial<Record<string, number>>; padrao: number }) {
+function PrecosPlataforma({ precos, padrao, className }: { precos: Partial<Record<string, number>>; padrao: number; className?: string }) {
   const itens = (["mercadolivre", "shopee", "magalu"] as const).filter((c) => precos[c] && precos[c] !== padrao);
   if (!itens.length) return null;
   return (
-    <span className="mt-0.5 flex flex-wrap items-center justify-end gap-x-2 gap-y-0.5 text-[11px] text-muted">
+    <span className={cn("flex flex-wrap items-center gap-x-2 gap-y-0.5 text-[11px] text-muted", className)}>
       {itens.map((c) => (
         <span key={c} className="inline-flex items-center gap-1 whitespace-nowrap">
           <MarcaIcone canal={c} className="size-4 p-[2px]" />

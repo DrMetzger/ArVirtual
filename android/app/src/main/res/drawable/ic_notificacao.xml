@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Ícone da notificação (o Android pinta de branco): sacola de compras. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M7,7V6a5,5 0,0 1,10 0v1h3a1,1 0,0 1,1 1.1l-1.2,12A2,2 0,0 1,17.8 22H6.2a2,2 0,0 1,-2 -1.9L3,8.1A1,1 0,0 1,4 7h3zM9,7h6V6a3,3 0,0 0,-6 0v1zM8,10a1,1 0,1 0,0 2a1,1 0,0 0,0 -2zM16,10a1,1 0,1 0,0 2a1,1 0,0 0,0 -2z" />
+</vector>

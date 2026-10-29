@@ -48,7 +48,7 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
   return (
     <>
       <PageHeader title="Estoque" description="Saldo dos produtos acabados. Vendas pagas saem sozinhas; entradas, saídas e contagens ficam no kardex de cada produto." />
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Kpi titulo="Peças em estoque" valor={String(pecas)} detalhe={`${lista.length} produto(s) ativo(s)`} />
         <Kpi titulo="Valor a custo" valor={formatBRL(valorCusto)} detalhe="Saldo × custo" />
         <Kpi titulo="Valor a preço de venda" valor={formatBRL(valorVenda)} detalhe="Saldo × preço" />
@@ -121,9 +121,9 @@ export default async function EstoquePage({ searchParams }: { searchParams: Prom
 
 function Kpi({ titulo, valor, detalhe, destaque, href }: { titulo: string; valor: string; detalhe: string; destaque?: boolean; href?: string }) {
   const corpo = (
-    <Card className={cn("p-5", destaque && "border-gold/50", href && "hover:border-gold/60")}>
+    <Card className={cn("p-4 sm:p-5", destaque && "border-gold/50", href && "hover:border-gold/60")}>
       <p className="text-xs font-semibold tracking-wider text-muted uppercase">{titulo}</p>
-      <p className={cn("mt-2 font-display text-2xl font-extrabold", destaque && "text-gold")}>{valor}</p>
+      <p className={cn("mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", destaque && "text-gold")}>{valor}</p>
       <p className="mt-1 text-xs text-muted">{detalhe}</p>
     </Card>
   );

@@ -25,7 +25,7 @@ function Kpi({ icon, label, value, sub }: { icon: React.ReactNode; label: string
       <div className="relative flex items-start justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-wider text-muted">{label}</p>
-          <p className="mt-2 font-display text-2xl font-extrabold">{value}</p>
+          <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl">{value}</p>
           {sub ? <p className="mt-1 text-xs text-muted">{sub}</p> : null}
         </div>
         <div className="grid size-10 place-items-center rounded-xl bg-primary/12 text-primary [&_svg]:size-5">{icon}</div>
@@ -152,7 +152,7 @@ export default async function Dashboard() {
         </Card>
       ) : null}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Kpi icon={<TrendingUp />} label={`Vendas · ${DIAS} dias`} value={formatBRL(vendas)} sub={`${qtdPedidos} pedidos`} />
         <Kpi icon={<ShoppingBag />} label="Ticket médio" value={formatBRL(qtdPedidos ? vendas / qtdPedidos : 0)} sub="Marketplaces" />
         <Kpi icon={<FileText />} label="NF-e no mês" value={formatBRL(notasMes[0]?.total ?? 0)} sub={`${notasMes[0]?.qtd ?? 0} notas autorizadas`} />

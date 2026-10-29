@@ -13,6 +13,7 @@ import { abaDoGrupo, getSetting, getSettingsForDisplay } from "@/lib/settings";
 import { cn } from "@/lib/utils";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { MagaluGuia } from "./magalu-guia";
+import { AparelhosAba } from "./aparelhos-aba";
 import { CertificadoA1, ContasEmail, EmpresaForm, IntegracaoForm, Usuarios } from "./forms";
 
 export const metadata: Metadata = { title: "Configurações" };
@@ -25,6 +26,7 @@ const ABAS = [
   { id: "precificacao", label: "Precificação" },
   { id: "emails", label: "E-mails" },
   { id: "usuarios", label: "Usuários" },
+  { id: "aparelhos", label: "Aparelhos" },
 ] as const;
 
 export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
@@ -83,7 +85,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
   return (
     <>
       <PageHeader title="Configurações" description="Dados da empresa, chaves de API, contas de e-mail e acessos." />
-      <nav className="mb-6 flex gap-1 overflow-x-auto rounded-2xl border border-border bg-surface p-1">
+      <nav className="mb-6 flex flex-wrap gap-1 rounded-2xl border border-border bg-surface p-1">
         {ABAS.map((a) => (
           <Link
             key={a.id}
@@ -135,6 +137,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
             .orderBy(asc(contasEmail.nome))}
         />
       ) : null}
+
+      {aba === "aparelhos" ? <AparelhosAba admin={admin} /> : null}
 
       {aba === "usuarios" ? (
         <UsuariosAba meuId={me.sub} admin={admin} />

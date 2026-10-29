@@ -1,16 +1,23 @@
 package br.com.arvirtual.app;
 
+import android.Manifest;
 import android.app.Activity;
 import android.app.DownloadManager;
+import android.app.NotificationManager;
 import android.content.ActivityNotFoundException;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.Color;
+import android.location.Location;
+import android.location.LocationManager;
 import android.net.Uri;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Environment;
-import android.view.View;
+import android.os.Looper;
 import android.view.ViewGroup;
 import android.webkit.CookieManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
@@ -21,6 +28,9 @@ import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.Toast;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * App Android do ERP ArVirtual: abre o sistema (app.arvirtual.com.br) numa tela própria, com login guardado,
  * envio de fotos/arquivos, downloads e links externos (Shopee, Mercado Livre, WhatsApp) abrindo no app certo.
@@ -30,8 +40,22 @@ public class MainActivity extends Activity {
     private static final String INICIO = "https://" + HOST + "/";
     private static final int ESCOLHER_ARQUIVO = 1;
 
+    private static final int PERMISSOES = 2;
+
     private WebView web;
     private ValueCallback<Uri[]> arquivosPendentes;
+    /** Última localização conhecida (enviada ao ERP pela ponte; Configurações › Aparelhos). */
+    private volatile Location local;
+
+    /** Ponte com o site: o ERP lê os dados do aparelho (window.ArVirtualApp.info()). Só o domínio do ERP abre no app. */
+    private final class Ponte {
+        @JavascriptInterface
+        public String info() {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            boolean notificacoes = Build.VERSION.SDK_INT < 24 || nm.areNotificationsEnabled();
+            return Aparelho.info(MainActivity.this, local, notificacoes).toString();
+        }
+    }
 
     @Override
     protected void onCreate(Bundle estado) {
@@ -50,8 +74,11 @@ public class MainActivity extends Activity {
         s.setLoadWithOverviewMode(true);
         s.setUseWideViewPort(true);
         s.setBuiltInZoomControls(false);
-        // O site reconhece o app (esconde o botão "baixar o app" e ajusta o que precisar).
-        s.setUserAgentString(s.getUserAgentString() + " ArVirtualApp/" + BuildConfig.VERSION_NAME);
+        // Letra fixa: com a fonte grande do Android os cartões estouram (preço saindo do card).
+        s.setTextZoom(100);
+        // O site reconhece o app e o aparelho (esconde o "baixar o app"; bloqueio do aparelho vale na hora).
+        s.setUserAgentString(s.getUserAgentString() + Aparelho.sufixoUserAgent(this));
+        web.addJavascriptInterface(new Ponte(), "ArVirtualApp");
 
         CookieManager cookies = CookieManager.getInstance();
         cookies.setAcceptCookie(true);
@@ -113,6 +140,66 @@ public class MainActivity extends Activity {
 
         if (estado != null) web.restoreState(estado);
         else web.loadUrl(destino(getIntent()));
+
+        // Aviso de pedido novo mesmo com o app fechado (consulta a cada ~15 min).
+        VerificarPedidos.criarCanal(this);
+        VerificarPedidos.agendar(this);
+        pedirPermissoes();
+    }
+
+    /** Notificações (Android 13+) e localização (para Configurações › Aparelhos). Pergunta uma vez; dá para mudar depois no Android. */
+    private void pedirPermissoes() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        List<String> faltam = new ArrayList<>();
+        if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            faltam.add(Manifest.permission.POST_NOTIFICATIONS);
+        }
+        if (checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
+            faltam.add(Manifest.permission.ACCESS_FINE_LOCATION);
+            faltam.add(Manifest.permission.ACCESS_COARSE_LOCATION);
+        }
+        if (!faltam.isEmpty() && !Aparelho.prefs(this).getBoolean("pediuPermissoes", false)) {
+            Aparelho.prefs(this).edit().putBoolean("pediuPermissoes", true).apply();
+            requestPermissions(faltam.toArray(new String[0]), PERMISSOES);
+        }
+    }
+
+    @Override
+    public void onRequestPermissionsResult(int pedido, String[] permissoes, int[] resultados) {
+        super.onRequestPermissionsResult(pedido, permissoes, resultados);
+        if (pedido == PERMISSOES) atualizarLocal();
+    }
+
+    /** Pega a localização mais recente (rápida) e pede uma nova em seguida. */
+    @SuppressWarnings({"MissingPermission", "deprecation"})
+    private void atualizarLocal() {
+        if (Build.VERSION.SDK_INT >= 23
+                && checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED
+                && checkSelfPermission(Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED) return;
+        LocationManager lm = (LocationManager) getSystemService(LOCATION_SERVICE);
+        if (lm == null) return;
+        try {
+            for (String provedor : lm.getProviders(true)) {
+                Location l = lm.getLastKnownLocation(provedor);
+                if (l != null && (local == null || l.getTime() > local.getTime())) local = l;
+            }
+            String provedor = lm.isProviderEnabled(LocationManager.NETWORK_PROVIDER) ? LocationManager.NETWORK_PROVIDER
+                    : lm.isProviderEnabled(LocationManager.GPS_PROVIDER) ? LocationManager.GPS_PROVIDER : null;
+            if (provedor == null) return;
+            if (Build.VERSION.SDK_INT >= 30) {
+                lm.getCurrentLocation(provedor, null, getMainExecutor(), l -> { if (l != null) local = l; });
+            } else {
+                lm.requestSingleUpdate(provedor, l -> local = l, Looper.getMainLooper());
+            }
+        } catch (SecurityException | IllegalArgumentException ignorado) {
+            // permissão retirada ou provedor indisponível
+        }
+    }
+
+    @Override
+    protected void onResume() {
+        super.onResume();
+        atualizarLocal();
     }
 
     private String destino(Intent intent) {

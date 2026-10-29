@@ -116,6 +116,63 @@
   }
 }
 
+/*
+ * Celular e tablet em pé: cada linha da tabela vira um cartão, com o nome da coluna (data-label, preenchido por
+ * <TabelasResponsivas/> a partir do cabeçalho) em cima do valor. Sem rolagem para o lado.
+ */
+@media (max-width: 767px) {
+  .table-base thead {
+    display: none;
+  }
+  .table-base,
+  .table-base tbody,
+  .table-base tr {
+    display: block;
+    width: 100%;
+  }
+  .table-base tbody tr {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem 1rem;
+    padding: 0.9rem 1rem;
+    border-bottom: 1px solid var(--border);
+  }
+  .table-base tbody tr:last-child {
+    border-bottom: 0;
+  }
+  .table-base td {
+    display: block;
+    min-width: 0;
+    padding: 0;
+    border: 0 !important;
+    text-align: left !important;
+    white-space: normal !important;
+    overflow-wrap: anywhere;
+  }
+  /* A primeira coluna (número/nome) é o título do cartão. */
+  .table-base td:first-child,
+  .table-base td[colspan] {
+    grid-column: 1 / -1;
+  }
+  .table-base td[data-label]:not([data-label=""]):not(:first-child)::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 0.1rem;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  /* Colunas vazias ou só de ações não ocupam espaço à toa. */
+  .table-base td:empty {
+    display: none;
+  }
+  .overflow-x-auto:has(> .table-base) {
+    overflow-x: visible;
+  }
+}
+
 .bg-grid {
   background-image:
     linear-gradient(var(--border) 1px, transparent 1px),
