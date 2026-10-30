@@ -1,8 +1,8 @@
 import "server-only";
 import { createHash } from "node:crypto";
-import { sql } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { afiliadosComissoes } from "@/db/schema";
+import { afiliadosComissoes, afiliadosProdutos } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
 
 // API de afiliados da Shopee (GraphQL). Credenciais em affiliate.shopee.com.br › Open API.
@@ -273,7 +273,65 @@ export async function sincronizarComissoes(desde: Date, ate = new Date()) {
     if (!r.conversionReport.pageInfo.hasNextPage || !r.conversionReport.pageInfo.scrollId) break;
     scroll = r.conversionReport.pageInfo.scrollId;
   }
+  await importarProdutosVendidos().catch((e: Error) => console.warn(`[afiliados] importar vendidos: ${e.message}`));
   return total;
+}
+
+/** Grava (ou atualiza) a oferta em "Meus produtos" e gera o link de afiliado, se ainda não tiver. Devolve o id. */
+export async function salvarOferta(o: Oferta, status?: "ideia" | "divulgando" | "pausado") {
+  const valores = {
+    nome: o.nome,
+    imagem: o.imagem,
+    loja: o.loja,
+    preco: o.preco,
+    comissaoTaxa: o.comissaoTaxa,
+    comissaoValor: o.comissaoValor,
+    vendas: o.vendas,
+    avaliacao: o.avaliacao,
+    linkProduto: o.linkProduto,
+    atualizadoEm: new Date(),
+  };
+  const [p] = await db
+    .insert(afiliadosProdutos)
+    .values({ itemId: o.itemId, shopId: o.shopId, ...valores, ...(status ? { status } : {}) })
+    .onConflictDoUpdate({ target: [afiliadosProdutos.shopId, afiliadosProdutos.itemId], set: valores })
+    .returning();
+  if (p && !p.linkAfiliado) {
+    const link = await gerarLinkAfiliado(o.linkProduto, p.subId ? [p.subId] : []);
+    await db.update(afiliadosProdutos).set({ linkAfiliado: link }).where(eq(afiliadosProdutos.id, p.id));
+  }
+  return p!.id;
+}
+
+/**
+ * A API da Shopee não lista os links criados no painel de afiliado; mas todo produto que já vendeu pelos seus links
+ * aparece nas comissões. Esses entram sozinhos em "Meus produtos" (como "divulgando").
+ */
+export async function importarProdutosVendidos() {
+  const faltam = await db
+    .select({ itemId: afiliadosComissoes.itemId, nome: sql<string>`max(${afiliadosComissoes.itemNome})`, imagem: sql<string>`max(${afiliadosComissoes.imagem})`, loja: sql<string>`max(${afiliadosComissoes.loja})` })
+    .from(afiliadosComissoes)
+    .where(sql`not exists (select 1 from ${afiliadosProdutos} p where p.item_id = ${afiliadosComissoes.itemId})`)
+    .groupBy(afiliadosComissoes.itemId)
+    .limit(30);
+  let n = 0;
+  for (const f of faltam) {
+    const oferta = await buscarOfertas({ itemId: f.itemId })
+      .then((r) => r.ofertas.find((o) => o.itemId === f.itemId))
+      .catch(() => undefined);
+    const salvo = oferta ? await salvarOferta(oferta, "divulgando").then(() => true, () => false) : false;
+    // Falhou só no link (o produto já foi gravado com a loja certa): não grava outro.
+    const jaGravado = !salvo && (await db.select({ id: afiliadosProdutos.id }).from(afiliadosProdutos).where(eq(afiliadosProdutos.itemId, f.itemId)).limit(1)).length > 0;
+    if (!salvo && !jaGravado) {
+      // Sem oferta de comissão ativa agora: entra com o que veio na venda (sem link novo).
+      await db
+        .insert(afiliadosProdutos)
+        .values({ itemId: f.itemId, shopId: "", nome: f.nome || `Produto ${f.itemId}`, imagem: f.imagem, loja: f.loja, status: "divulgando", observacao: "Importado das comissões (vendeu pelo seu link)." })
+        .onConflictDoNothing();
+    }
+    n++;
+  }
+  return n;
 }
 
 /** Status do pedido de afiliado em português. */
