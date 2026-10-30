@@ -3,7 +3,7 @@ import { BadgePercent, Link2, Search, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Copiavel } from "@/components/copiavel";
-import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
+import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader, Textarea } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { afiliadosComissoes, afiliadosProdutos, afiliadosVideos } from "@/db/schema";
@@ -73,9 +73,12 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
         <PainelAfiliados periodo={periodo} />
 
         <Card>
-          <CardHeader title="Adicionar pelo link" description="Cole o link de qualquer produto da Shopee: o ERP busca a comissão e gera o seu link de afiliado." />
-          <form action={adicionarPorLink} className="flex flex-wrap gap-3 p-5">
-            <Input name="link" placeholder="https://shopee.com.br/... ou https://s.shopee.com.br/..." className="min-w-[240px] flex-1" required />
+          <CardHeader
+            title="Adicionar pelo link"
+            description="Cole o link de um ou de vários produtos da Shopee (um por linha; pode colar também a lista/CSV de links do painel de afiliado). O ERP busca a comissão e gera o link de afiliado de cada um."
+          />
+          <form action={adicionarPorLink} className="flex flex-wrap items-end gap-3 p-5">
+            <Textarea name="link" rows={3} placeholder={"https://shopee.com.br/...\nhttps://s.shopee.com.br/..."} className="min-w-[240px] flex-1" required />
             <SubmitButton variant="primary" pendingText="Buscando..." disabled={!configurado}>
               <Link2 /> Adicionar
             </SubmitButton>
@@ -103,7 +106,7 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
             <EmptyState
               icon={<BadgePercent />}
               title="Nenhum produto ainda"
-              description="Busque produtos com boa comissão ou cole o link de um produto da Shopee acima."
+              description="Busque produtos com boa comissão ou cole os links dos seus produtos da Shopee acima. Os que já venderam pelos seus links entram sozinhos ao clicar em “Atualizar da Shopee”."
             />
           ) : (
             <div className="grid gap-4 p-5 sm:grid-cols-2 xl:grid-cols-3">
@@ -118,12 +121,16 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
                       <div className="min-w-0 flex-1">
                         <p className="line-clamp-2 text-sm font-semibold">{p.nome}</p>
                         <p className="truncate text-xs text-muted">{p.loja}</p>
-                        <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm">
-                          <span className="font-semibold">{formatBRL(p.preco)}</span>
-                          <span className="font-semibold text-green">
-                            {(p.comissaoTaxa * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% · {formatBRL(p.comissaoValor)}
-                          </span>
-                        </p>
+                        {p.preco ? (
+                          <p className="mt-1 flex flex-wrap items-center gap-x-2 text-sm">
+                            <span className="font-semibold">{formatBRL(p.preco)}</span>
+                            <span className="font-semibold text-green">
+                              {(p.comissaoTaxa * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% · {formatBRL(p.comissaoValor)}
+                            </span>
+                          </p>
+                        ) : (
+                          <p className="mt-1 text-xs text-muted">Sem oferta de comissão ativa agora</p>
+                        )}
                       </div>
                     </Link>
                     <div className="mt-auto grid gap-2 border-t border-border p-4">

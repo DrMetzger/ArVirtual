@@ -6,7 +6,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { afiliadosProdutos, afiliadosVideos } from "@/db/schema";
-import { buscarOfertas, gerarLinkAfiliado, idsDoLink, sincronizarComissoes, type Oferta } from "@/lib/afiliados";
+import { buscarOfertas, gerarLinkAfiliado, idsDoLink, salvarOferta, sincronizarComissoes, type Oferta } from "@/lib/afiliados";
 import { baixarVideo } from "@/lib/afiliados-videos";
 import { requireUser } from "@/lib/auth";
 import { PASTA_AFILIADOS } from "@/lib/uploads";
@@ -14,54 +14,37 @@ import { PASTA_AFILIADOS } from "@/lib/uploads";
 const voltarCom = (caminho: string, tipo: "ok" | "erro", msg: string): never =>
   redirect(`${caminho}${caminho.includes("?") ? "&" : "?"}${tipo}=${encodeURIComponent(msg)}`);
 
-/** Grava (ou atualiza) a oferta e gera o link de afiliado. Devolve o id do produto. */
-async function salvarOferta(o: Oferta) {
-  const valores = {
-    nome: o.nome,
-    imagem: o.imagem,
-    loja: o.loja,
-    preco: o.preco,
-    comissaoTaxa: o.comissaoTaxa,
-    comissaoValor: o.comissaoValor,
-    vendas: o.vendas,
-    avaliacao: o.avaliacao,
-    linkProduto: o.linkProduto,
-    atualizadoEm: new Date(),
-  };
-  const [p] = await db
-    .insert(afiliadosProdutos)
-    .values({ itemId: o.itemId, shopId: o.shopId, ...valores })
-    .onConflictDoUpdate({ target: [afiliadosProdutos.shopId, afiliadosProdutos.itemId], set: valores })
-    .returning();
-  if (p && !p.linkAfiliado) {
-    const link = await gerarLinkAfiliado(o.linkProduto, p.subId ? [p.subId] : []);
-    await db.update(afiliadosProdutos).set({ linkAfiliado: link }).where(eq(afiliadosProdutos.id, p.id));
-  }
-  return p!.id;
+/** Links de produto da Shopee num texto (um por linha, CSV exportado do painel, mensagem...). */
+function linksDoTexto(texto: string) {
+  const achados = texto.match(/(?:https?:\/\/)?(?:[\w-]+\.)*(?:shopee\.com\.br|shp\.ee)\/[^\s,;"'<>]+/gi) ?? [];
+  return [...new Set(achados.map((l) => l.replace(/[).]+$/, "")))].slice(0, 50);
 }
 
-/** Cola o link de um produto da Shopee: busca a oferta de comissão e gera o link de afiliado. */
+/** Cola um ou vários links de produtos da Shopee: busca a oferta de comissão e gera o link de afiliado de cada um. */
 export async function adicionarPorLink(form: FormData) {
   await requireUser();
-  const link = String(form.get("link") ?? "").trim();
-  if (!link) voltarCom("/afiliados", "erro", "Cole o link do produto da Shopee.");
+  const links = linksDoTexto(String(form.get("link") ?? ""));
+  if (!links.length) voltarCom("/afiliados", "erro", "Cole o link do produto da Shopee (pode colar vários, um por linha).");
   let id = 0;
-  let erro = "";
-  try {
-    const ids = await idsDoLink(link);
-    if (!ids) erro = "Não reconheci o link. Use o link da página do produto na Shopee (shopee.com.br/... ou s.shopee.com.br/...).";
-    else {
+  let ok = 0;
+  const falhas: string[] = [];
+  for (const link of links) {
+    try {
+      const ids = await idsDoLink(link);
+      if (!ids) throw new Error("link não reconhecido");
       const { ofertas } = await buscarOfertas({ itemId: ids.itemId, shopId: ids.shopId });
       const o = ofertas.find((x) => x.itemId === ids.itemId);
-      if (!o) erro = "Esse produto não tem comissão de afiliado na Shopee no momento.";
-      else id = await salvarOferta(o);
+      if (!o) throw new Error("sem comissão de afiliado no momento");
+      id = await salvarOferta(o, "divulgando");
+      ok++;
+    } catch (e) {
+      falhas.push(`${link.slice(0, 60)}: ${(e as Error).message}`);
     }
-  } catch (e) {
-    erro = (e as Error).message;
   }
-  if (erro) voltarCom("/afiliados", "erro", erro);
   revalidatePath("/afiliados");
-  redirect(`/afiliados/${id}`);
+  if (links.length === 1 && id) redirect(`/afiliados/${id}`);
+  if (!ok) voltarCom("/afiliados", "erro", falhas.join(" · "));
+  voltarCom("/afiliados", falhas.length ? "erro" : "ok", `${ok} produto(s) adicionado(s).${falhas.length ? ` Não entraram ${falhas.length}: ${falhas.slice(0, 5).join(" · ")}` : ""}`);
 }
 
 /** Botão "Adicionar" na busca de produtos (a oferta vem da própria busca). */
