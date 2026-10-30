@@ -215,61 +215,73 @@ export const magalu: MarketplaceAdapter = {
       .slice(0, 3)
       .map(([name, value]) => ({ name: name.slice(0, 20), value: value.slice(0, 50) }));
 
-    await api("/seller/v1/portfolios/skus", conta.accessToken, {
-      method: "POST",
-      body: JSON.stringify({
-        sku: produto.sku,
-        title: anuncio.titulo.slice(0, 150),
-        description: descricaoHtml(anuncio.descricao || produto.descricao || anuncio.titulo),
-        brand: "ArVirtual",
-        // Variações do mesmo produto ficam no mesmo grupo (SKU base); produto simples é o próprio grupo.
-        group: { id: (anuncio.grupo ?? produto.sku).slice(0, 50), main_variation: anuncio.principal ?? true },
-        channels: [{ id: canal }],
-        condition: "NEW",
-        active: true,
-        type: "product",
-        has_ean: Boolean(produto.gtin),
-        identifiers: produto.gtin ? [{ type: "ean", value: produto.gtin }] : [],
-        datasheet: ficha,
-        attributes: atributos,
-        dimensions: [dim("product"), dim("package")],
-        // Magalu só aceita JPEG: PNG/WEBP vão pela rota que converte (/uploads/jpg/...).
-        images: produto.imagens.slice(0, 30).map((url) => ({ reference: /\.jpe?g$/i.test(url) ? url : url.replace("/uploads/", "/uploads/jpg/"), type: "image/jpeg" })),
-        videos: [],
-        podcasts: [],
-        extra_data: [],
-        ncm: /^\d{8}$/.test(produto.ncm) ? produto.ncm : undefined,
-        origin: [1, 2, 3, 6, 7, 8].includes(produto.origem) ? "imported" : "national",
-        ...(anuncio.categoria ? { category: { id: anuncio.categoria } } : {}),
-      }),
-    });
+    const caminhoSku = (recurso: string) => `/seller/v1/portfolios/${recurso}/${encodeURIComponent(produto.sku)}`;
+    // O cadastro pode já existir sem preço/estoque (rascunho): acontece quando o Magalu demorou a criar numa tentativa
+    // anterior. Aí não cria de novo (ele recusa "Produto já cadastrado com este SKU"): só completa preço e estoque.
+    const jaExistia = await api<{ status?: string }>(caminhoSku("skus"), conta.accessToken).catch(() => null);
+    if (!jaExistia) {
+      await api("/seller/v1/portfolios/skus", conta.accessToken, {
+        method: "POST",
+        body: JSON.stringify({
+          sku: produto.sku,
+          title: anuncio.titulo.slice(0, 150),
+          description: descricaoHtml(anuncio.descricao || produto.descricao || anuncio.titulo),
+          brand: "ArVirtual",
+          // Variações do mesmo produto ficam no mesmo grupo (SKU base); produto simples é o próprio grupo.
+          group: { id: (anuncio.grupo ?? produto.sku).slice(0, 50), main_variation: anuncio.principal ?? true },
+          channels: [{ id: canal }],
+          condition: "NEW",
+          active: true,
+          type: "product",
+          has_ean: Boolean(produto.gtin),
+          identifiers: produto.gtin ? [{ type: "ean", value: produto.gtin }] : [],
+          datasheet: ficha,
+          attributes: atributos,
+          dimensions: [dim("product"), dim("package")],
+          // Magalu só aceita JPEG: PNG/WEBP vão pela rota que converte (/uploads/jpg/...).
+          images: produto.imagens.slice(0, 30).map((url) => ({ reference: /\.jpe?g$/i.test(url) ? url : url.replace("/uploads/", "/uploads/jpg/"), type: "image/jpeg" })),
+          videos: [],
+          podcasts: [],
+          extra_data: [],
+          ncm: /^\d{8}$/.test(produto.ncm) ? produto.ncm : undefined,
+          origin: [1, 2, 3, 6, 7, 8].includes(produto.origem) ? "imported" : "national",
+          ...(anuncio.categoria ? { category: { id: anuncio.categoria } } : {}),
+        }),
+      }).catch((e: Error) => {
+        // Criado entre a conferência e o envio: segue para preço e estoque.
+        if (!/já cadastrado|already exists/i.test(e.message)) throw e;
+      });
 
-    // O Magalu responde "recebido" (202) e cria o cadastro depois; se a validação dele recusar (ex.: produto igual a
-    // outro anúncio da loja), o SKU simplesmente não aparece. Confere antes de dizer que publicou.
-    let criado = false;
-    for (let i = 0; i < 10 && !criado; i++) {
-      await new Promise((ok) => setTimeout(ok, 4000));
-      criado = await api(`/seller/v1/portfolios/skus/${encodeURIComponent(produto.sku)}`, conta.accessToken).then(() => true, () => false);
+      // O Magalu responde "recebido" (202) e cria o cadastro depois (às vezes leva mais de 1 minuto). Confere antes de
+      // mandar preço e estoque (que exigem o SKU criado).
+      let criado = false;
+      for (let i = 0; i < 15 && !criado; i++) {
+        await new Promise((ok) => setTimeout(ok, 6000));
+        criado = await api(caminhoSku("skus"), conta.accessToken).then(() => true, () => false);
+      }
+      if (!criado) {
+        throw new MarketplaceError(
+          "O Magalu recebeu o produto e ainda está criando o cadastro (pode levar alguns minutos). Clique em Publicar de novo daqui a pouco: o ERP só completa o preço e o estoque do cadastro já criado, sem duplicar.",
+        );
+      }
     }
-    if (!criado) {
-      throw new MarketplaceError(
-        "O Magalu recebeu o produto mas não criou o cadastro (a API não diz o motivo). O mais comum: já existe um anúncio seu com o mesmo produto (mesmas fotos/título) — o Magalu não aceita duas ofertas do mesmo produto na mesma loja. Se o cadastro aparecer depois, publicar de novo só vincula.",
+
+    // Preço e estoque: cria (POST) ou, se já existirem, altera (PATCH).
+    const enviar = (recurso: string, body: object) =>
+      api(caminhoSku(recurso), conta.accessToken, { method: "POST", body: JSON.stringify(body) }).catch((e: Error) =>
+        api(caminhoSku(recurso), conta.accessToken, { method: "PATCH", body: JSON.stringify(body) }).catch((e2: Error) => {
+          throw new MarketplaceError(`${e.message} / ${e2.message}`);
+        }),
       );
-    }
-
     const centavos = Math.round(anuncio.preco * 100);
-    await api(`/seller/v1/portfolios/prices/${encodeURIComponent(produto.sku)}`, conta.accessToken, {
-      method: "POST",
-      body: JSON.stringify({ channel: { id: canal }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos }),
-    });
-    await api(`/seller/v1/portfolios/stocks/${encodeURIComponent(produto.sku)}`, conta.accessToken, {
-      method: "POST",
-      body: JSON.stringify({ channel: { id: canal }, type: "AVAILABLE", quantity: Math.max(0, anuncio.estoque) }),
-    });
+    await enviar("prices", { channel: { id: canal }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos });
+    await enviar("stocks", { channel: { id: canal }, type: "AVAILABLE", quantity: Math.max(0, anuncio.estoque) });
     return {
       idExterno: produto.sku,
       link: "https://seller.magalu.com",
-      aviso: "O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).",
+      aviso: jaExistia
+        ? `O cadastro já existia no Magalu (${jaExistia.status === "DRAFT" ? "rascunho" : (jaExistia.status ?? "sem status")}): não criei outro, só completei preço e estoque. O Magalu analisa antes de publicar.`
+        : "O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).",
     };
   },
 
