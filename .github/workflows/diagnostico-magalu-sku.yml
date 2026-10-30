@@ -1,0 +1,43 @@
+name: Diagnóstico Magalu SKU (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-magalu-sku.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: SKU NAT-ENF001 no Magalu e histórico no ERP (sem dados pessoais)
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose logs --since 3h app 2>&1 | grep -i "magalu\|NAT-ENF" | tail -30
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const SKU = "NAT-ENF001";
+          const hist = await sql`select a.id, a.status, a.id_externo, a.mensagem, a.criado_em, a.atualizado_em from anuncios a join produtos p on p.id = a.produto_id where p.sku = ${SKU} and a.marketplace = 'magalu' order by a.id`;
+          console.log("== anuncios no ERP", JSON.stringify(hist));
+          const [c] = await sql`select access_token_enc, expira_em from contas_marketplace where marketplace = 'magalu' order by id limit 1`;
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const tk = dec(c.access_token_enc);
+          console.log("token expira", c.expira_em);
+          const get = async (p) => { const r = await fetch("https://api.magalu.com" + p, { headers: { Authorization: `Bearer ${tk}`, Accept: "application/json" } }); const t = await r.text(); return [r.status, t.slice(0, 1500)]; };
+          for (const p of [
+            `/seller/v1/portfolios/skus/${SKU}`,
+            `/seller/v1/portfolios/skus?sku=${SKU}`,
+            `/seller/v1/portfolios/skus?_limit=5&_sort=updated_at:desc`,
+            `/seller/v1/portfolios/prices/${SKU}`,
+            `/seller/v1/portfolios/stocks/${SKU}`,
+            `/seller/v1/portfolios/skus/${SKU}/status`,
+            `/seller/v1/portfolios/skus/${SKU}/validations`,
+            `/seller/v1/portfolios/skus/${SKU}/history`,
+          ]) { const [s, t] = await get(p); console.log("==", p, s, t); }
+          await sql.end();
+          JS
+          REMOTO
