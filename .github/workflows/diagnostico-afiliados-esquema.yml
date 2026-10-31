@@ -9,7 +9,7 @@ jobs:
     env:
       SSHPASS: ${{ secrets.VM_PSW }}
     steps:
-      - name: Esquema completo e amostras sem dados pessoais
+      - name: Amostras agregadas sem dados pessoais
         run: |
           sudo apt-get install -y -qq sshpass >/dev/null
           sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
@@ -28,20 +28,29 @@ jobs:
             const r = await fetch("https://open-api.affiliate.shopee.com.br/graphql", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `SHA256 Credential=${cfg["afiliados.appId"]}, Timestamp=${ts}, Signature=${sig}` }, body: corpo });
             return r.json().catch(async () => ({ texto: await r.text() }));
           };
-          const tipo = (t) => t ? (t.kind === "NON_NULL" ? tipo(t.ofType) + "!" : t.kind === "LIST" ? "[" + tipo(t.ofType) + "]" : t.name) : "?";
-          const T = "{ kind name ofType { kind name ofType { kind name ofType { kind name } } } }";
-          const esq = await chamar(`{ __schema { queryType { name } mutationType { name } types { kind name description fields { name description args { name type ${T} } type ${T} } inputFields { name type ${T} } enumValues { name } } } }`);
-          if (esq.errors) console.log("ERRO esquema", JSON.stringify(esq.errors));
-          for (const t of esq.data?.__schema?.types ?? []) {
-            if (t.name.startsWith("__") || t.kind === "SCALAR") continue;
-            console.log(`\n## ${t.kind} ${t.name}${t.description ? " — " + t.description.replace(/\s+/g, " ").slice(0, 200) : ""}`);
-            for (const f of t.fields ?? []) console.log(`  ${f.name}${f.args?.length ? "(" + f.args.map((a) => a.name + ": " + tipo(a.type)).join(", ") + ")" : ""}: ${tipo(f.type)}${f.description ? "  // " + f.description.replace(/\s+/g, " ").slice(0, 160) : ""}`);
-            for (const f of t.inputFields ?? []) console.log(`  in ${f.name}: ${tipo(f.type)}`);
-            if (t.enumValues?.length) console.log("  enum:", t.enumValues.map((e) => e.name).join(","));
+          const agora = Math.floor(Date.now() / 1000), desde = agora - 89 * 86400;
+          const conta = (arr) => Object.entries(arr.reduce((m, v) => ((m[v] = (m[v] ?? 0) + 1), m), {})).map(([k, n]) => `${k || "(vazio)"}=${n}`).join(" | ");
+          const conv = await chamar(`{ conversionReport(purchaseTimeStart: ${desde}, purchaseTimeEnd: ${agora}, limit: 500) { nodes { referrer productType device buyerType utmContent netCommission totalCommission orders { orderStatus shopType items { shopId itemId attributionType channelType campaignType campaignPartnerName fraudStatus displayItemStatus refundAmount itemSellerCommission itemShopeeCommissionRate globalCategoryLv1Name itemNotes } } } pageInfo { hasNextPage } } }`);
+          if (conv.errors) console.log("ERRO conv", JSON.stringify(conv.errors).slice(0, 500));
+          const nos = conv.data?.conversionReport?.nodes ?? [];
+          const its = nos.flatMap((n) => n.orders.flatMap((o) => o.items));
+          console.log("== conversões 89d:", nos.length, "itens:", its.length, "itens distintos:", new Set(its.map((i) => i.itemId)).size);
+          console.log("referrer:", conta(nos.map((n) => String(n.referrer).replace(/[?#].*/, "").slice(0, 60))));
+          console.log("utmContent:", conta(nos.map((n) => n.utmContent)));
+          console.log("productType:", conta(nos.map((n) => n.productType)), "device:", conta(nos.map((n) => n.device)));
+          for (const k of ["attributionType", "channelType", "campaignType", "campaignPartnerName", "fraudStatus", "displayItemStatus", "globalCategoryLv1Name", "itemNotes"]) console.log(k + ":", conta(its.map((i) => String(i[k] ?? ""))));
+          const po = await chamar(`{ partnerOrderReport(purchaseTimeStart: ${desde}, purchaseTimeEnd: ${agora}, limit: 100) { nodes { orderId productType orderStatus items { itemId itemName } extInfo { clickId videoId userType } } searchNextPageInfo { size searchNextToken } } }`);
+          console.log("== partnerOrderReport erros:", JSON.stringify(po.errors ?? "").slice(0, 400));
+          const pn = po.data?.partnerOrderReport?.nodes ?? [];
+          console.log("pedidos:", pn.length, "com videoId:", pn.filter((n) => n.extInfo?.videoId).length, "videoIds:", conta(pn.map((n) => n.extInfo?.videoId ?? "")), "userType:", conta(pn.map((n) => n.extInfo?.userType ?? "")));
+          for (const lt of [1, 2]) {
+            const r = await chamar(`{ productOfferV2(listType: ${lt}, limit: 3) { nodes { itemId productName sales commissionRate } pageInfo { hasNextPage } } }`);
+            console.log(`== productOfferV2 listType ${lt}`, JSON.stringify(r).slice(0, 500));
           }
-          // Amostras (sem dados de compradores): feeds de produto
-          const feeds = await chamar("{ listItemFeeds { nodes { datafeedId datafeedName description date totalCount feedMode } } }");
-          console.log("\n== listItemFeeds", JSON.stringify(feeds).slice(0, 1500));
+          const feeds = await chamar("{ listItemFeeds { feeds { datafeedId datafeedName description date totalCount feedMode } } }");
+          console.log("== listItemFeeds", JSON.stringify(feeds).slice(0, 1200));
+          const f0 = feeds.data?.listItemFeeds?.feeds?.[0];
+          if (f0) { const d = await chamar(`{ getItemFeedData(datafeedId: ${JSON.stringify(f0.datafeedId)}, limit: 2) { rows { columns updateType } pageInfo { totalCount hasMore } } }`); console.log("== feedData", JSON.stringify(d).slice(0, 1500)); }
           await sql.end();
           JS
           REMOTO
