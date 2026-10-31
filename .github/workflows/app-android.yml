@@ -1,12 +1,17 @@
 name: App Android (APK)
 
 # Gera o APK do app Android e publica no ERP (botão de download no login e no menu).
+# Sempre que o ERP é publicado, o APK é gerado de novo com versão nova (1.0.<número da execução>).
 on:
   push:
     branches: [main]
     paths:
       - "android/**"
       - ".github/workflows/app-android.yml"
+  workflow_run:
+    workflows: ["Deploy do aplicativo (VM)"]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -18,6 +23,8 @@ concurrency:
 
 jobs:
   apk:
+    # Depois do deploy, só se ele deu certo.
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     env:
       VM_HOST: ${{ secrets.VM_HOST }}
