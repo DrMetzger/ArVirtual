@@ -165,7 +165,6 @@ export async function excluirVideo(id: number) {
   await db.delete(afiliadosVideos).where(eq(afiliadosVideos.id, id));
   if (v.arquivo) await rm(`${PASTA_AFILIADOS}/${v.arquivo}`, { force: true });
   if (v.produtoId) revalidatePath(`/afiliados/${v.produtoId}`);
-  revalidatePath("/videos");
 }
 
 /** Botão "Sincronizar" das comissões: compras do período (a Shopee guarda os últimos 3 meses). */

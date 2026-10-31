@@ -10,7 +10,8 @@ import { afiliadosComissoes, afiliadosProdutos, afiliadosVideos } from "@/db/sch
 import { afiliadosConfigurado } from "@/lib/afiliados";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
-import { FormConverter } from "../videos/form";
+import { listarVideos } from "@/lib/videos-lista";
+import { Conversor } from "../videos/conversor";
 import { adicionarPorLink } from "./actions";
 import { PainelAfiliados, PERIODOS, type Periodo } from "./painel";
 import { STATUS_PRODUTO } from "./status";
@@ -89,7 +90,9 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
               </Link>
             }
           />
-          <FormConverter produtos={produtos.map((p) => ({ id: p.id, nome: p.nome }))} voltar="/afiliados" />
+          <div className="p-4 sm:p-5">
+            <Conversor iniciais={await listarVideos()} produtos={produtos.map((p) => ({ id: p.id, nome: p.nome }))} compacto />
+          </div>
         </Card>
 
         <Card id="adicionar">
