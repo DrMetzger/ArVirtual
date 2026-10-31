@@ -1,4 +1,4 @@
-import { ArrowLeft, Plus, Search, SlidersHorizontal, Star } from "lucide-react";
+import { ArrowLeft, Flame, Plus, Search, SlidersHorizontal, Star } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, EmptyState, Field, Input, PageHeader, Select } from "@/components/ui";
@@ -59,11 +59,16 @@ export default async function BuscarAfiliadosPage({ searchParams }: { searchPara
   let lidas: Oferta[] = [];
   let temMais = false;
   let erro = sp.erro ?? "";
-  if (q) {
+  // Sem termo: a lista "em alta" da própria Shopee (o que mais está vendendo pelos afiliados agora).
+  const emAlta = !q;
+  {
     try {
       const paginasApi = filtrando ? 3 : 1;
       for (let i = 0; i < paginasApi; i++) {
-        const r = await buscarOfertas({ termo: q, ordem, pagina: (pagina - 1) * paginasApi + i + 1, extraVendedor: f.extra, vendedorDestaque: f.destaque });
+        const pag = (pagina - 1) * paginasApi + i + 1;
+        const r = emAlta
+          ? await buscarOfertas({ lista: 2, pagina: pag })
+          : await buscarOfertas({ termo: q, ordem, pagina: pag, extraVendedor: f.extra, vendedorDestaque: f.destaque });
         lidas.push(...r.ofertas);
         temMais = r.temMais;
         if (!r.temMais) break;
@@ -100,7 +105,7 @@ export default async function BuscarAfiliadosPage({ searchParams }: { searchPara
         <Card>
           <form className="grid gap-4 p-4 sm:p-5">
             <div className="flex flex-wrap gap-3">
-              <Input name="q" defaultValue={q} placeholder="O que você quer divulgar? (ex.: suporte celular, organizador)" className="min-w-0 flex-1 basis-60" autoFocus />
+              <Input name="q" defaultValue={q} placeholder="O que você quer divulgar? (vazio = em alta entre afiliados)" className="min-w-0 flex-1 basis-60" />
               <Select name="ordem" defaultValue={ordem} className="w-auto">
                 {Object.entries(ROTULO_ORDEM).map(([k, r]) => (
                   <option key={k} value={k}>
@@ -161,9 +166,14 @@ export default async function BuscarAfiliadosPage({ searchParams }: { searchPara
         </Card>
         {erro ? <Alert>{erro}</Alert> : null}
 
-        {!q ? (
-          <EmptyState icon={<Search />} title="Digite o que procura" description="Ordene por maior comissão para achar os que mais pagam." />
-        ) : !ofertas.length && !erro ? (
+        {emAlta && ofertas.length ? (
+          <div className="flex items-center gap-2">
+            <Flame className="size-5 text-red" />
+            <p className="font-display text-lg font-bold">Em alta entre afiliados</p>
+            <span className="text-sm text-muted">o que mais está vendendo pelos links de afiliado na Shopee agora</span>
+          </div>
+        ) : null}
+        {!ofertas.length && !erro ? (
           <EmptyState
             icon={<Search />}
             title="Nada encontrado"
@@ -223,7 +233,7 @@ export default async function BuscarAfiliadosPage({ searchParams }: { searchPara
             </div>
           </>
         )}
-        {q && (pagina > 1 || temMais) ? (
+        {pagina > 1 || temMais ? (
           <div className="flex justify-center gap-2">
             {pagina > 1 ? (
               <Link href={qs(pagina - 1)} className={buttonClass("outline")}>

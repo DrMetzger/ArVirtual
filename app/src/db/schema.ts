@@ -467,6 +467,13 @@ export const afiliadosComissoes = pgTable(
     compradorTipo: text("comprador_tipo").notNull().default(""),
     dispositivo: text("dispositivo").notNull().default(""),
     imagem: text("imagem").notNull().default(""),
+    shopId: text("shop_id").notNull().default(""),
+    /** De onde veio o clique (WhatsApp, Instagram, TikTok...), como a Shopee informa. */
+    origem: text("origem").notNull().default(""),
+    /** Comprou o item do link (ORDERED_IN_SAME_SHOP) ou outro produto depois do clique (ORDERED_IN_DIFFERENT_SHOP). */
+    atribuicao: text("atribuicao").notNull().default(""),
+    comissaoVendedor: money("comissao_vendedor").notNull().default(0),
+    reembolso: money("reembolso").notNull().default(0),
     clicadoEm: timestamp("clicado_em", { withTimezone: true }),
     compraEm: timestamp("compra_em", { withTimezone: true }),
     dados: jsonb("dados"),

@@ -148,8 +148,11 @@ export async function buscarOfertas(opcoes: {
   extraVendedor?: boolean;
   /** Só vendedores destaque da Shopee. */
   vendedorDestaque?: boolean;
+  /** Lista pronta da Shopee: 2 = mais vendidos pelos afiliados agora (top performing). */
+  lista?: number;
 }) {
   const args = [
+    opcoes.lista ? `listType: ${opcoes.lista}` : "",
     opcoes.termo ? `keyword: ${str(opcoes.termo)}` : "",
     opcoes.extraVendedor ? "isAMSOffer: true" : "",
     opcoes.vendedorDestaque ? "isKeySeller: true" : "",
@@ -205,6 +208,7 @@ type NoConversao = {
   utmContent?: string;
   buyerType?: string;
   device?: string;
+  referrer?: string;
   orders?: {
     orderId: string;
     orderStatus: string;
@@ -218,6 +222,10 @@ type NoConversao = {
       shopName?: string;
       imageUrl?: string;
       channelType?: string;
+      shopId?: number | string;
+      attributionType?: string;
+      refundAmount?: string;
+      itemSellerCommission?: string;
     }[];
   }[];
 };
@@ -237,7 +245,7 @@ export async function sincronizarComissoes(desde: Date, ate = new Date()) {
       scroll ? `scrollId: ${str(scroll)}` : "",
     ].filter(Boolean);
     const r = await chamar<{ conversionReport: { nodes: NoConversao[]; pageInfo: { hasNextPage: boolean; scrollId: string } } }>(
-      `{ conversionReport(${args.join(", ")}) { nodes { conversionId purchaseTime clickTime utmContent buyerType device orders { orderId orderStatus items { itemId itemName itemPrice qty itemTotalCommission actualAmount shopName imageUrl channelType } } } pageInfo { hasNextPage scrollId } } }`,
+      `{ conversionReport(${args.join(", ")}) { nodes { conversionId purchaseTime clickTime utmContent buyerType device referrer orders { orderId orderStatus items { itemId itemName itemPrice qty itemTotalCommission actualAmount shopName imageUrl channelType shopId attributionType refundAmount itemSellerCommission } } } pageInfo { hasNextPage scrollId } } }`,
     );
     for (const n of r.conversionReport.nodes) {
       for (const o of n.orders ?? []) {
@@ -254,6 +262,11 @@ export async function sincronizarComissoes(desde: Date, ate = new Date()) {
             compradorTipo: n.buyerType ?? "",
             dispositivo: n.device ?? "",
             imagem: it.imageUrl ?? "",
+            shopId: it.shopId ? String(it.shopId) : "",
+            origem: n.referrer ?? "",
+            atribuicao: it.attributionType ?? "",
+            comissaoVendedor: Number(it.itemSellerCommission) || 0,
+            reembolso: Number(it.refundAmount) || 0,
             clicadoEm: n.clickTime ? new Date(Number(n.clickTime) * 1000) : null,
             compraEm: new Date(Number(n.purchaseTime) * 1000),
             dados: { conversao: { ...n, orders: undefined }, pedido: { ...o, items: undefined }, item: it },
@@ -309,14 +322,17 @@ export async function salvarOferta(o: Oferta, status?: "ideia" | "divulgando" | 
  */
 export async function importarProdutosVendidos() {
   const faltam = await db
-    .select({ itemId: afiliadosComissoes.itemId, nome: sql<string>`max(${afiliadosComissoes.itemNome})`, imagem: sql<string>`max(${afiliadosComissoes.imagem})`, loja: sql<string>`max(${afiliadosComissoes.loja})` })
+    .select({
+      itemId: afiliadosComissoes.itemId,
+      shopId: sql<string>`max(${afiliadosComissoes.shopId})`,
+      nome: sql<string>`max(${afiliadosComissoes.itemNome})`, imagem: sql<string>`max(${afiliadosComissoes.imagem})`, loja: sql<string>`max(${afiliadosComissoes.loja})` })
     .from(afiliadosComissoes)
     .where(sql`not exists (select 1 from ${afiliadosProdutos} p where p.item_id = ${afiliadosComissoes.itemId})`)
     .groupBy(afiliadosComissoes.itemId)
     .limit(30);
   let n = 0;
   for (const f of faltam) {
-    const oferta = await buscarOfertas({ itemId: f.itemId })
+    const oferta = await buscarOfertas({ itemId: f.itemId, shopId: f.shopId || undefined })
       .then((r) => r.ofertas.find((o) => o.itemId === f.itemId))
       .catch(() => undefined);
     const salvo = oferta ? await salvarOferta(oferta, "divulgando").then(() => true, () => false) : false;
@@ -326,7 +342,16 @@ export async function importarProdutosVendidos() {
       // Sem oferta de comissão ativa agora: entra com o que veio na venda (sem link novo).
       await db
         .insert(afiliadosProdutos)
-        .values({ itemId: f.itemId, shopId: "", nome: f.nome || `Produto ${f.itemId}`, imagem: f.imagem, loja: f.loja, status: "divulgando", observacao: "Importado das comissões (vendeu pelo seu link)." })
+        .values({
+          itemId: f.itemId,
+          shopId: f.shopId,
+          nome: f.nome || `Produto ${f.itemId}`,
+          imagem: f.imagem,
+          loja: f.loja,
+          linkProduto: f.shopId ? `https://shopee.com.br/product/${f.shopId}/${f.itemId}` : "",
+          status: "divulgando",
+          observacao: "Importado das comissões (vendeu pelo seu link).",
+        })
         .onConflictDoNothing();
     }
     n++;

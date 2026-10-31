@@ -69,6 +69,7 @@ function nomeCanal(c: string) {
   if (t.includes("video")) return "Shopee Vídeo";
   if (t.includes("live")) return "Shopee Live";
   if (t.includes("social")) return "Redes sociais";
+  if (t.includes("affiliate") || t.includes("link")) return "Link de afiliado";
   if (t.includes("web")) return "Site";
   return c;
 }
@@ -76,7 +77,7 @@ function nomeCanal(c: string) {
 /** Painel de afiliado (como o da Shopee): métricas do período com comparação, canais e top produtos. */
 export async function PainelAfiliados({ periodo }: { periodo: Periodo }) {
   const iv = intervalo(periodo);
-  const [atual, anterior, canais, top] = await Promise.all([
+  const [atual, anterior, canais, top, origens] = await Promise.all([
     metricas(iv.de, iv.ate),
     metricas(iv.antes, iv.de),
     db
@@ -97,7 +98,13 @@ export async function PainelAfiliados({ periodo }: { periodo: Periodo }) {
       .groupBy(afiliadosComissoes.itemId)
       .orderBy(sql`sum(${afiliadosComissoes.quantidade}) desc`)
       .limit(5),
+    db
+      .select({ origem: afiliadosComissoes.origem, pedidos: sql<number>`count(distinct ${afiliadosComissoes.orderId})::int`, comissao: sql<number>`sum(${afiliadosComissoes.comissao})::float` })
+      .from(afiliadosComissoes)
+      .where(and(gte(afiliadosComissoes.compraEm, iv.de), lt(afiliadosComissoes.compraEm, iv.ate), sql`${afiliadosComissoes.status} <> 'CANCELLED'`))
+      .groupBy(afiliadosComissoes.origem),
   ]);
+  const totalOrigens = origens.reduce((s, c) => s + c.pedidos, 0);
   const totalCanais = canais.reduce((s, c) => s + c.pedidos, 0);
 
   const cartoes: { titulo: string; valor: string; atual: number; antes: number }[] = [
@@ -163,7 +170,29 @@ export async function PainelAfiliados({ periodo }: { periodo: Periodo }) {
         })}
       </div>
 
-      <div className="grid gap-4 border-t border-border p-4 sm:p-5 lg:grid-cols-2">
+      <div className="grid gap-4 border-t border-border p-4 sm:p-5 lg:grid-cols-3">
+        <div className="grid content-start gap-2">
+          <p className="text-sm font-semibold">Origem do clique</p>
+          {origens.length ? (
+            origens
+              .sort((a, b) => b.pedidos - a.pedidos)
+              .map((c) => (
+                <div key={c.origem} className="grid gap-1">
+                  <div className="flex items-center justify-between gap-2 text-sm">
+                    <span>{c.origem || "Não informada"}</span>
+                    <span className="font-semibold">
+                      {c.pedidos} <span className="font-normal text-muted">· {formatBRL(c.comissao)}</span>
+                    </span>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-surface-2">
+                    <div className="h-full rounded-full bg-primary" style={{ width: `${totalOrigens ? (c.pedidos / totalOrigens) * 100 : 0}%` }} />
+                  </div>
+                </div>
+              ))
+          ) : (
+            <p className="text-sm text-muted">Nenhuma venda no período.</p>
+          )}
+        </div>
         <div className="grid content-start gap-2">
           <p className="text-sm font-semibold">Pedidos por canal</p>
           {canais.length ? (
