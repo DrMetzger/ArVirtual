@@ -111,12 +111,14 @@ async function compatibilizar(caminho: string) {
  * logado faz, e pega o vídeo de maior resolução do próprio post.
  */
 async function baixarThreads(url: string, base: string) {
-  const codigo = url.match(/\/post\/([\w-]+)/)?.[1];
-  if (!codigo) throw new Error("Unsupported URL: use o link do post do Threads (threads.com/@perfil/post/...).");
+  // Aceita threads.com/threads.net, /@perfil/post/CODIGO, /t/CODIGO, /post/CODIGO/media, com ou sem ?xmt=...
+  const codigo = url.match(/\/(?:post|t)\/([\w-]{6,})/)?.[1];
+  if (!codigo) throw new Error("Unsupported URL: abra o post no Threads, toque em Compartilhar › Copiar link e cole aqui.");
   const { "videos.cookies": todos } = await getSettings(["videos.cookies"]);
   const cookie = cookiesDe(todos, ["threads.", "instagram."]);
   if (!cookie) throw new Error("login required: o Threads só mostra o vídeo para quem está logado.");
-  const limpo = url.split("?")[0]!.replace("threads.net", "threads.com");
+  const perfil = url.match(/threads\.(?:com|net)\/(@[\w.]+)/)?.[1];
+  const limpo = perfil ? `https://www.threads.com/${perfil}/post/${codigo}` : `https://www.threads.com/t/${codigo}`;
   const html = await fetch(limpo, { headers: { "User-Agent": NAVEGADOR, Cookie: cookie, "Accept-Language": "pt-BR,pt;q=0.9" }, signal: AbortSignal.timeout(30_000) }).then((r) => r.text());
   // O post vem num JSON dentro da página: o vídeo do post é o "video_versions" mais perto do código dele.
   const posCodigo = html.indexOf(`"code":"${codigo}"`);
