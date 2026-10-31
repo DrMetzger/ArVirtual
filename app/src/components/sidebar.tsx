@@ -29,6 +29,7 @@ import {
   type LucideIcon,
   BadgePercent,
   TrendingUp,
+  Clapperboard,
   Smartphone,
 } from "lucide-react";
 import Image from "next/image";
@@ -93,6 +94,7 @@ const NAV: (Item | Grupo)[] = [
   { href: "/marketplaces", label: "Marketplaces", icon: Store },
   { href: "/pesquisa", label: "Pesquisa de mercado", icon: TrendingUp },
   { href: "/afiliados", label: "Afiliados Shopee", icon: BadgePercent },
+  { href: "/videos", label: "Conversor de vídeo", icon: Clapperboard },
   { href: "/assistente", label: "Assistente IA", icon: Sparkles },
 ];
 const CONFIGURACOES: Item = { href: "/configuracoes", label: "Configurações", icon: Settings };

@@ -1,10 +1,12 @@
 import "server-only";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, rm, stat } from "node:fs/promises";
+import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { afiliadosVideos } from "@/db/schema";
+import { getSettings } from "@/lib/settings";
 import { MAX_VIDEO_AFILIADO, PASTA_AFILIADOS } from "@/lib/uploads";
 
 const YTDLP = process.env.YTDLP_BIN || "yt-dlp";
@@ -36,13 +38,55 @@ export async function duracaoVideo(caminho: string) {
   return Math.round(Number(out.trim()) || 0);
 }
 
+/** Rede social do link, para mostrar na lista e explicar os erros. */
+export function redeDoLink(url: string) {
+  const h = url.toLowerCase();
+  if (h.includes("tiktok")) return "TikTok";
+  if (h.includes("instagram")) return "Instagram";
+  if (h.includes("threads.")) return "Threads";
+  if (h.includes("facebook") || h.includes("fb.watch") || h.includes("fb.com")) return "Facebook";
+  if (h.includes("youtu")) return "YouTube";
+  if (h.includes("shopee") || h.includes("shp.ee")) return "Shopee";
+  if (h.includes("kwai")) return "Kwai";
+  if (h.includes("pinterest") || h.includes("pin.it")) return "Pinterest";
+  if (h.includes("x.com") || h.includes("twitter")) return "X";
+  return "Link";
+}
+
+/** Mensagem do yt-dlp em português, com o que fazer. */
+function explicarErro(msg: string, url: string) {
+  const rede = redeDoLink(url);
+  if (/login|sign in|cookies|rate-limit|private|authenticat|checkpoint/i.test(msg))
+    return `${rede} pediu login para liberar este vídeo. Cole os cookies da rede em Configurações › Integrações › Conversor de vídeo e tente de novo. (${msg.slice(0, 160)})`;
+  if (/unsupported url/i.test(msg)) return `Esse tipo de link não é suportado (${rede}). Use o link do próprio vídeo/post. (${msg.slice(0, 120)})`;
+  if (/no video|there is no video|not a video/i.test(msg)) return "Esse post não tem vídeo (é foto ou texto).";
+  if (/max-filesize|larger than/i.test(msg)) return "O vídeo passa de 300 MB.";
+  return msg;
+}
+
+/** Arquivo temporário com os cookies das redes (Configurações), ou null se não houver. */
+async function arquivoCookies() {
+  const { "videos.cookies": cookies } = await getSettings(["videos.cookies"]);
+  if (!cookies.trim()) return null;
+  const caminho = `${tmpdir()}/cookies-${randomBytes(6).toString("hex")}.txt`;
+  await writeFile(caminho, cookies.replace(/\r\n/g, "\n").trim() + "\n", { mode: 0o600 });
+  return caminho;
+}
+
+// Um download por vez: vários links de uma vez não derrubam o servidor nem disparam bloqueio das redes.
+let fila: Promise<unknown> = Promise.resolve();
+export function baixarNaFila(videoId: number, url: string) {
+  fila = fila.then(() => baixarVideo(videoId, url)).catch(() => undefined);
+}
+
 /**
- * Baixa o vídeo do link (TikTok, Instagram, YouTube e outros que o yt-dlp suporta) em MP4.
+ * Baixa o vídeo do link (TikTok, Instagram, YouTube, Facebook, Threads, Shopee e outros que o yt-dlp suporta) em MP4.
  * Roda em segundo plano: o registro fica "baixando" e vira "bruto" (ou "erro" com a mensagem).
  */
 export async function baixarVideo(videoId: number, url: string) {
   await mkdir(PASTA_AFILIADOS, { recursive: true });
   const base = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}`;
+  const cookies = await arquivoCookies().catch(() => null);
   try {
     const info = await rodar(
       YTDLP,
@@ -61,6 +105,7 @@ export async function baixarVideo(videoId: number, url: string) {
         `${PASTA_AFILIADOS}/${base}.%(ext)s`,
         "--print",
         "after_move:%(title)s",
+        ...(cookies ? ["--cookies", cookies] : []),
         url,
       ],
       10 * 60_000,
@@ -79,7 +124,9 @@ export async function baixarVideo(videoId: number, url: string) {
     }
     await db
       .update(afiliadosVideos)
-      .set({ status: "erro", erro: (e as Error).message.slice(0, 500) })
+      .set({ status: "erro", erro: explicarErro((e as Error).message, url).slice(0, 500) })
       .where(eq(afiliadosVideos.id, videoId));
+  } finally {
+    if (cookies) await rm(cookies, { force: true });
   }
 }

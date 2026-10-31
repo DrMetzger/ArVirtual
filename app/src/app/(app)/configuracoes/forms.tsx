@@ -252,7 +252,8 @@ export function IntegracaoForm({ grupo, itens, ajuda }: { grupo: string; itens: 
                 ))}
               </Select>
             ) : i.multiline ? (
-              <Textarea name={i.key} rows={3} defaultValue={i.value} placeholder={i.placeholder} />
+              // Segredo em várias linhas (ex.: cookies): nunca mostra o valor salvo; vazio mantém.
+              <Textarea name={i.key} rows={3} defaultValue={i.secret ? "" : i.value} placeholder={i.secret && i.isSet ? "••••••••" : i.placeholder} />
             ) : (
               i.secret ? (
                 <InputSenha name={i.key} autoComplete="off" placeholder={i.isSet ? "••••••••" : i.placeholder} />

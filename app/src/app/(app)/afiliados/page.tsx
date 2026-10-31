@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { BadgePercent, Link2, Search, Wallet } from "lucide-react";
+import { BadgePercent, Clapperboard, Link2, Plus, Search, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Copiavel } from "@/components/copiavel";
@@ -10,6 +10,7 @@ import { afiliadosComissoes, afiliadosProdutos, afiliadosVideos } from "@/db/sch
 import { afiliadosConfigurado } from "@/lib/afiliados";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
+import { FormConverter } from "../videos/form";
 import { adicionarPorLink } from "./actions";
 import { PainelAfiliados, PERIODOS, type Periodo } from "./painel";
 import { STATUS_PRODUTO } from "./status";
@@ -48,6 +49,12 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
         description="Produtos que você divulga, links de afiliado, vídeos para postar e as comissões que entram."
         actions={
           <>
+            <a href="#adicionar" className={buttonClass("primary")}>
+              <Plus /> Adicionar produtos
+            </a>
+            <Link href="/videos" className={buttonClass("outline")}>
+              <Clapperboard /> Vídeos
+            </Link>
             <Link href="/afiliados/comissoes" className={buttonClass("outline")}>
               <Wallet /> Comissões
             </Link>
@@ -74,7 +81,20 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
 
         <Card>
           <CardHeader
-            title="Adicionar pelo link"
+            title="Baixar vídeos"
+            description="Converta vídeos de TikTok, Instagram, YouTube, Facebook, Threads ou Shopee em MP4 para editar e postar."
+            action={
+              <Link href="/videos" className={buttonClass("outline", "sm")}>
+                <Clapperboard /> Ver todos
+              </Link>
+            }
+          />
+          <FormConverter produtos={produtos.map((p) => ({ id: p.id, nome: p.nome }))} voltar="/afiliados" />
+        </Card>
+
+        <Card id="adicionar">
+          <CardHeader
+            title="Adicionar produtos pelo link"
             description="Cole o link de um ou de vários produtos da Shopee (um por linha; pode colar também a lista/CSV de links do painel de afiliado). O ERP busca a comissão e gera o link de afiliado de cada um."
           />
           <form action={adicionarPorLink} className="flex flex-wrap items-end gap-3 p-5">
