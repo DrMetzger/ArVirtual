@@ -1,7 +1,11 @@
 import "server-only";
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, readdir, rm, stat, writeFile } from "node:fs/promises";
+import { createWriteStream } from "node:fs";
+import { mkdir, readdir, rename, rm, stat, writeFile } from "node:fs/promises";
+import { Readable } from "node:stream";
+import { pipeline } from "node:stream/promises";
+import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { tmpdir } from "node:os";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -73,6 +77,63 @@ async function arquivoCookies() {
   return caminho;
 }
 
+const NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+
+/** Cabeçalho Cookie com os cookies (cookies.txt) dos domínios pedidos. */
+function cookiesDe(texto: string, dominios: string[]) {
+  return texto
+    .split(/\r?\n/)
+    .map((l) => l.replace(/^#HttpOnly_/, "").split("\t"))
+    .filter((c) => c.length >= 7 && dominios.some((d) => c[0]!.toLowerCase().includes(d)))
+    .map((c) => `${c[5]}=${c[6]}`)
+    .join("; ");
+}
+
+/**
+ * Deixa o MP4 compatível com qualquer celular/editor (Shopee, CapCut...) sem perder qualidade: se o vídeo veio em outro
+ * codec (HEVC, VP9, AV1), recodifica em H.264 na mesma resolução (CRF 18 ≈ visualmente sem perda). Sempre põe o índice no
+ * começo do arquivo (abre e avança rápido no player).
+ */
+async function compatibilizar(caminho: string) {
+  const codec = (await rodar("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=codec_name", "-of", "csv=p=0", caminho], 30_000).catch(() => "")).trim();
+  const temp = caminho.replace(/\.mp4$/, ".tmp.mp4");
+  const video = codec === "h264" ? ["-c:v", "copy"] : ["-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-pix_fmt", "yuv420p"];
+  try {
+    await rodar("ffmpeg", ["-y", "-v", "error", "-i", caminho, ...video, "-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", temp], 20 * 60_000);
+    await rename(temp, caminho);
+  } catch {
+    await rm(temp, { force: true });
+  }
+}
+
+/**
+ * Threads não é suportado pelo yt-dlp: abre o post com a sua sessão (cookies de Configurações), como o navegador
+ * logado faz, e pega o vídeo de maior resolução do próprio post.
+ */
+async function baixarThreads(url: string, base: string) {
+  const codigo = url.match(/\/post\/([\w-]+)/)?.[1];
+  if (!codigo) throw new Error("Unsupported URL: use o link do post do Threads (threads.com/@perfil/post/...).");
+  const { "videos.cookies": todos } = await getSettings(["videos.cookies"]);
+  const cookie = cookiesDe(todos, ["threads.", "instagram."]);
+  if (!cookie) throw new Error("login required: o Threads só mostra o vídeo para quem está logado.");
+  const limpo = url.split("?")[0]!.replace("threads.net", "threads.com");
+  const html = await fetch(limpo, { headers: { "User-Agent": NAVEGADOR, Cookie: cookie, "Accept-Language": "pt-BR,pt;q=0.9" }, signal: AbortSignal.timeout(30_000) }).then((r) => r.text());
+  // O post vem num JSON dentro da página: o vídeo do post é o "video_versions" mais perto do código dele.
+  const posCodigo = html.indexOf(`"code":"${codigo}"`);
+  const versoes = [...html.matchAll(/"video_versions":(\[[^\]]*\])/g)].map((m) => ({ pos: m.index ?? 0, lista: JSON.parse(m[1]!) as { url: string; width?: number; height?: number }[] }));
+  if (!versoes.length) throw new Error(posCodigo < 0 ? "login required: a sessão do Threads expirou (atualize os cookies)." : "There is no video in this post");
+  const perto = versoes.sort((a, b) => Math.abs(a.pos - posCodigo) - Math.abs(b.pos - posCodigo))[0]!.lista.filter((v) => v.url);
+  const melhor = perto.sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))[0];
+  if (!melhor) throw new Error("There is no video in this post");
+  const res = await fetch(melhor.url, { headers: { "User-Agent": NAVEGADOR }, signal: AbortSignal.timeout(10 * 60_000) });
+  if (!res.ok || !res.body) throw new Error(`O Threads não entregou o vídeo (${res.status}).`);
+  if (Number(res.headers.get("content-length") ?? 0) > MAX_VIDEO_AFILIADO) throw new Error("max-filesize");
+  const arquivo = `${base}.mp4`;
+  await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(`${PASTA_AFILIADOS}/${arquivo}`));
+  const titulo = html.match(/<meta property="og:description" content="([^"]{1,200})/)?.[1] ?? `Threads ${codigo}`;
+  return { arquivo, titulo: titulo.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&quot;/g, '"').replace(/&amp;/g, "&") };
+}
+
 // Um download por vez: vários links de uma vez não derrubam o servidor nem disparam bloqueio das redes.
 let fila: Promise<unknown> = Promise.resolve();
 export function baixarNaFila(videoId: number, url: string) {
@@ -88,6 +149,16 @@ export async function baixarVideo(videoId: number, url: string) {
   const base = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}`;
   const cookies = await arquivoCookies().catch(() => null);
   try {
+    if (redeDoLink(url) === "Threads") {
+      const { arquivo, titulo } = await baixarThreads(url, base);
+      const caminho = `${PASTA_AFILIADOS}/${arquivo}`;
+      await compatibilizar(caminho);
+      await db
+        .update(afiliadosVideos)
+        .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", titulo })
+        .where(eq(afiliadosVideos.id, videoId));
+      return;
+    }
     const info = await rodar(
       YTDLP,
       [
@@ -96,9 +167,11 @@ export async function baixarVideo(videoId: number, url: string) {
         "--restrict-filenames",
         "--max-filesize",
         String(MAX_VIDEO_AFILIADO),
-        // MP4 com áudio (H.264 quando houver: abre em qualquer celular e editor).
+        // Maior qualidade: maior resolução e fps primeiro; entre iguais, H.264 + AAC (abre em qualquer celular e editor).
         "-f",
-        "bv*[ext=mp4][vcodec^=avc]+ba[ext=m4a]/b[ext=mp4]/bv*+ba/b",
+        "bv*+ba/b",
+        "-S",
+        "res,fps,vcodec:h264,acodec:aac",
         "--merge-output-format",
         "mp4",
         "-o",
@@ -113,6 +186,7 @@ export async function baixarVideo(videoId: number, url: string) {
     const arquivo = (await readdir(PASTA_AFILIADOS)).find((f) => f.startsWith(`${base}.`));
     if (!arquivo) throw new Error("O vídeo não foi baixado (formato não suportado ou acima de 300 MB).");
     const caminho = `${PASTA_AFILIADOS}/${arquivo}`;
+    if (arquivo.endsWith(".mp4")) await compatibilizar(caminho);
     const titulo = info.trim().split("\n").pop()?.slice(0, 200) ?? "";
     await db
       .update(afiliadosVideos)
