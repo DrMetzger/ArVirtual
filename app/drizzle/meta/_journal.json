@@ -162,6 +162,13 @@
       "when": 1793287302566,
       "tag": "0022_comissoes_canal",
       "breakpoints": true
+    },
+    {
+      "idx": 23,
+      "version": "7",
+      "when": 1793460505509,
+      "tag": "0023_comissoes_origem",
+      "breakpoints": true
     }
   ]
 }
