@@ -7,7 +7,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { afiliadosProdutos, afiliadosVideos } from "@/db/schema";
 import { buscarOfertas, gerarLinkAfiliado, idsDoLink, salvarOferta, sincronizarComissoes, type Oferta } from "@/lib/afiliados";
-import { baixarVideo } from "@/lib/afiliados-videos";
+import { baixarNaFila } from "@/lib/afiliados-videos";
 import { requireUser } from "@/lib/auth";
 import { PASTA_AFILIADOS } from "@/lib/uploads";
 
@@ -134,7 +134,7 @@ export async function baixarVideoDoLink(produtoId: number, form: FormData) {
       status: "baixando",
     })
     .returning({ id: afiliadosVideos.id });
-  void baixarVideo(v!.id, url).catch(() => undefined);
+  baixarNaFila(v!.id, url);
   revalidatePath(voltar);
   voltarCom(voltar, "ok", "Baixando o vídeo… ele aparece na lista em alguns instantes (atualize a página).");
 }
@@ -165,6 +165,7 @@ export async function excluirVideo(id: number) {
   await db.delete(afiliadosVideos).where(eq(afiliadosVideos.id, id));
   if (v.arquivo) await rm(`${PASTA_AFILIADOS}/${v.arquivo}`, { force: true });
   if (v.produtoId) revalidatePath(`/afiliados/${v.produtoId}`);
+  revalidatePath("/videos");
 }
 
 /** Botão "Sincronizar" das comissões: compras do período (a Shopee guarda os últimos 3 meses). */

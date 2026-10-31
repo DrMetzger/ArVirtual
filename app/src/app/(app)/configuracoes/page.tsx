@@ -57,6 +57,12 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         afiliado e traz as comissões a cada 6 horas.
       </>
     ),
+    "Conversor de vídeo": (
+      <>
+        TikTok, YouTube e Shopee baixam sem login. Instagram, Facebook e Threads muitas vezes exigem login: no computador, entre na rede social no Chrome, exporte os
+        cookies com a extensão “Get cookies.txt LOCALLY” e cole o conteúdo aqui. Use uma conta secundária (o arquivo dá acesso à conta).
+      </>
+    ),
     Shopee: <>Redirect URL: <code className="break-all">{callbackUrl(origin, "shopee")}</code></>,
     Magalu: <MagaluGuia base={process.env.APP_URL ?? origin} clientId={(await getSetting("magalu.clientId")) ?? ""} />,
     "Impressão 3D: custos": "Usado no cálculo do custo de produção dos produtos.",

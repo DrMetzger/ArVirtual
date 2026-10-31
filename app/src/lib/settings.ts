@@ -65,6 +65,14 @@ export const SETTINGS = {
   "afiliados.secret": { label: "Senha (Secret)", secret: true, group: "Shopee Afiliados" },
   "afiliados.subId": { label: "Sub ID padrão dos links (identifica as vendas que vieram do ERP)", secret: false, group: "Shopee Afiliados", placeholder: "arvirtual" },
 
+  "videos.cookies": {
+    label: "Cookies das redes (arquivo cookies.txt, formato Netscape) — para Instagram, Facebook e Threads, que pedem login",
+    secret: true,
+    group: "Conversor de vídeo",
+    multiline: true,
+    placeholder: "# Netscape HTTP Cookie File\n.instagram.com\tTRUE\t/\tTRUE\t0\tsessionid\t...",
+  },
+
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
 
