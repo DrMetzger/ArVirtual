@@ -79,13 +79,16 @@ async function arquivoCookies() {
 
 const NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 
-/** Cabeçalho Cookie com os cookies (cookies.txt) dos domínios pedidos. */
-function cookiesDe(texto: string, dominios: string[]) {
+/**
+ * Cabeçalho Cookie com os cookies (cookies.txt) do domínio do pedido, como o navegador manda. Misturar cookies de
+ * outro site (ex.: os do Instagram, com o mesmo nome "sessionid") faz o Threads achar que a sessão é inválida.
+ */
+function cookiesDe(texto: string, dominio: string) {
   return texto
     .split(/\r?\n/)
     .map((l) => l.replace(/^#HttpOnly_/, "").split("\t"))
-    .filter((c) => c.length >= 7 && dominios.some((d) => c[0]!.toLowerCase().includes(d)))
-    .map((c) => `${c[5]}=${c[6]}`)
+    .filter((c) => c.length >= 7 && c[0]!.toLowerCase().replace(/^\./, "").endsWith(dominio))
+    .map((c) => `${c[5]}=${c[6]!.trim()}`)
     .join("; ");
 }
 
@@ -115,11 +118,14 @@ async function baixarThreads(url: string, base: string) {
   const codigo = url.match(/\/(?:post|t)\/([\w-]{6,})/)?.[1];
   if (!codigo) throw new Error("Unsupported URL: abra o post no Threads, toque em Compartilhar › Copiar link e cole aqui.");
   const { "videos.cookies": todos } = await getSettings(["videos.cookies"]);
-  const cookie = cookiesDe(todos, ["threads.", "instagram."]);
-  if (!cookie) throw new Error("login required: o Threads só mostra o vídeo para quem está logado.");
+  const cookie = cookiesDe(todos, "threads.com") || cookiesDe(todos, "threads.net");
+  if (!/sessionid=/.test(cookie)) throw new Error("login required: faltam os cookies do threads.com (entre no Threads no navegador e exporte de novo).");
   const perfil = url.match(/threads\.(?:com|net)\/(@[\w.]+)/)?.[1];
   const limpo = perfil ? `https://www.threads.com/${perfil}/post/${codigo}` : `https://www.threads.com/t/${codigo}`;
-  const html = await fetch(limpo, { headers: { "User-Agent": NAVEGADOR, Cookie: cookie, "Accept-Language": "pt-BR,pt;q=0.9" }, signal: AbortSignal.timeout(30_000) }).then((r) => r.text());
+  const html = await fetch(limpo, {
+    headers: { "User-Agent": NAVEGADOR, Cookie: cookie, "Accept-Language": "pt-BR,pt;q=0.9", Accept: "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-Dest": "document" },
+    signal: AbortSignal.timeout(30_000),
+  }).then((r) => r.text());
   // O post vem num JSON dentro da página: o vídeo do post é o "video_versions" mais perto do código dele.
   const posCodigo = html.indexOf(`"code":"${codigo}"`);
   const versoes = [...html.matchAll(/"video_versions":(\[[^\]]*\])/g)].map((m) => ({ pos: m.index ?? 0, lista: JSON.parse(m[1]!) as { url: string; width?: number; height?: number }[] }));
@@ -132,8 +138,8 @@ async function baixarThreads(url: string, base: string) {
   if (Number(res.headers.get("content-length") ?? 0) > MAX_VIDEO_AFILIADO) throw new Error("max-filesize");
   const arquivo = `${base}.mp4`;
   await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(`${PASTA_AFILIADOS}/${arquivo}`));
-  const titulo = html.match(/<meta property="og:description" content="([^"]{1,200})/)?.[1] ?? `Threads ${codigo}`;
-  return { arquivo, titulo: titulo.replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCodePoint(parseInt(h, 16))).replace(/&quot;/g, '"').replace(/&amp;/g, "&") };
+  const titulo = `Threads ${perfil ? `${perfil} · ` : ""}${codigo}`;
+  return { arquivo, titulo };
 }
 
 // Um download por vez: vários links de uma vez não derrubam o servidor nem disparam bloqueio das redes.
