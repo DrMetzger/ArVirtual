@@ -11,6 +11,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { afiliadosVideos } from "@/db/schema";
 import { getSettings } from "@/lib/settings";
+import type { PreviaVideo } from "@/lib/videos-tipos";
 import { MAX_VIDEO_AFILIADO, PASTA_AFILIADOS } from "@/lib/uploads";
 
 const YTDLP = process.env.YTDLP_BIN || "yt-dlp";
@@ -109,37 +110,90 @@ async function compatibilizar(caminho: string) {
   }
 }
 
-/**
- * Threads não é suportado pelo yt-dlp: abre o post com a sua sessão (cookies de Configurações), como o navegador
- * logado faz, e pega o vídeo de maior resolução do próprio post.
- */
-async function baixarThreads(url: string, base: string) {
-  // Aceita threads.com/threads.net, /@perfil/post/CODIGO, /t/CODIGO, /post/CODIGO/media, com ou sem ?xmt=...
-  const codigo = url.match(/\/(?:post|t)\/([\w-]{6,})/)?.[1];
-  if (!codigo) throw new Error("Unsupported URL: abra o post no Threads, toque em Compartilhar › Copiar link e cole aqui.");
-  const { "videos.cookies": todos } = await getSettings(["videos.cookies"]);
-  const cookie = cookiesDe(todos, "threads.com") || cookiesDe(todos, "threads.net");
-  if (!/sessionid=/.test(cookie)) throw new Error("login required: faltam os cookies do threads.com (entre no Threads no navegador e exporte de novo).");
-  const perfil = url.match(/threads\.(?:com|net)\/(@[\w.]+)/)?.[1];
-  const limpo = perfil ? `https://www.threads.com/${perfil}/post/${codigo}` : `https://www.threads.com/t/${codigo}`;
-  const html = await fetch(limpo, {
+const abrirPagina = (url: string, cookie: string) =>
+  fetch(url, {
     headers: { "User-Agent": NAVEGADOR, Cookie: cookie, "Accept-Language": "pt-BR,pt;q=0.9", Accept: "text/html,application/xhtml+xml", "Sec-Fetch-Mode": "navigate", "Sec-Fetch-Site": "none", "Sec-Fetch-Dest": "document" },
     signal: AbortSignal.timeout(30_000),
   }).then((r) => r.text());
+
+const desescapar = (u: string) => u.replace(/&#064;/g, "@").replace(/&amp;/g, "&");
+
+/**
+ * Post do Threads (o yt-dlp não suporta): abre com a sua sessão (cookies de Configurações), como o navegador logado,
+ * e acha o vídeo de maior resolução do próprio post. Aceita link de post, /t/, /media, ?xmt=... e o de compartilhar
+ * (/share/...), que a página resolve para o post de verdade.
+ */
+async function postThreads(url: string) {
+  const { "videos.cookies": todos } = await getSettings(["videos.cookies"]);
+  const cookie = cookiesDe(todos, "threads.com") || cookiesDe(todos, "threads.net");
+  if (!/sessionid=/.test(cookie)) throw new Error("login required: faltam os cookies do threads.com (entre no Threads no navegador e exporte de novo).");
+  let codigo = url.match(/\/(?:post|t)\/([\w-]{6,})/)?.[1];
+  let perfil = url.match(/threads\.(?:com|net)\/(@[\w.]+)/)?.[1];
+  let html = "";
+  if (!codigo) {
+    // Link de compartilhar (/share/XXXX) ou outro: a página traz o endereço do post (al:android:url / og:url).
+    html = await abrirPagina(url.replace("threads.net", "threads.com"), cookie);
+    const real = desescapar(html.match(/<meta property="(?:al:android:url|og:url)" content="([^"]+\/post\/[\w-]+)/)?.[1] ?? "");
+    codigo = real.match(/\/post\/([\w-]{6,})/)?.[1];
+    perfil = real.match(/(@[\w.]+)\/post/)?.[1] ?? perfil;
+    if (!codigo) throw new Error(html.includes('"video_versions"') ? "Não achei o post nesse link." : "login required: a sessão do Threads expirou (atualize os cookies).");
+  }
+  const endereco = perfil ? `https://www.threads.com/${perfil}/post/${codigo}` : `https://www.threads.com/t/${codigo}`;
+  if (!html.includes(`"code":"${codigo}"`)) html = await abrirPagina(endereco, cookie);
   // O post vem num JSON dentro da página: o vídeo do post é o "video_versions" mais perto do código dele.
   const posCodigo = html.indexOf(`"code":"${codigo}"`);
   const versoes = [...html.matchAll(/"video_versions":(\[[^\]]*\])/g)].map((m) => ({ pos: m.index ?? 0, lista: JSON.parse(m[1]!) as { url: string; width?: number; height?: number }[] }));
   if (!versoes.length) throw new Error(posCodigo < 0 ? "login required: a sessão do Threads expirou (atualize os cookies)." : "There is no video in this post");
-  const perto = versoes.sort((a, b) => Math.abs(a.pos - posCodigo) - Math.abs(b.pos - posCodigo))[0]!.lista.filter((v) => v.url);
-  const melhor = perto.sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))[0];
+  const perto = versoes.sort((a, b) => Math.abs(a.pos - posCodigo) - Math.abs(b.pos - posCodigo))[0]!;
+  const melhor = perto.lista.filter((v) => v.url).sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))[0];
   if (!melhor) throw new Error("There is no video in this post");
-  const res = await fetch(melhor.url, { headers: { "User-Agent": NAVEGADOR }, signal: AbortSignal.timeout(10 * 60_000) });
+  // Capa: a primeira imagem do post (perto do vídeo).
+  const capa = html.slice(perto.pos, perto.pos + 20_000).match(/"image_versions2":\{"candidates":\[\{[^}]*?"url":"([^"]+)"/)?.[1]
+    ?? html.slice(Math.max(0, perto.pos - 20_000), perto.pos).match(/"image_versions2":\{"candidates":\[\{[^}]*?"url":"([^"]+)"/)?.[1];
+  return {
+    endereco,
+    titulo: `Threads ${perfil ? `${perfil} · ` : ""}${codigo}`,
+    video: melhor.url,
+    capa: capa ? (JSON.parse(`"${capa}"`) as string) : "",
+  };
+}
+
+async function baixarThreads(url: string, base: string) {
+  const post = await postThreads(url);
+  const res = await fetch(post.video, { headers: { "User-Agent": NAVEGADOR }, signal: AbortSignal.timeout(10 * 60_000) });
   if (!res.ok || !res.body) throw new Error(`O Threads não entregou o vídeo (${res.status}).`);
   if (Number(res.headers.get("content-length") ?? 0) > MAX_VIDEO_AFILIADO) throw new Error("max-filesize");
   const arquivo = `${base}.mp4`;
   await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(`${PASTA_AFILIADOS}/${arquivo}`));
-  const titulo = `Threads ${perfil ? `${perfil} · ` : ""}${codigo}`;
-  return { arquivo, titulo };
+  return { arquivo, titulo: post.titulo };
+}
+
+
+/**
+ * Acha o vídeo do link sem baixar (para a tela mostrar "é este?"): endereço real, título, capa, duração e, quando dá,
+ * o próprio vídeo para assistir antes.
+ */
+export async function previaVideo(link: string): Promise<PreviaVideo> {
+  const rede = redeDoLink(link);
+  const base = { link, url: link, rede, titulo: "", capa: "", video: "", duracaoS: 0, erro: "" };
+  try {
+    if (rede === "Threads") {
+      const p = await postThreads(link);
+      return { ...base, url: p.endereco, titulo: p.titulo, capa: p.capa, video: p.video };
+    }
+    const cookies = await arquivoCookies().catch(() => null);
+    try {
+      const json = await rodar(YTDLP, ["--no-playlist", "--no-warnings", "-J", ...(cookies ? ["--cookies", cookies] : []), link], 90_000);
+      const i = JSON.parse(json) as { title?: string; thumbnail?: string; duration?: number; webpage_url?: string; url?: string; ext?: string; vcodec?: string };
+      // Assistir antes só quando o link direto é um MP4 com áudio (os separados em vídeo+áudio ficam só com a capa).
+      const direto = i.url && i.ext === "mp4" ? i.url : "";
+      return { ...base, url: i.webpage_url || link, titulo: (i.title ?? "").slice(0, 200), capa: i.thumbnail ?? "", video: direto, duracaoS: Math.round(i.duration ?? 0) };
+    } finally {
+      if (cookies) await rm(cookies, { force: true });
+    }
+  } catch (e) {
+    return { ...base, erro: explicarErro((e as Error).message, link) };
+  }
 }
 
 // Um download por vez: vários links de uma vez não derrubam o servidor nem disparam bloqueio das redes.
