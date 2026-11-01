@@ -357,6 +357,10 @@ export const anuncios = pgTable("anuncios", {
   status: text("status", { enum: ["publicado", "erro", "pausado"] }).notNull(),
   preco: money("preco").notNull(),
   mensagem: text("mensagem").notNull().default(""),
+  /** Visualizações do anúncio (ML: visitas totais; Shopee: views) e curtidas (Shopee), lidas da API. */
+  visitas: integer("visitas").notNull().default(0),
+  curtidas: integer("curtidas").notNull().default(0),
+  metricasEm: timestamp("metricas_em", { withTimezone: true }),
   ...timestamps,
 });
 
@@ -385,6 +389,11 @@ export const pedidosMarketplace = pgTable(
     estoqueBaixado: boolean("estoque_baixado").notNull().default(false),
     /** O título a receber deste pedido já foi gerado. */
     financeiroGerado: boolean("financeiro_gerado").notNull().default(false),
+    /** Taxas do marketplace (comissão, tarifa fixa, serviço, transação) e frete pago pelo vendedor, lidas da API. */
+    taxas: money("taxas").notNull().default(0),
+    freteVendedor: money("frete_vendedor").notNull().default(0),
+    /** As taxas já são as finais (Shopee só fecha quando o pedido conclui). */
+    taxasFinal: boolean("taxas_final").notNull().default(false),
     dados: jsonb("dados"),
     ...timestamps,
   },

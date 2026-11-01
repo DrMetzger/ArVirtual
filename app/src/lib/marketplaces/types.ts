@@ -134,6 +134,10 @@ export type PedidoExterno = {
   dados: unknown;
 };
 
+export type MetricasAnuncio = { visitas: number; curtidas: number };
+/** Taxas do pedido; `final` = valor fechado (enquanto não, é parcial e é lido de novo depois). */
+export type TaxasPedido = { taxas: number; freteVendedor: number; final: boolean };
+
 /** NF-e que o vendedor informou ao marketplace (emitida em outro sistema). */
 export type NotaDoPedido = { chave: string; status: string; emitidaEm: Date | null; xml: string };
 
@@ -149,6 +153,10 @@ export interface MarketplaceAdapter {
   publicar(conta: ContaComToken, produto: Produto, anuncio: DadosAnuncio): Promise<ResultadoAnuncio>;
   /** Pedidos comprados entre `desde` e `ate` ou, com `porAtualizacao`, alterados nesse intervalo (sincronização automática). */
   pedidos(conta: ContaComToken, filtro: FiltroPedidos): Promise<PedidoExterno[]>;
+  /** Visualizações e curtidas dos anúncios (id externo → números). */
+  metricas?(conta: ContaComToken, ids: string[]): Promise<Record<string, MetricasAnuncio>>;
+  /** Taxas que o marketplace cobrou no pedido (`dados` é o pedido como a API devolveu). */
+  taxas?(conta: ContaComToken, idExterno: string, dados: unknown): Promise<TaxasPedido>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */

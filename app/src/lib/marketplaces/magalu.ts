@@ -454,6 +454,14 @@ export const magalu: MarketplaceAdapter = {
     return out;
   },
 
+  async taxas(_conta, _id, dados) {
+    // A comissão do Magalu vem no próprio pedido (amounts.commission, em centavos com normalizer).
+    const a = (dados as { amounts?: { commission?: { total?: number; normalizer?: number } }; status?: string } | null) ?? {};
+    const c = a.amounts?.commission;
+    const taxas = c?.total ? c.total / (c.normalizer || 100) : 0;
+    return { taxas: Math.round(taxas * 100) / 100, freteVendedor: 0, final: Boolean(c) };
+  },
+
   async notasDoPedido(conta, dados) {
     type Ped = { id?: string; deliveries?: { id?: string }[] };
     let entregas = ((dados as Ped)?.deliveries ?? []).filter((d) => d.id);
