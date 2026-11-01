@@ -1,12 +1,13 @@
 import { MarcaIcone } from "@/components/marca";
-import { and, asc, ilike, isNull, or, sql } from "drizzle-orm";
-import { Eye, LayoutGrid, List, Package, Plus, Search } from "lucide-react";
+import { and, asc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { Eye, LayoutGrid, List, Package, Plus, Search, ShoppingCart } from "lucide-react";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Badge, buttonClass, Card, EmptyState, Input, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { produtos, type Marketplace } from "@/db/schema";
+import { anuncios, pedidosMarketplace, produtos, type Marketplace } from "@/db/schema";
+import { situacaoPedido } from "@/lib/marketplaces/situacao";
 import { requireUser } from "@/lib/auth";
 import { cn, formatBRL } from "@/lib/utils";
 import { LinhaLink } from "@/components/linha-link";
@@ -37,9 +38,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       capa: sql<string | null>`${produtos.imagens}[1]`,
       // Nomes qualificados: dentro da subconsulta "id" seria a coluna de anuncios.
       // Marketplaces onde o produto está publicado (uma bandeirinha por plataforma).
-      anuncios: sql<Marketplace[]>`array(select distinct a.marketplace from anuncios a where a.produto_id = "produtos"."id" and a.status = 'publicado' order by 1)`,
-      // Visualizações somadas dos anúncios do produto e das variações (ML e Shopee informam; Magalu não).
-      visitas: sql<number>`(select coalesce(sum(a.visitas), 0)::int from anuncios a where a.status = 'publicado' and a.produto_id in (select v.id from produtos v where v.id = "produtos"."id" or v.pai_id = "produtos"."id"))`,
+      // (inclui os anúncios das variações).
+      anuncios: sql<Marketplace[]>`array(select distinct a.marketplace from anuncios a where a.status = 'publicado' and a.produto_id in (select v.id from produtos v where v.id = "produtos"."id" or v.pai_id = "produtos"."id") order by 1)`,
     })
     .from(produtos)
     .where(
@@ -56,6 +56,52 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
     )
     .orderBy(asc(produtos.nome))
     .limit(300);
+
+  // Desempenho plataforma a plataforma de cada produto (somando as variações): visualizações das APIs e
+  // vendas/taxas dos pedidos dos últimos 30 dias.
+  const ids = lista.map((p) => p.id);
+  const [publicados, pedidos30] = ids.length
+    ? await Promise.all([
+        db
+          .select({
+            raiz: sql<string>`coalesce(${produtos.paiId}, ${produtos.id})`,
+            marketplace: anuncios.marketplace,
+            contaId: anuncios.contaId,
+            idExterno: anuncios.idExterno,
+            visitas: anuncios.visitas,
+            curtidas: anuncios.curtidas,
+            criadoEm: anuncios.criadoEm,
+          })
+          .from(anuncios)
+          .innerJoin(produtos, eq(produtos.id, anuncios.produtoId))
+          .where(and(eq(anuncios.status, "publicado"), or(inArray(produtos.id, ids), inArray(produtos.paiId, ids)))),
+        db
+          .select({ contaId: pedidosMarketplace.contaId, marketplace: pedidosMarketplace.marketplace, status: pedidosMarketplace.status, taxas: pedidosMarketplace.taxas, frete: pedidosMarketplace.freteVendedor, itens: pedidosMarketplace.itens })
+          .from(pedidosMarketplace)
+          .where(and(gte(pedidosMarketplace.data, new Date(Date.now() - 30 * 86400_000)), isNotNull(pedidosMarketplace.contaId))),
+      ])
+    : [[], []];
+  const desempenho = new Map<string, Partial<Record<Marketplace, Desempenho>>>();
+  // Desde quando o produto está anunciado (o anúncio mais antigo): conta os 30 dias de teste.
+  const anunciadoDesde = new Map<string, Date>();
+  for (const a of publicados) {
+    const antes = anunciadoDesde.get(a.raiz);
+    if (!antes || a.criadoEm < antes) anunciadoDesde.set(a.raiz, a.criadoEm);
+    const porCanal = desempenho.get(a.raiz) ?? {};
+    const d = (porCanal[a.marketplace] ??= { visitas: 0, curtidas: 0, vendidos: 0, vendido: 0, custos: 0 });
+    d.visitas += a.visitas;
+    d.curtidas += a.curtidas;
+    for (const p of pedidos30) {
+      if (p.contaId !== a.contaId || !a.idExterno || situacaoPedido(p.marketplace, p.status) === "cancelado") continue;
+      const soma = p.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0) || 1;
+      for (const i of p.itens.filter((x) => x.idAnuncio === a.idExterno)) {
+        d.vendidos += i.quantidade;
+        d.vendido += i.quantidade * i.valorUnitario;
+        d.custos += ((p.taxas + p.frete) * i.quantidade * i.valorUnitario) / soma;
+      }
+    }
+    desempenho.set(a.raiz, porCanal);
+  }
 
   return (
     <>
@@ -159,7 +205,7 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
           </table>
         </Card>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-3 2xl:grid-cols-4">
           {lista.map((p) => (
             <Link key={p.id} href={`/produtos/${p.id}`} className="group">
               <Card className="h-full overflow-hidden transition group-hover:-translate-y-1 group-hover:border-gold">
@@ -184,16 +230,22 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                   <p className="truncate font-mono text-[11px] text-muted sm:text-xs">{p.sku}</p>
                   <p className="line-clamp-2 text-sm font-semibold sm:text-base">{p.nome}</p>
                   <p className="mt-1 text-base font-extrabold text-primary sm:text-lg">{formatBRL(p.preco)}</p>
-                  <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
+                  {p.anuncios.length ? (
+                    <PainelRentabilidade
+                      canais={p.anuncios}
+                      desempenho={desempenho.get(p.id) ?? {}}
+                      precos={p.precosCanal}
+                      padrao={p.preco}
+                      custo={p.custo}
+                      desde={anunciadoDesde.get(p.id)}
+                    />
+                  ) : (
+                    <PrecosPlataforma precos={p.precosCanal} padrao={p.preco} />
+                  )}
                   <p className="flex flex-wrap gap-x-2 text-[11px] text-muted sm:text-xs">
                     {p.custo ? <span>custo {formatBRL(p.custo)}</span> : null}
                     {p.material ? <span>{p.material}</span> : null}
                     <span className={p.estoque <= 0 ? "font-semibold text-red" : ""}>{p.estoque} em estoque</span>
-                    {p.visitas ? (
-                      <span className="inline-flex items-center gap-0.5" title="Visualizações nos marketplaces">
-                        <Eye className="size-3" /> {p.visitas.toLocaleString("pt-BR")}
-                      </span>
-                    ) : null}
                   </p>
                 </div>
               </Card>
@@ -218,6 +270,100 @@ function PrecosPlataforma({ precos, padrao, className }: { precos: Partial<Recor
         </span>
       ))}
     </span>
+  );
+}
+
+type Desempenho = { visitas: number; curtidas: number; vendidos: number; vendido: number; custos: number };
+
+type Veredito = { rotulo: string; dica: string; emoji: string; cor: string };
+
+/**
+ * Veredito do produto nos últimos 30 dias (para decidir se continua ou sai do catálogo): lucro = vendido − taxas −
+ * frete pago − custo de produção.
+ */
+function veredito(t: { visitas: number; vendidos: number; lucro: number; margem: number; dias: number; semCusto: boolean }): Veredito {
+  const pct = `${Math.round(t.margem * 100)}% de margem`;
+  if (t.vendidos && t.lucro < 0) return { emoji: "🚨", rotulo: "Dando prejuízo", dica: "Taxa + custo maiores que o preço: suba o preço ou tire do ar.", cor: "bg-red/15 text-red ring-red/40" };
+  if (t.vendidos >= 5 && t.margem >= 0.2) return { emoji: "🔥", rotulo: "Campeão", dica: `${t.vendidos} vendas e ${pct}: invista (mais estoque, anúncio, vídeo).`, cor: "bg-gold/20 text-gold ring-gold/50" };
+  if (t.vendidos && t.margem >= 0.15) return { emoji: "✅", rotulo: "Rentável", dica: `Vende com ${pct}. Mantenha.`, cor: "bg-green/15 text-green ring-green/40" };
+  if (t.vendidos) return { emoji: "⚠️", rotulo: "Margem baixa", dica: `Só ${pct}: a taxa está comendo o lucro. Reveja o preço.`, cor: "bg-orange-500/15 text-orange-400 ring-orange-400/40" };
+  if (t.visitas >= 40) return { emoji: "👀", rotulo: "Muita visita, nenhuma venda", dica: `${t.visitas} visualizações sem compra: preço, fotos ou título não convencem.`, cor: "bg-primary/15 text-primary ring-primary/40" };
+  if (t.dias >= 30) return { emoji: "💤", rotulo: "Parado há 30 dias", dica: "Sem vendas no período de teste: candidato a sair do catálogo.", cor: "bg-red/10 text-red ring-red/30" };
+  return { emoji: "🧪", rotulo: `Em teste · dia ${Math.max(1, t.dias)} de 30`, dica: t.semCusto ? "Cadastre o custo para calcular o lucro." : "Ainda sem vendas: acompanhe as visualizações.", cor: "bg-surface-2 text-muted ring-border" };
+}
+
+/**
+ * Painel do card: veredito de rentabilidade (cores), uma linha por plataforma (preço, visualizações, vendas e taxa) e o
+ * lucro dos últimos 30 dias.
+ */
+function PainelRentabilidade({
+  canais,
+  desempenho,
+  precos,
+  padrao,
+  custo,
+  desde,
+}: {
+  canais: Marketplace[];
+  desempenho: Partial<Record<Marketplace, Desempenho>>;
+  precos: Partial<Record<string, number>>;
+  padrao: number;
+  custo: number;
+  desde?: Date;
+}) {
+  const linhas = canais.map((c) => ({ c, d: desempenho[c] ?? { visitas: 0, curtidas: 0, vendidos: 0, vendido: 0, custos: 0 } }));
+  // O Magalu não informa visualizações: fica fora do total (a linha dele mostra "—").
+  const tot = linhas.reduce((a, { c, d }) => ({ visitas: a.visitas + (c === "magalu" ? 0 : d.visitas), vendidos: a.vendidos + d.vendidos, vendido: a.vendido + d.vendido, custos: a.custos + d.custos }), { visitas: 0, vendidos: 0, vendido: 0, custos: 0 });
+  const lucro = tot.vendido - tot.custos - custo * tot.vendidos;
+  const margem = tot.vendido ? lucro / tot.vendido : 0;
+  const dias = desde ? Math.floor((Date.now() - desde.getTime()) / 86400_000) : 0;
+  const v = veredito({ visitas: tot.visitas, vendidos: tot.vendidos, lucro, margem, dias, semCusto: !custo });
+  return (
+    <div className="mt-1 grid gap-1.5">
+      <div className={cn("grid gap-0.5 rounded-lg px-2 py-1.5 ring-1", v.cor)}>
+        <span className="flex items-center gap-1 text-xs font-extrabold sm:text-sm">
+          <span aria-hidden>{v.emoji}</span> {v.rotulo}
+        </span>
+        <span className="text-[10px] leading-snug opacity-90 sm:text-[11px]">{v.dica}</span>
+        {!tot.vendidos && dias < 30 ? (
+          <span className="mt-0.5 h-1 overflow-hidden rounded-full bg-black/20">
+            <span className="block h-full rounded-full bg-current" style={{ width: `${Math.min(100, (Math.max(1, dias) / 30) * 100)}%` }} />
+          </span>
+        ) : null}
+      </div>
+      <div className="grid gap-1">
+        {linhas.map(({ c, d }) => {
+          const taxa = d.vendido ? Math.round((d.custos / d.vendido) * 100) : null;
+          return (
+            <div key={c} className="flex flex-wrap items-center gap-1 text-[11px] sm:text-xs">
+              <MarcaIcone canal={c} className="size-5 p-[2px]" />
+              <span className="mr-auto whitespace-nowrap font-semibold">{formatBRL(precos[c] || padrao)}</span>
+              <span
+                className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold", c === "magalu" ? "bg-surface-2 text-muted" : d.visitas ? "bg-primary/15 text-primary" : "bg-surface-2 text-muted")}
+                title={c === "magalu" ? "O Magalu não informa visualizações" : "Visualizações"}
+              >
+                <Eye className="size-3" /> {c === "magalu" ? "—" : d.visitas.toLocaleString("pt-BR")}
+              </span>
+              <span className={cn("inline-flex items-center gap-0.5 rounded-full px-1.5 py-0.5 font-semibold", d.vendidos ? "bg-green/15 text-green" : "bg-surface-2 text-muted")} title="Vendas nos últimos 30 dias">
+                <ShoppingCart className="size-3" /> {d.vendidos}
+              </span>
+              {taxa !== null ? (
+                <span className="rounded-full bg-red/15 px-1.5 py-0.5 font-semibold text-red" title={`Taxas e frete: ${formatBRL(d.custos)}`}>
+                  -{taxa}%
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex items-baseline justify-between gap-2 border-t border-border pt-1.5">
+        <span className="text-[10px] uppercase tracking-wide text-muted">Lucro 30 dias</span>
+        <span className={cn("text-sm font-extrabold sm:text-base", tot.vendidos ? (lucro >= 0 ? "text-green" : "text-red") : "text-muted")}>
+          {tot.vendidos ? `${lucro < 0 ? "-" : ""}${formatBRL(Math.abs(lucro))}` : "—"}
+          {tot.vendidos ? <span className="ml-1 text-[10px] font-semibold opacity-80">({Math.round(margem * 100)}%)</span> : null}
+        </span>
+      </div>
+    </div>
   );
 }
 
