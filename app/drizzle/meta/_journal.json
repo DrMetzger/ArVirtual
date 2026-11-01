@@ -169,6 +169,13 @@
       "when": 1793460505509,
       "tag": "0023_comissoes_origem",
       "breakpoints": true
+    },
+    {
+      "idx": 24,
+      "version": "7",
+      "when": 1793568805872,
+      "tag": "0024_metricas_taxas",
+      "breakpoints": true
     }
   ]
 }

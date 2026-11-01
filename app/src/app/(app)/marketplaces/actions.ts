@@ -45,3 +45,19 @@ export async function vincularAnuncio(
   revalidatePath("/produtos");
   return {};
 }
+
+/** Botão "Atualizar agora": visualizações dos anúncios e taxas dos pedidos, direto das APIs. */
+export async function atualizarMetricasTaxas() {
+  await requireUser();
+  const { atualizarMetricas, atualizarTaxas } = await import("@/lib/metricas");
+  let msg: string;
+  try {
+    const [a, t] = [await atualizarMetricas(), await atualizarTaxas(400)];
+    msg = `ok=${encodeURIComponent(`${a} anúncio(s) com visualizações e ${t} pedido(s) com taxas atualizados.`)}`;
+  } catch (e) {
+    msg = `erro=${encodeURIComponent((e as Error).message)}`;
+  }
+  revalidatePath("/marketplaces");
+  revalidatePath("/produtos");
+  redirect(`/marketplaces?${msg}`);
+}

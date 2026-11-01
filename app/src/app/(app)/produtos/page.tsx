@@ -1,6 +1,6 @@
 import { MarcaIcone } from "@/components/marca";
 import { and, asc, ilike, isNull, or, sql } from "drizzle-orm";
-import { LayoutGrid, List, Package, Plus, Search } from "lucide-react";
+import { Eye, LayoutGrid, List, Package, Plus, Search } from "lucide-react";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -38,6 +38,8 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
       // Nomes qualificados: dentro da subconsulta "id" seria a coluna de anuncios.
       // Marketplaces onde o produto está publicado (uma bandeirinha por plataforma).
       anuncios: sql<Marketplace[]>`array(select distinct a.marketplace from anuncios a where a.produto_id = "produtos"."id" and a.status = 'publicado' order by 1)`,
+      // Visualizações somadas dos anúncios do produto e das variações (ML e Shopee informam; Magalu não).
+      visitas: sql<number>`(select coalesce(sum(a.visitas), 0)::int from anuncios a where a.status = 'publicado' and a.produto_id in (select v.id from produtos v where v.id = "produtos"."id" or v.pai_id = "produtos"."id"))`,
     })
     .from(produtos)
     .where(
@@ -161,9 +163,9 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
           {lista.map((p) => (
             <Link key={p.id} href={`/produtos/${p.id}`} className="group">
               <Card className="h-full overflow-hidden transition group-hover:-translate-y-1 group-hover:border-gold">
-                <div className="relative aspect-[4/3] bg-surface-2">
+                <div className="relative aspect-square bg-surface-2">
                   {p.capa ? (
-                    <img src={p.capa} alt="" className="size-full object-cover" />
+                    <img src={p.capa} alt="" className="size-full object-contain" />
                   ) : (
                     <div className="grid size-full place-items-center text-muted">
                       <Package className="size-10 opacity-40" />
@@ -187,6 +189,11 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
                     {p.custo ? <span>custo {formatBRL(p.custo)}</span> : null}
                     {p.material ? <span>{p.material}</span> : null}
                     <span className={p.estoque <= 0 ? "font-semibold text-red" : ""}>{p.estoque} em estoque</span>
+                    {p.visitas ? (
+                      <span className="inline-flex items-center gap-0.5" title="Visualizações nos marketplaces">
+                        <Eye className="size-3" /> {p.visitas.toLocaleString("pt-BR")}
+                      </span>
+                    ) : null}
                   </p>
                 </div>
               </Card>

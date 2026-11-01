@@ -1,16 +1,18 @@
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { CANAIS, MarcaIcone, MarcaLogo } from "@/components/marca";
-import { Link2, Store, Unplug } from "lucide-react";
+import { Eye, Heart, Link2, Percent, RefreshCw, Store, Unplug } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, PageHeader } from "@/components/ui";
 import { db } from "@/db";
-import { contasMarketplace, MARKETPLACES, pedidosMarketplace } from "@/db/schema";
+import { anuncios, contasMarketplace, MARKETPLACES, pedidosMarketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { ADAPTERS, callbackUrl, MARKETPLACE_INFO } from "@/lib/marketplaces";
+import { statusDaSituacao } from "@/lib/marketplaces/situacao";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { desconectar } from "./actions";
+import { atualizarMetricasTaxas, desconectar } from "./actions";
+import { SubmitButton } from "@/components/ui/client";
 import { SincronizarPedidos } from "@/components/sincronizar-pedidos";
 import { LinhaLink } from "@/components/linha-link";
 
@@ -41,6 +43,30 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
       .limit(10),
     Promise.all(MARKETPLACES.map(async (m) => [m, await ADAPTERS[m].configurado()] as const)),
   ]);
+  const cancelados = statusDaSituacao("cancelado");
+  const naoCancelado = cancelados.length
+    ? sql`not (${sql.join(cancelados.map((c) => sql`(${pedidosMarketplace.marketplace} = ${c.marketplace} and ${pedidosMarketplace.status} = ${c.status})`), sql` or `)})`
+    : sql`true`;
+  // Taxas e frete dos pedidos dos últimos 30 dias e visualizações dos anúncios, por marketplace.
+  const [resumo, vistas] = await Promise.all([
+    db
+      .select({
+        marketplace: pedidosMarketplace.marketplace,
+        pedidos: sql<number>`count(*)::int`,
+        vendido: sql<number>`coalesce(sum(${pedidosMarketplace.total}), 0)::float`,
+        taxas: sql<number>`coalesce(sum(${pedidosMarketplace.taxas}), 0)::float`,
+        frete: sql<number>`coalesce(sum(${pedidosMarketplace.freteVendedor}), 0)::float`,
+        abertos: sql<number>`count(*) filter (where not ${pedidosMarketplace.taxasFinal})::int`,
+      })
+      .from(pedidosMarketplace)
+      .where(and(gte(pedidosMarketplace.data, new Date(Date.now() - 30 * 86400_000)), naoCancelado))
+      .groupBy(pedidosMarketplace.marketplace),
+    db
+      .select({ marketplace: anuncios.marketplace, visitas: sql<number>`coalesce(sum(${anuncios.visitas}), 0)::int`, curtidas: sql<number>`coalesce(sum(${anuncios.curtidas}), 0)::int` })
+      .from(anuncios)
+      .where(eq(anuncios.status, "publicado"))
+      .groupBy(anuncios.marketplace),
+  ]);
   const cfg = Object.fromEntries(configurados);
 
   return (
@@ -62,6 +88,64 @@ export default async function MarketplacesPage({ searchParams }: { searchParams:
       <div className="grid gap-6">
         {ok ? <Alert tone="green">{ok}</Alert> : null}
         {erro ? <Alert>{erro}</Alert> : null}
+
+        <Card>
+          <CardHeader
+            title="Taxas e desempenho (últimos 30 dias)"
+            description="Taxas (comissão, tarifa fixa, serviço, transação) e frete pago por você, lidos das APIs em cada pedido; visualizações dos anúncios publicados. Atualiza sozinho; a Shopee fecha as taxas quando o pedido conclui."
+            action={
+              <form action={atualizarMetricasTaxas}>
+                <SubmitButton variant="outline" size="sm" pendingText="Atualizando...">
+                  <RefreshCw /> Atualizar agora
+                </SubmitButton>
+              </form>
+            }
+          />
+          <div className="grid gap-3 p-4 sm:grid-cols-3 sm:p-5">
+            {MARKETPLACES.map((m) => {
+              const r = resumo.find((x) => x.marketplace === m);
+              const v = vistas.find((x) => x.marketplace === m);
+              const pct = r?.vendido ? ((r.taxas + r.frete) / r.vendido) * 100 : 0;
+              return (
+                <div key={m} className="grid content-start gap-2 rounded-xl border border-border p-3">
+                  <div className="flex items-center gap-2">
+                    <MarcaIcone canal={m} className="size-7" />
+                    <span className="font-semibold">{CANAIS[m].nome}</span>
+                    <span className="ml-auto text-xs text-muted">{r?.pedidos ?? 0} pedido(s)</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-sm">
+                    <span className="text-muted">Vendido</span>
+                    <span className="text-right font-semibold">{formatBRL(r?.vendido ?? 0)}</span>
+                    <span className="text-muted">Taxas</span>
+                    <span className="text-right font-semibold text-red">{formatBRL(r?.taxas ?? 0)}</span>
+                    <span className="text-muted">Frete pago por você</span>
+                    <span className="text-right font-semibold text-red">{formatBRL(r?.frete ?? 0)}</span>
+                    <span className="text-muted">Sobra (antes do custo)</span>
+                    <span className="text-right font-bold text-green">{formatBRL((r?.vendido ?? 0) - (r?.taxas ?? 0) - (r?.frete ?? 0))}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-border pt-2 text-xs text-muted">
+                    <span className="inline-flex items-center gap-1 font-semibold text-foreground">
+                      <Percent className="size-3.5" /> {pct.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do vendido
+                    </span>
+                    {m !== "magalu" ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Eye className="size-3.5" /> {(v?.visitas ?? 0).toLocaleString("pt-BR")} visualizações
+                      </span>
+                    ) : (
+                      <span>Magalu não informa visualizações</span>
+                    )}
+                    {m === "shopee" ? (
+                      <span className="inline-flex items-center gap-1">
+                        <Heart className="size-3.5" /> {(v?.curtidas ?? 0).toLocaleString("pt-BR")}
+                      </span>
+                    ) : null}
+                    {r?.abertos ? <span className="text-gold">{r.abertos} pedido(s) com taxa ainda em aberto</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
 
         <div className="grid gap-6 lg:grid-cols-3">
           {MARKETPLACES.map((m) => {

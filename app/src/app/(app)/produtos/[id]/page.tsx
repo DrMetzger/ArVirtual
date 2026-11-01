@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
 import { ArrowLeft, Copy, ExternalLink, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -6,10 +6,11 @@ import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { anuncios, arquivosProduto, contasMarketplace, produtos } from "@/db/schema";
+import { anuncios, arquivosProduto, contasMarketplace, pedidosMarketplace, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
+import { situacaoPedido } from "@/lib/marketplaces/situacao";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
@@ -62,6 +63,37 @@ export default async function ProdutoPage({
       .from(anuncios)
       .where(and(inArray(anuncios.produtoId, [id, ...variacoes.map((v) => v.id)]), eq(anuncios.status, "publicado"), isNotNull(anuncios.idExterno))),
   ]);
+  // Desempenho dos anúncios publicados: visualizações (API) e vendas/taxas dos pedidos dos últimos 90 dias.
+  const publicados = historico.filter((a) => a.status === "publicado" && a.idExterno);
+  const pedidosDoProduto = publicados.length
+    ? await db
+        .select({ contaId: pedidosMarketplace.contaId, marketplace: pedidosMarketplace.marketplace, status: pedidosMarketplace.status, total: pedidosMarketplace.total, taxas: pedidosMarketplace.taxas, frete: pedidosMarketplace.freteVendedor, itens: pedidosMarketplace.itens })
+        .from(pedidosMarketplace)
+        .where(
+          and(
+            gte(pedidosMarketplace.data, new Date(Date.now() - 90 * 86400_000)),
+            or(...publicados.map((a) => sql`${pedidosMarketplace.itens} @> ${JSON.stringify([{ idAnuncio: a.idExterno }])}::jsonb`)),
+          ),
+        )
+    : [];
+  const desempenho = publicados.map((a) => {
+    let vendidos = 0;
+    let vendido = 0;
+    let taxas = 0;
+    let frete = 0;
+    for (const p of pedidosDoProduto) {
+      if (p.contaId !== a.contaId || situacaoPedido(p.marketplace, p.status) === "cancelado") continue;
+      const somaItens = p.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0) || 1;
+      for (const i of p.itens.filter((x) => x.idAnuncio === a.idExterno)) {
+        const parte = (i.quantidade * i.valorUnitario) / somaItens;
+        vendidos += i.quantidade;
+        vendido += i.quantidade * i.valorUnitario;
+        taxas += p.taxas * parte;
+        frete += p.frete * parte;
+      }
+    }
+    return { id: a.id, marketplace: a.marketplace, conta: a.conta.nome, visitas: a.visitas, curtidas: a.curtidas, vendidos, vendido, taxas, frete };
+  });
 
   return (
     <>
@@ -140,6 +172,51 @@ export default async function ProdutoPage({
               .filter((mp) => !contas.some((c) => c.marketplace === mp))
               .map((mp) => ({ marketplace: mp, nome: MARKETPLACE_INFO[mp].nome, cor: MARKETPLACE_INFO[mp].cor }))}
           />
+          {desempenho.length ? (
+            <Card>
+              <CardHeader
+                title="Desempenho nos marketplaces"
+                description="Visualizações e curtidas vêm das APIs (Magalu não informa); vendas e taxas, dos pedidos dos últimos 90 dias. A taxa do pedido é dividida pelos itens dele."
+              />
+              <div className="grid divide-y divide-border">
+                {desempenho.map((d) => (
+                  <div key={d.id} className="grid gap-2 px-5 py-3 text-sm">
+                    <div className="flex items-center gap-2">
+                      <MarcaIcone canal={d.marketplace} />
+                      <span className="font-semibold">{MARKETPLACE_INFO[d.marketplace].nome}</span>
+                      <span className="truncate text-xs text-muted">{d.conta}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs sm:grid-cols-4">
+                      <span>
+                        <span className="text-muted">Visualizações </span>
+                        <strong>{d.marketplace === "magalu" ? "—" : d.visitas.toLocaleString("pt-BR")}</strong>
+                      </span>
+                      <span>
+                        <span className="text-muted">Vendas </span>
+                        <strong>{d.vendidos}</strong>
+                        {d.visitas && d.vendidos ? <span className="text-muted"> ({((d.vendidos / d.visitas) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)</span> : null}
+                      </span>
+                      <span>
+                        <span className="text-muted">Taxas </span>
+                        <strong className="text-red">{formatBRL(d.taxas)}</strong>
+                        {d.vendido ? <span className="text-muted"> ({((d.taxas / d.vendido) * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%)</span> : null}
+                      </span>
+                      <span>
+                        <span className="text-muted">Frete pago </span>
+                        <strong className="text-red">{formatBRL(d.frete)}</strong>
+                      </span>
+                      {d.marketplace === "shopee" ? (
+                        <span>
+                          <span className="text-muted">Curtidas </span>
+                          <strong>{d.curtidas}</strong>
+                        </span>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          ) : null}
           <Card>
             <CardHeader
               title="Histórico de anúncios"

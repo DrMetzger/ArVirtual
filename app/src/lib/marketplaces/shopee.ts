@@ -429,6 +429,31 @@ export const shopee: MarketplaceAdapter = {
     return lista;
   },
 
+  async metricas(conta, ids) {
+    const out: Record<string, { visitas: number; curtidas: number }> = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const r = await shopCall<ShopeeBase & { response?: { item_list?: { item_id: number; views?: number; likes?: number }[] } }>(conta, "/api/v2/product/get_item_extra_info", {
+        query: { item_id_list: ids.slice(i, i + 50).join(",") },
+      }).catch(() => null);
+      for (const it of r?.response?.item_list ?? []) out[String(it.item_id)] = { visitas: Number(it.views) || 0, curtidas: Number(it.likes) || 0 };
+    }
+    return out;
+  },
+
+  async taxas(conta, idExterno, dados) {
+    // Detalhe do repasse (escrow): comissão, taxa de serviço, transação, AMS/campanha e frete. Só fecha quando o
+    // pedido conclui (escrow_amount > 0); antes disso o ERP lê de novo nas próximas rodadas.
+    const status = (dados as { order_status?: string } | null)?.order_status;
+    if (status === "CANCELLED" || status === "UNPAID") return { taxas: 0, freteVendedor: 0, final: status === "CANCELLED" };
+    const r = await shopCall<ShopeeBase & { response?: { order_income?: Record<string, number> } }>(conta, "/api/v2/payment/get_escrow_detail", { query: { order_sn: idExterno } });
+    const inc = r.response?.order_income ?? {};
+    const n = (k: string) => Number(inc[k]) || 0;
+    const taxas = ["commission_fee", "service_fee", "seller_transaction_fee", "credit_card_transaction_fee", "order_ams_commission_fee", "campaign_fee", "seller_order_processing_fee", "fbs_fee"].reduce((s, k) => s + Math.abs(n(k)), 0);
+    // Frete do vendedor: o que a Shopee cobrou de frete menos o que o comprador pagou e o subsídio da Shopee.
+    const freteVendedor = Math.max(0, n("actual_shipping_fee") - n("buyer_paid_shipping_fee") - n("shopee_shipping_rebate"));
+    return { taxas: Math.round(taxas * 100) / 100, freteVendedor: Math.round(freteVendedor * 100) / 100, final: n("escrow_amount") > 0 };
+  },
+
   async pedidos(conta, { desde, ate, porAtualizacao }) {
     // A Shopee aceita janelas de no máximo 15 dias por consulta.
     const sns: string[] = [];

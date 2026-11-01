@@ -1,8 +1,10 @@
 import { chamadaInterna } from "@/lib/interno";
 import { afiliadosConfigurado, sincronizarComissoes } from "@/lib/afiliados";
 import { sincronizarPedidos } from "@/lib/marketplaces";
+import { atualizarMetricas, atualizarTaxas } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
+let ultimasMetricas = 0;
 
 // Sincronização automática de pedidos (disparada a cada 15 minutos pelo instrumentation.ts).
 export async function POST(req: Request) {
@@ -13,6 +15,12 @@ export async function POST(req: Request) {
   if (Date.now() - ultimaComissoes > 6 * 3600_000 && (await afiliadosConfigurado())) {
     ultimaComissoes = Date.now();
     void sincronizarComissoes(new Date(Date.now() - 45 * 86400_000)).catch((e: Error) => console.warn(`[afiliados] ${e.message}`));
+  }
+  // Taxas dos pedidos (as da Shopee só fecham com o pedido concluído) e, a cada 3 horas, visualizações dos anúncios.
+  void atualizarTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
+  if (Date.now() - ultimasMetricas > 3 * 3600_000) {
+    ultimasMetricas = Date.now();
+    void atualizarMetricas().catch((e: Error) => console.warn(`[metricas] ${e.message}`));
   }
   return Response.json(r);
 }

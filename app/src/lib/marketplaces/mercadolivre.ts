@@ -232,6 +232,35 @@ export const mercadoLivre: MarketplaceAdapter = {
     return lista;
   },
 
+  async metricas(conta, ids) {
+    // A API de visitas aceita um anúncio por vez: visitas totais desde a publicação.
+    const out: Record<string, { visitas: number; curtidas: number }> = {};
+    for (const id of ids) {
+      const r = await api<Record<string, number>>(`/visits/items?ids=${encodeURIComponent(id)}`, conta.accessToken).catch(() => null);
+      if (r && typeof r[id] === "number") out[id] = { visitas: r[id], curtidas: 0 };
+    }
+    return out;
+  },
+
+  async taxas(conta, _id, dados) {
+    // Tarifa de venda (comissão + tarifa fixa) vem em cada item; o frete que o vendedor paga, no custo do envio.
+    const d = dados as { pedido?: { status?: string; order_items?: { sale_fee?: number; quantity?: number }[]; shipping?: { id?: number } } } | null;
+    const pedido = d?.pedido;
+    if (!pedido) return { taxas: 0, freteVendedor: 0, final: true };
+    if (pedido.status === "cancelled") return { taxas: 0, freteVendedor: 0, final: true };
+    const taxas = (pedido.order_items ?? []).reduce((s, i) => s + (Number(i.sale_fee) || 0) * (Number(i.quantity) || 1), 0);
+    let freteVendedor = 0;
+    let freteOk = !pedido.shipping?.id;
+    if (pedido.shipping?.id) {
+      const c = await api<{ senders?: { cost?: number }[] }>(`/shipments/${pedido.shipping.id}/costs`, conta.accessToken).catch(() => null);
+      if (c) {
+        freteVendedor = (c.senders ?? []).reduce((s, x) => s + (Number(x.cost) || 0), 0);
+        freteOk = true;
+      }
+    }
+    return { taxas: Math.round(taxas * 100) / 100, freteVendedor: Math.round(freteVendedor * 100) / 100, final: freteOk && pedido.status === "paid" };
+  },
+
   async pedidos(conta, { desde, ate, porAtualizacao, reconferir = [] }) {
     type Pedido = {
       id: number;
