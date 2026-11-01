@@ -1,0 +1,26 @@
+name: Diagnóstico métricas gravadas (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-metricas.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Totais de visualizações e taxas (sem dados pessoais)
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          sleep 240
+          docker compose logs --since 10m app 2>&1 | grep -i "taxas\|metricas" | tail -10
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          console.log(JSON.stringify(await sql`select marketplace, count(*)::int anuncios, sum(visitas)::int visitas, sum(curtidas)::int curtidas, max(metricas_em) em from anuncios where status='publicado' group by 1`));
+          console.log(JSON.stringify(await sql`select marketplace, count(*)::int pedidos, sum(total)::float vendido, sum(taxas)::float taxas, sum(frete_vendedor)::float frete, count(*) filter (where taxas_final)::int fechados from pedidos_marketplace where data > now() - interval '90 days' and conta_id is not null group by 1`));
+          await sql.end();
+          JS
+          REMOTO
