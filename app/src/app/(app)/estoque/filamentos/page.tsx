@@ -7,12 +7,11 @@ import { db } from "@/db";
 import { filamentos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { capacidadeProducao } from "@/lib/filamentos";
-import { cn, formatBRL } from "@/lib/utils";
+import { cn, formatBRL, formatGramas, precoGrama } from "@/lib/utils";
 import { FilamentoForm } from "./filamento-form";
 
 export const metadata: Metadata = { title: "Filamentos" };
 
-const kg = (g: number) => `${(g / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg`;
 
 export default async function FilamentosPage({ searchParams }: { searchParams: Promise<{ novo?: string }> }) {
   await requireUser();
@@ -42,13 +41,13 @@ export default async function FilamentosPage({ searchParams }: { searchParams: P
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <Card className="p-4 sm:p-5">
           <p className="text-xs font-semibold tracking-wider text-muted uppercase">Em estoque</p>
-          <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl">{kg(totalG)}</p>
+          <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl">{formatGramas(totalG)}</p>
           <p className="mt-1 text-xs text-muted">{ativos.length} filamento(s) · {ativos.filter((f) => f.saldoG > 0).length} cor(es) com saldo</p>
         </Card>
         <Card className="p-4 sm:p-5">
           <p className="text-xs font-semibold tracking-wider text-muted uppercase">Valor a custo</p>
           <p className="mt-2 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl">{formatBRL(valor)}</p>
-          <p className="mt-1 text-xs text-muted">Saldo × custo médio do kg</p>
+          <p className="mt-1 text-xs text-muted">Saldo (g) × custo médio do grama</p>
         </Card>
         <Card className={cn("p-4 sm:p-5", comprar && "border-gold/50")}>
           <p className="text-xs font-semibold tracking-wider text-muted uppercase">Comprar</p>
@@ -94,12 +93,12 @@ export default async function FilamentosPage({ searchParams }: { searchParams: P
                     </div>
                     {f.saldoG <= f.minimoG ? <Badge tone={f.saldoG <= 0 ? "red" : "gold"}>{f.saldoG <= 0 ? "Acabou" : "Comprar"}</Badge> : null}
                   </div>
-                  <p className={cn("mt-4 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", f.saldoG <= 0 && "text-red")}>{kg(f.saldoG)}</p>
+                  <p className={cn("mt-4 font-display text-[clamp(1rem,5.2vw,1.5rem)] font-extrabold whitespace-nowrap sm:text-2xl", f.saldoG <= 0 && "text-red")}>{formatGramas(f.saldoG)}</p>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-surface-2">
                     <div className="h-full rounded-full" style={{ width: `${pct}%`, background: f.corHex }} />
                   </div>
                   <p className="mt-2 text-xs text-muted">
-                    {formatBRL(f.custoKg)}/kg · {(Math.max(0, f.saldoG) / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} rolo(s) de 1 kg
+                    {precoGrama(f.custoKg)} · custo médio
                   </p>
                   {pecas.length ? (
                     <div className="mt-3 grid gap-1 border-t border-border pt-3 text-xs">

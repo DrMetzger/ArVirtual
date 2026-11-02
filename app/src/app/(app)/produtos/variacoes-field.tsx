@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Badge, Button, Card, CardHeader, Input, Select } from "@/components/ui";
 import { custoComposicao, gramasTotais, type Componente, type ParametrosImpressao } from "@/lib/impressao";
-import { cn, formatBRL, formatValor, parseDecimal } from "@/lib/utils";
+import { cn, formatBRL, formatGramas, formatValor, parseDecimal } from "@/lib/utils";
 
 export type FilamentoOpt = { id: number; material: string; cor: string; marca: string; custoKg: number; saldoG: number; corHex: string };
 export type VariacaoInicial = {
@@ -245,7 +245,7 @@ export function VariacoesField({
                         {f.material} {f.cor}
                         {f.marca ? <span className="text-muted"> · {f.marca}</span> : null}
                       </span>
-                      <span className="text-xs text-muted">{(f.saldoG / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg</span>
+                      <span className="text-xs text-muted">{formatGramas(f.saldoG)}</span>
                     </button>
                   ))}
                 </div>

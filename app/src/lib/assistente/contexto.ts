@@ -111,7 +111,7 @@ ${(["mercadolivre", "shopee", "magalu", "loja"] as const)
   .join("\n")}
 
 === FILAMENTOS EM ESTOQUE ===
-${fils.length ? fils.map((f) => `${f.material} ${f.cor}${f.marca ? ` (${f.marca})` : ""}: ${(f.saldoG / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg, ${brl(f.custoKg)}/kg`).join("\n") : "Nenhum filamento cadastrado."}
+${fils.length ? fils.map((f) => `${f.material} ${f.cor}${f.marca ? ` (${f.marca})` : ""}: ${f.saldoG} g, R$ ${(f.custoKg / 1000).toFixed(4).replace(".", ",")}/g`).join("\n") : "Nenhum filamento cadastrado."}
 
 === PRODUTOS ATIVOS (${prods.length}${prods.length === 60 ? "+, mais recentes" : ""}) ===
 ${prods.length ? prods.map((p) => `${p.sku} · ${p.nome} · ${[p.material, p.cor].filter(Boolean).join(" ") || "-"} · preço ${brl(p.preco)} · custo ${brl(p.custo)} · estoque ${p.estoque} · ${p.filamentoG} g · ${p.tempo} min${p.a || p.l || p.c ? ` · ${p.c}×${p.l}×${p.a} cm` : ""}`).join("\n") : "Nenhum produto cadastrado."}

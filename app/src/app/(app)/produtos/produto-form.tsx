@@ -8,7 +8,7 @@ import { SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Produto } from "@/db/schema";
 import { custoComposicao, gramasTotais, type ParametrosImpressao } from "@/lib/impressao";
 import type { ParametrosPreco } from "@/lib/precificacao";
-import { formatBRL, formatValor, parseDecimal } from "@/lib/utils";
+import { formatBRL, formatGramas, formatValor, parseDecimal, precoGrama } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { CadastroIA, type ResultadoIA } from "./cadastro-ia";
 import { NcmField } from "./ncm-field";
@@ -244,7 +244,7 @@ export function ProdutoForm({
                       {filamentos.map((x) => (
                         <option key={x.id} value={x.id}>
                           {x.material} {x.cor}
-                          {x.marca ? ` (${x.marca})` : ""} · {(x.saldoG / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 2 })} kg
+                          {x.marca ? ` (${x.marca})` : ""} · {formatGramas(x.saldoG)}
                         </option>
                       ))}
                     </Select>
@@ -302,7 +302,7 @@ export function ProdutoForm({
                 : composicao.length > 1
                   ? "Cada parte com o seu filamento e tempo. A produção baixa cada filamento."
                   : fil
-                    ? `${(fil.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg em estoque · ${formatBRL(fil.custoKg)}/kg`
+                    ? `${formatGramas(fil.saldoG)} em estoque · ${precoGrama(fil.custoKg)}`
                     : "Escolha o filamento para baixar na produção e usar o custo médio. Peça em várias cores: + Filamento."}
             </p>
           </div>

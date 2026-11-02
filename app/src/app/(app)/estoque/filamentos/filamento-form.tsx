@@ -39,11 +39,14 @@ export function FilamentoForm({ filamento }: { filamento?: Filamento }) {
           </label>
         ) : (
           <>
-            <Field label="Saldo atual (kg)" hint="Quanto você tem hoje (pese os rolos abertos).">
-              <Input name="saldoKg" inputMode="decimal" placeholder="Ex.: 2,35" />
+            <Field label="Saldo atual (g)" hint="Quanto você tem hoje (pese os rolos abertos).">
+              <Input name="saldoG" type="number" min={0} placeholder="Ex.: 2350" />
             </Field>
-            <Field label="Custo por kg (R$)">
-              <Input name="custoKg" inputMode="decimal" placeholder="Ex.: 89,90" />
+            <Field label="Valor pago no rolo (R$)" hint="O custo do grama sai do valor ÷ peso do rolo.">
+              <Input name="valorPago" inputMode="decimal" placeholder="Ex.: 89,90" />
+            </Field>
+            <Field label="Peso do rolo (g)">
+              <Input name="pesoRoloG" type="number" min={1} defaultValue={1000} />
             </Field>
           </>
         )}
