@@ -8,7 +8,7 @@ import { db } from "@/db";
 import { filamentos, movimentosFilamento, usuarios } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { capacidadeProducao } from "@/lib/filamentos";
-import { cn, formatBRL, formatDate } from "@/lib/utils";
+import { cn, formatBRL, formatDate, formatGramas, precoGrama } from "@/lib/utils";
 import { FilamentoForm } from "../filamento-form";
 import { MovimentarFilamento } from "./movimentar";
 
@@ -48,7 +48,7 @@ export default async function FilamentoPage({ params }: { params: Promise<{ id: 
         description={
           <span className="inline-flex items-center gap-2">
             <span className="size-4 rounded-full border border-border" style={{ background: f.corHex }} />
-            {f.marca || "sem marca"} · {(f.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg · {formatBRL(f.custoKg)}/kg (custo médio)
+            {f.marca || "sem marca"} · {formatGramas(f.saldoG)} · {precoGrama(f.custoKg)} (custo médio)
           </span>
         }
       />
@@ -124,7 +124,7 @@ export default async function FilamentoPage({ params }: { params: Promise<{ id: 
                             ) : (
                               m.observacao
                             )}
-                            {m.custoKg ? <span className="text-xs text-muted"> · {formatBRL(m.custoKg)}/kg</span> : null}
+                            {m.custoKg ? <span className="text-xs text-muted"> · {precoGrama(m.custoKg)}</span> : null}
                             {usuario ? <span className="text-xs text-muted"> · {usuario.split(" ")[0]}</span> : null}
                           </td>
                         </tr>

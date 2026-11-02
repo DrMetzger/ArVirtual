@@ -48,3 +48,13 @@ export const UFS = [
   "AC", "AL", "AM", "AP", "BA", "CE", "DF", "ES", "GO", "MA", "MG", "MS", "MT", "PA", "PB",
   "PE", "PI", "PR", "RJ", "RN", "RO", "RR", "RS", "SC", "SE", "SP", "TO",
 ] as const;
+
+/** Filamento sempre em gramas: "5.750 g". */
+export function formatGramas(g: number) {
+  return `${Math.round(g).toLocaleString("pt-BR")} g`;
+}
+
+/** Preço do grama a partir do custo por kg guardado no banco: "R$ 0,0899/g". */
+export function precoGrama(custoKg: number) {
+  return `${(custoKg / 1000).toLocaleString("pt-BR", { style: "currency", currency: "BRL", minimumFractionDigits: 2, maximumFractionDigits: 4 })}/g`;
+}

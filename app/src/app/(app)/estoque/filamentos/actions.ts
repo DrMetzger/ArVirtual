@@ -29,8 +29,10 @@ export async function salvarFilamento(id: number | null, _: FormState, form: For
     if (id) {
       await db.update(filamentos).set({ ...p.data, ativo: form.get("ativo") === "on", atualizadoEm: new Date() }).where(eq(filamentos.id, id));
     } else {
-      const saldo = Math.round(parseDecimal(form.get("saldoKg")) * 1000);
-      const custoKg = parseDecimal(form.get("custoKg"));
+      // Tudo em gramas na tela; o banco guarda o custo por kg (custo médio ponderado).
+      const saldo = Math.max(0, Math.round(Number(form.get("saldoG")) || 0));
+      const pesoRolo = Math.max(1, Number(form.get("pesoRoloG")) || 1000);
+      const custoKg = Math.round((parseDecimal(form.get("valorPago")) / pesoRolo) * 1000 * 100) / 100;
       id = await db.transaction(async (tx) => {
         const [f] = await tx.insert(filamentos).values({ ...p.data, custoKg }).returning({ id: filamentos.id });
         if (saldo > 0) await movimentarFilamento(tx, { filamentoId: f!.id, gramas: saldo, tipo: "entrada", custoKg, observacao: "Saldo inicial", usuarioId: user.sub });
@@ -47,7 +49,7 @@ export async function salvarFilamento(id: number | null, _: FormState, form: For
 
 const MovSchema = z.object({ tipo: z.enum(["entrada", "ajuste", "consumo"]), gramas: z.coerce.number().int().min(0), observacao: z.string().trim().max(500) });
 
-/** Entrada avulsa (com custo/kg), consumo avulso ou pesagem (ajuste para o peso real). */
+/** Entrada avulsa (com o valor pago), consumo avulso ou pesagem (ajuste para o peso real). */
 export async function movimentarFilamentoManual(id: number, _: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
   const p = MovSchema.safeParse(Object.fromEntries(form));
@@ -63,7 +65,8 @@ export async function movimentarFilamentoManual(id: number, _: FormState, form: 
         filamentoId: id,
         gramas: delta,
         tipo,
-        custoKg: tipo === "entrada" ? parseDecimal(form.get("custoKg")) : undefined,
+        // Valor pago por essas gramas → custo por kg (como o custo médio é guardado).
+        custoKg: tipo === "entrada" && gramas ? Math.round((parseDecimal(form.get("valorPago")) / gramas) * 1000 * 100) / 100 : undefined,
         observacao: observacao || (tipo === "ajuste" ? "Pesagem" : tipo === "entrada" ? "Entrada avulsa" : "Consumo avulso"),
         usuarioId: user.sub,
       });

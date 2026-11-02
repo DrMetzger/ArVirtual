@@ -38,8 +38,8 @@ export function MovimentarFilamento({ id, saldoG }: { id: number; saldoG: number
           <Input key={tipo} name="gramas" type="number" min={0} defaultValue={tipo === "ajuste" ? saldoG : ""} required />
         </Field>
         {tipo === "entrada" ? (
-          <Field label="Custo por kg (R$)" hint="Entra no custo médio.">
-            <Input name="custoKg" inputMode="decimal" />
+          <Field label="Valor pago por essas gramas (R$)" hint="Entra no custo médio do grama.">
+            <Input name="valorPago" inputMode="decimal" placeholder="Ex.: 89,90" />
           </Field>
         ) : null}
         <Field label="Observação">

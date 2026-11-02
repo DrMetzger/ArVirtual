@@ -5,6 +5,7 @@ import { useState } from "react";
 import { Alert, Card, CardHeader, Field, Input, Select } from "@/components/ui";
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import { produzir } from "./actions";
+import { formatGramas } from "@/lib/utils";
 
 type ProdutoOpt = { id: string; sku: string; nome: string; filamentoG: number; filamentoId: number | null; composicao: { filamentoId: number | null; gramas: number }[] };
 type FilamentoOpt = { id: number; nome: string; saldoG: number };
@@ -61,7 +62,7 @@ export function ProducaoForm({ produtos, filamentos }: { produtos: ProdutoOpt[];
             <option value="">Sem baixa de filamento</option>
             {filamentos.map((f) => (
               <option key={f.id} value={f.id}>
-                {f.nome} · {(f.saldoG / 1000).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} kg
+                {f.nome} · {formatGramas(f.saldoG)}
               </option>
             ))}
           </Select>
