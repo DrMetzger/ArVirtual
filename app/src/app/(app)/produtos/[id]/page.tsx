@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, inArray, isNotNull } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
-import { ArrowLeft, Copy, ExternalLink, Trash2 } from "lucide-react";
+import { ArrowLeft, Copy, ExternalLink, RefreshCw, Trash2, Unlink } from "lucide-react";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
@@ -13,7 +13,7 @@ import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { duplicarProduto, excluirProduto } from "../actions";
+import { conferirAnunciosProduto, desvincularAnuncio, duplicarProduto, excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
 import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
@@ -23,11 +23,11 @@ export default async function ProdutoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ salvo?: string; copia?: string }>;
+  searchParams: Promise<{ salvo?: string; copia?: string; ok?: string }>;
 }) {
   await requireUser();
   const { id } = await params;
-  const { salvo, copia } = await searchParams;
+  const { salvo, copia, ok } = await searchParams;
   if (!/^[0-9a-f-]{36}$/i.test(id)) notFound();
   const produto = await db.query.produtos.findFirst({ where: eq(produtos.id, id) });
   if (!produto) notFound();
@@ -89,6 +89,7 @@ export default async function ProdutoPage({
       />
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
+        {ok ? <Alert tone="green">{ok}</Alert> : null}
         {copia ? (
           <Alert tone="green">
             Cópia criada com SKU {produto.sku}, estoque zero e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
@@ -145,9 +146,16 @@ export default async function ProdutoPage({
             <CardHeader
               title="Histórico de anúncios"
               action={
-                <Link href="/marketplaces/anuncios" className={buttonClass("outline", "sm")}>
-                  Vincular anúncio existente
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  <form action={conferirAnunciosProduto.bind(null, id)}>
+                    <SubmitButton variant="outline" size="sm" pendingText="Conferindo...">
+                      <RefreshCw /> Conferir nos marketplaces
+                    </SubmitButton>
+                  </form>
+                  <Link href="/marketplaces/anuncios" className={buttonClass("outline", "sm")}>
+                    Vincular anúncio existente
+                  </Link>
+                </div>
               }
             />
             {historico.length === 0 ? (
@@ -161,7 +169,9 @@ export default async function ProdutoPage({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{MARKETPLACE_INFO[a.marketplace].nome}</span>
                         <span className="text-muted">{a.conta.nome}</span>
-                        <Badge tone={a.status === "publicado" ? "green" : "red"}>{a.status}</Badge>
+                        <Badge tone={a.status === "publicado" ? "green" : a.status === "pausado" ? "gold" : a.status === "encerrado" ? "neutral" : "red"}>
+                          {a.status === "encerrado" ? "não existe mais no marketplace" : a.status}
+                        </Badge>
                       </div>
                       <p className="text-xs text-muted">
                         {formatDate(a.criadoEm)} · {formatBRL(a.preco)}
@@ -169,11 +179,17 @@ export default async function ProdutoPage({
                       </p>
                       {a.mensagem ? <p className="mt-1 break-words text-xs text-red">{a.mensagem}</p> : null}
                     </div>
-                    {a.link ? (
+                    {a.link && a.status !== "encerrado" ? (
                       <a href={a.link} target="_blank" rel="noreferrer" className="text-muted hover:text-gold" title="Abrir anúncio">
                         <ExternalLink className="size-4" />
                       </a>
                     ) : null}
+                    {/* Tira só o vínculo no ERP; o anúncio no marketplace não é alterado. */}
+                    <form action={desvincularAnuncio.bind(null, a.id, id)}>
+                      <button className="flex items-center gap-1 text-xs text-muted hover:text-red" title="Desvincular este anúncio do produto (não mexe no marketplace)">
+                        <Unlink className="size-4" /> <span className="hidden sm:inline">Desvincular</span>
+                      </button>
+                    </form>
                   </div>
                 ))}
               </div>

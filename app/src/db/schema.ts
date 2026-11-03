@@ -354,7 +354,8 @@ export const anuncios = pgTable("anuncios", {
   marketplace: text("marketplace", { enum: MARKETPLACES }).notNull(),
   idExterno: text("id_externo"),
   link: text("link"),
-  status: text("status", { enum: ["publicado", "erro", "pausado"] }).notNull(),
+  /** encerrado = excluído/encerrado no marketplace (conferido pela API); sai dos números e das bandeiras. */
+  status: text("status", { enum: ["publicado", "erro", "pausado", "encerrado"] }).notNull(),
   preco: money("preco").notNull(),
   mensagem: text("mensagem").notNull().default(""),
   /** Visualizações do anúncio (ML: visitas totais; Shopee: views) e curtidas (Shopee), lidas da API. */

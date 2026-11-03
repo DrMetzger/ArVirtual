@@ -232,6 +232,22 @@ export const mercadoLivre: MarketplaceAdapter = {
     return lista;
   },
 
+  async situacao(conta, ids) {
+    const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
+    for (let i = 0; i < ids.length; i += 20) {
+      const lote = ids.slice(i, i + 20);
+      const r = await api<{ code: number; body: { id?: string; status?: string } }[]>(`/items?ids=${lote.join(",")}&attributes=id,status`, conta.accessToken).catch(() => null);
+      if (!r) continue;
+      r.forEach(({ code, body }, j) => {
+        const id = body?.id ?? lote[j]!;
+        // 404 = excluído; closed/inactive = encerrado; paused = pausado; o resto (active, under_review) segue no ar.
+        if (code === 404 || body?.status === "closed" || body?.status === "inactive") out[id] = "encerrado";
+        else if (code === 200) out[id] = body.status === "paused" ? "pausado" : "publicado";
+      });
+    }
+    return out;
+  },
+
   async metricas(conta, ids) {
     // A API de visitas aceita um anúncio por vez: visitas totais desde a publicação.
     const out: Record<string, { visitas: number; curtidas: number }> = {};

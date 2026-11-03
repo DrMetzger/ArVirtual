@@ -31,6 +31,46 @@ export async function atualizarMetricas() {
   return n;
 }
 
+/**
+ * Confere nos marketplaces se os anúncios vinculados ainda existem: excluído/encerrado vira "encerrado" (sai das
+ * bandeiras e dos números), pausado vira "pausado" e, se voltar, "publicado". `produtoIds` limita a alguns produtos.
+ */
+export async function conferirAnuncios(produtoIds?: string[]) {
+  const contas = await db.select().from(contasMarketplace);
+  const mudou: { anuncio: number; de: string; para: string }[] = [];
+  for (const conta of contas) {
+    const a = adapter(conta.marketplace);
+    if (!a.situacao) continue;
+    const lista = await db
+      .select({ id: anuncios.id, idExterno: anuncios.idExterno, status: anuncios.status })
+      .from(anuncios)
+      .where(
+        and(
+          eq(anuncios.contaId, conta.id),
+          inArray(anuncios.status, ["publicado", "pausado", "encerrado"]),
+          isNotNull(anuncios.idExterno),
+          produtoIds?.length ? inArray(anuncios.produtoId, produtoIds) : undefined,
+        ),
+      );
+    if (!lista.length) continue;
+    try {
+      const sit = await a.situacao(await contaComToken(conta), [...new Set(lista.map((l) => l.idExterno!))]);
+      for (const l of lista) {
+        const novo = sit[l.idExterno!];
+        if (!novo || novo === l.status) continue;
+        await db
+          .update(anuncios)
+          .set({ status: novo, mensagem: novo === "encerrado" ? "Não existe mais no marketplace (excluído ou encerrado)." : "", atualizadoEm: new Date() })
+          .where(eq(anuncios.id, l.id));
+        mudou.push({ anuncio: l.id, de: l.status, para: novo });
+      }
+    } catch (e) {
+      console.warn(`[anuncios] ${conta.marketplace}: ${(e as Error).message}`);
+    }
+  }
+  return mudou;
+}
+
 /** Taxas dos pedidos dos últimos 90 dias que ainda não estão fechadas (até `limite` por rodada). */
 export async function atualizarTaxas(limite = 150) {
   const pendentes = await db
