@@ -579,3 +579,24 @@ async function ordenarMidias(form: FormData, campoOrdem: string, campoArquivos: 
   for (const u of enviados) if (!out.includes(u)) out.push(u);
   return out;
 }
+
+/** Confere nos marketplaces os anúncios deste produto (e das variações): excluídos viram "encerrado". */
+export async function conferirAnunciosProduto(produtoId: string) {
+  await requireUser();
+  const { conferirAnuncios } = await import("@/lib/metricas");
+  const variacoes = await db.select({ id: produtos.id }).from(produtos).where(eq(produtos.paiId, produtoId));
+  const mudou = await conferirAnuncios([produtoId, ...variacoes.map((v) => v.id)]);
+  revalidatePath(`/produtos/${produtoId}`);
+  revalidatePath("/produtos");
+  const enc = mudou.filter((m) => m.para === "encerrado").length;
+  redirect(`/produtos/${produtoId}?ok=${encodeURIComponent(mudou.length ? `${mudou.length} anúncio(s) mudaram de situação${enc ? ` (${enc} não existem mais no marketplace)` : ""}.` : "Todos os anúncios conferidos: nada mudou.")}`);
+}
+
+/** Tira o vínculo do anúncio com o produto (só no ERP: nada é alterado no marketplace). */
+export async function desvincularAnuncio(anuncioId: number, produtoId: string) {
+  await requireUser();
+  await db.delete(anuncios).where(eq(anuncios.id, anuncioId));
+  revalidatePath(`/produtos/${produtoId}`);
+  revalidatePath("/produtos");
+  redirect(`/produtos/${produtoId}?ok=${encodeURIComponent("Anúncio desvinculado deste produto (nada foi alterado no marketplace).")}`);
+}

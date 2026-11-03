@@ -49,11 +49,13 @@ export async function vincularAnuncio(
 /** Botão "Atualizar agora": visualizações dos anúncios e taxas dos pedidos, direto das APIs. */
 export async function atualizarMetricasTaxas() {
   await requireUser();
-  const { atualizarMetricas, atualizarTaxas } = await import("@/lib/metricas");
+  const { atualizarMetricas, atualizarTaxas, conferirAnuncios } = await import("@/lib/metricas");
   let msg: string;
   try {
+    const mudou = await conferirAnuncios();
     const [a, t] = [await atualizarMetricas(), await atualizarTaxas(400)];
-    msg = `ok=${encodeURIComponent(`${a} anúncio(s) com visualizações e ${t} pedido(s) com taxas atualizados.`)}`;
+    const encerrados = mudou.filter((m) => m.para === "encerrado").length;
+    msg = `ok=${encodeURIComponent(`${a} anúncio(s) com visualizações e ${t} pedido(s) com taxas atualizados.${encerrados ? ` ${encerrados} anúncio(s) não existem mais no marketplace e saíram dos números.` : ""}`)}`;
   } catch (e) {
     msg = `erro=${encodeURIComponent((e as Error).message)}`;
   }

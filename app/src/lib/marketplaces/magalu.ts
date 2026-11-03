@@ -454,6 +454,23 @@ export const magalu: MarketplaceAdapter = {
     return out;
   },
 
+  async situacao(conta, ids) {
+    const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
+    for (const id of ids) {
+      const res = await fetch(`${API}/seller/v1/portfolios/skus/${encodeURIComponent(id)}`, {
+        headers: { Authorization: `Bearer ${conta.accessToken}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(30_000),
+      }).catch(() => null);
+      if (!res) continue;
+      if (res.status === 404) out[id] = "encerrado";
+      else if (res.ok) {
+        const st = String(((await res.json().catch(() => ({}))) as { status?: string }).status ?? "").toUpperCase();
+        out[id] = ["DELETED", "DELETING"].includes(st) ? "encerrado" : ["UNPUBLISHED", "BLOCKED", "INACTIVE"].includes(st) ? "pausado" : "publicado";
+      }
+    }
+    return out;
+  },
+
   async taxas(_conta, _id, dados) {
     // A comissão do Magalu vem no próprio pedido (amounts.commission, em centavos com normalizer).
     const a = (dados as { amounts?: { commission?: { total?: number; normalizer?: number } }; status?: string } | null) ?? {};

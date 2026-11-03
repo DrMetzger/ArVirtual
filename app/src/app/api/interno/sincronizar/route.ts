@@ -1,7 +1,7 @@
 import { chamadaInterna } from "@/lib/interno";
 import { afiliadosConfigurado, sincronizarComissoes } from "@/lib/afiliados";
 import { sincronizarPedidos } from "@/lib/marketplaces";
-import { atualizarMetricas, atualizarTaxas } from "@/lib/metricas";
+import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
 let ultimasMetricas = 0;
@@ -20,7 +20,10 @@ export async function POST(req: Request) {
   void atualizarTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
   if (Date.now() - ultimasMetricas > 3 * 3600_000) {
     ultimasMetricas = Date.now();
-    void atualizarMetricas().catch((e: Error) => console.warn(`[metricas] ${e.message}`));
+    // Antes das visualizações: anúncio excluído no marketplace deixa de contar.
+    void conferirAnuncios()
+      .then(() => atualizarMetricas())
+      .catch((e: Error) => console.warn(`[metricas] ${e.message}`));
   }
   return Response.json(r);
 }

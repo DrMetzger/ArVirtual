@@ -135,6 +135,7 @@ export type PedidoExterno = {
 };
 
 export type MetricasAnuncio = { visitas: number; curtidas: number };
+export type SituacaoAnuncio = "publicado" | "pausado" | "encerrado";
 /** Taxas do pedido; `final` = valor fechado (enquanto não, é parcial e é lido de novo depois). */
 export type TaxasPedido = { taxas: number; freteVendedor: number; final: boolean };
 
@@ -155,6 +156,8 @@ export interface MarketplaceAdapter {
   pedidos(conta: ContaComToken, filtro: FiltroPedidos): Promise<PedidoExterno[]>;
   /** Visualizações e curtidas dos anúncios (id externo → números). */
   metricas?(conta: ContaComToken, ids: string[]): Promise<Record<string, MetricasAnuncio>>;
+  /** Situação atual dos anúncios no marketplace (só os que deu para conferir; os que não existem mais vêm "encerrado"). */
+  situacao?(conta: ContaComToken, ids: string[]): Promise<Record<string, SituacaoAnuncio>>;
   /** Taxas que o marketplace cobrou no pedido (`dados` é o pedido como a API devolveu). */
   taxas?(conta: ContaComToken, idExterno: string, dados: unknown): Promise<TaxasPedido>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */

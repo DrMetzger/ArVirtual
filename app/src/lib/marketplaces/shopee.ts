@@ -429,6 +429,24 @@ export const shopee: MarketplaceAdapter = {
     return lista;
   },
 
+  async situacao(conta, ids) {
+    const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const lote = ids.slice(i, i + 50);
+      const r = await shopCall<ShopeeBase & { response?: { item_list?: { item_id: number; item_status?: string }[] } }>(conta, "/api/v2/product/get_item_base_info", {
+        query: { item_id_list: lote.join(",") },
+      }).catch(() => null);
+      if (!r?.response) continue;
+      const achados = new Map((r.response.item_list ?? []).map((it) => [String(it.item_id), it.item_status ?? "NORMAL"]));
+      for (const id of lote) {
+        const st = achados.get(id);
+        // Não veio na resposta ou DELETED/BANNED = não existe mais; UNLIST = pausado.
+        out[id] = !st || st === "DELETED" || st === "BANNED" ? "encerrado" : st === "UNLIST" ? "pausado" : "publicado";
+      }
+    }
+    return out;
+  },
+
   async metricas(conta, ids) {
     const out: Record<string, { visitas: number; curtidas: number }> = {};
     for (let i = 0; i < ids.length; i += 50) {
