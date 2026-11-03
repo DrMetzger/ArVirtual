@@ -10,7 +10,7 @@ export async function proxy(req: NextRequest) {
   // Termos e privacidade são públicos (links mostrados pelos marketplaces no consentimento).
   if (["/termos", "/privacidade"].includes(req.nextUrl.pathname)) return NextResponse.next();
   // Download do app Android: oferecido na tela de login, antes de entrar.
-  if (req.nextUrl.pathname === "/baixar/android" || req.nextUrl.pathname === "/bloqueado") return NextResponse.next();
+  if (["/baixar/android", "/bloqueado", "/atualizar-app"].includes(req.nextUrl.pathname)) return NextResponse.next();
 
   if (!session && !isLogin) {
     if (req.nextUrl.pathname.startsWith("/api/")) {
