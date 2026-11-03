@@ -4,14 +4,18 @@ import { Alert } from "@/components/ui";
 import { ThemeToggle } from "@/components/ui/client";
 import { headers } from "next/headers";
 import { BaixarApp } from "@/components/baixar-app";
-import { dentroDoApp, infoApp } from "@/lib/app-android";
+import { appDesatualizado, dentroDoApp, infoApp } from "@/lib/app-android";
+import { redirect } from "next/navigation";
 import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Entrar" };
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string; expirou?: string }> }) {
   const { de, expirou } = await searchParams;
-  const app = dentroDoApp((await headers()).get("user-agent")) ? null : await infoApp();
+  const ua = (await headers()).get("user-agent");
+  // App antigo nem chega a entrar: vai direto para a tela de atualização.
+  if (await appDesatualizado(ua)) redirect("/atualizar-app");
+  const app = dentroDoApp(ua) ? null : await infoApp();
   return (
     <main className="relative grid min-h-dvh lg:grid-cols-2">
       <section className="relative hidden overflow-hidden bg-sidebar p-12 text-white lg:flex lg:flex-col lg:justify-between">

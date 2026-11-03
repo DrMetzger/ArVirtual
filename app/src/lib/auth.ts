@@ -2,6 +2,7 @@ import "server-only";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { cache } from "react";
+import { appDesatualizado } from "./app-android";
 import { aparelhoBloqueado, idDoAparelho } from "./aparelhos";
 import { SESSION_COOKIE, verifySession } from "./session";
 
@@ -10,7 +11,10 @@ export const requireUser = cache(async () => {
   const session = await verifySession((await cookies()).get(SESSION_COOKIE)?.value);
   if (!session) redirect("/login");
   // Celular bloqueado em Configurações › Aparelhos perde o acesso na hora (até com a sessão aberta).
-  if (await aparelhoBloqueado(idDoAparelho((await headers()).get("user-agent")))) redirect("/bloqueado");
+  const ua = (await headers()).get("user-agent");
+  if (await aparelhoBloqueado(idDoAparelho(ua))) redirect("/bloqueado");
+  // App do celular numa versão antiga: não usa o sistema até atualizar.
+  if (await appDesatualizado(ua)) redirect("/atualizar-app");
   return session;
 });
 
