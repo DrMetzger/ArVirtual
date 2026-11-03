@@ -49,7 +49,9 @@ async function infoAppCache() {
  */
 export async function appDesatualizado(userAgent: string | null) {
   const usada = versaoDoApp(userAgent);
-  if (!usada) return null;
+  // Só bloqueia o app que sabe se atualizar sozinho (baixa e abre o instalador: "instalador/1" no user-agent).
+  // Os antigos não conseguem instalar por dentro: bloquear deixaria a pessoa presa na tela de atualização.
+  if (!usada || !/\binstalador\/\d+/.test(userAgent ?? "")) return null;
   const ultima = (await infoAppCache())?.versao;
   return ultima && compararVersao(usada, ultima) < 0 ? { usada, ultima } : null;
 }
