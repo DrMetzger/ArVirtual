@@ -47,7 +47,7 @@ export async function vincularAnuncio(
 }
 
 /** Botão "Atualizar agora": visualizações dos anúncios e taxas dos pedidos, direto das APIs. */
-export async function atualizarMetricasTaxas() {
+export async function atualizarMetricasTaxas(voltar = "/marketplaces") {
   await requireUser();
   const { atualizarMetricas, atualizarTaxas, conferirAnuncios } = await import("@/lib/metricas");
   let msg: string;
@@ -59,7 +59,7 @@ export async function atualizarMetricasTaxas() {
   } catch (e) {
     msg = `erro=${encodeURIComponent((e as Error).message)}`;
   }
-  revalidatePath("/marketplaces");
+  revalidatePath("/marketplaces", "layout");
   revalidatePath("/produtos");
-  redirect(`/marketplaces?${msg}`);
+  redirect(`${voltar.startsWith("/marketplaces") ? voltar : "/marketplaces"}?${msg}`);
 }

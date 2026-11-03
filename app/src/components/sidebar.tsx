@@ -30,6 +30,8 @@ import {
   BadgePercent,
   TrendingUp,
   Clapperboard,
+  Link2,
+  Music2,
   BarChart3,
   Wrench,
   Smartphone,
@@ -43,7 +45,8 @@ import { ThemeToggle } from "@/components/ui/client";
 import { COOKIE_MENU } from "@/lib/menu";
 import { cn } from "@/lib/utils";
 
-type Item = { href: string; label: string; icon: LucideIcon };
+/** `imagem`: ícone da marca (marketplaces) no lugar do ícone de linha; `selo`: etiqueta ao lado (ex.: "em breve"). */
+type Item = { href: string; label: string; icon: LucideIcon; imagem?: string; selo?: string };
 type Grupo = { label: string; icon: LucideIcon; itens: Item[] };
 
 // Módulos do backoffice, cada um no seu grupo.
@@ -65,7 +68,19 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
       { href: "/notas", label: "Notas fiscais", icon: FileText },
-      { href: "/marketplaces", label: "Marketplaces", icon: Store },
+    ],
+  },
+  {
+    // Cada marketplace no seu lugar, com tudo o que a API dele oferece.
+    label: "Marketplaces",
+    icon: Store,
+    itens: [
+      { href: "/marketplaces", label: "Visão geral", icon: Store },
+      { href: "/marketplaces/mercadolivre", label: "Mercado Livre", icon: Store, imagem: "/marcas/mercadolivre-icone.png" },
+      { href: "/marketplaces/shopee", label: "Shopee", icon: Store, imagem: "/marcas/shopee-icone.png" },
+      { href: "/marketplaces/magalu", label: "Magalu", icon: Store, imagem: "/marcas/magalu-icone.png" },
+      { href: "/marketplaces/tiktok", label: "TikTok Shop", icon: Music2, selo: "em breve" },
+      { href: "/marketplaces/anuncios", label: "Vincular anúncios", icon: Link2 },
     ],
   },
   {
@@ -149,8 +164,13 @@ function Link_({ item, recolhido, sub, onNavigate }: { item: Item; recolhido?: b
       )}
     >
       {on && !sub ? <span className="absolute inset-y-2 left-0 w-1 rounded-full bg-[#ef4b51]" /> : null}
-      <Icon className={cn(sub ? "size-4" : "size-[18px]", on ? "text-[#e6c158]" : "opacity-70 group-hover:opacity-100")} />
+      {item.imagem ? (
+        <img src={item.imagem} alt="" className={cn("shrink-0 rounded bg-white object-contain p-px", sub ? "size-4" : "size-[18px]", !on && "opacity-80 group-hover:opacity-100")} />
+      ) : (
+        <Icon className={cn(sub ? "size-4" : "size-[18px]", on ? "text-[#e6c158]" : "opacity-70 group-hover:opacity-100")} />
+      )}
       {recolhido ? null : item.label}
+      {!recolhido && item.selo ? <span className="ml-auto rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] font-semibold text-sidebar-fg">{item.selo}</span> : null}
     </Link>
   );
 }
