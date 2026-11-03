@@ -1,4 +1,4 @@
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Moon } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Moon, Package } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { CANAIS, MarcaIcone, type Canal } from "@/components/marca";
@@ -56,7 +56,8 @@ export default async function AnalisesPage({ searchParams }: { searchParams: Pro
       destaque: t.faturamento ? `margem ${pct(t.lucro / t.faturamento)}` : "",
     },
   ];
-  const semCusto = r.ranking.filter((l) => l.semCusto).length;
+  const semCusto = r.ranking.filter((l) => l.semCusto && l.produtoId).length;
+  const semVinculo = r.ranking.filter((l) => !l.produtoId).length;
   const maxCanal = Math.max(...r.canais.map((c) => c.faturamento), 1);
   const melhorDia = r.semana.reduce((m, d, i) => (d.faturamento > r.semana[m]!.faturamento ? i : m), 0);
 
@@ -103,6 +104,14 @@ export default async function AnalisesPage({ searchParams }: { searchParams: Pro
             </Card>
           ))}
         </div>
+        {semVinculo ? (
+          <p className="flex items-center gap-2 text-xs text-gold">
+            <AlertTriangle className="size-4" /> {semVinculo} produto(s) vendidos por anúncio que não está ligado a um produto do cadastro: sem foto e sem custo.{" "}
+            <Link href="/marketplaces/anuncios" className="font-semibold underline">
+              Vincular anúncios
+            </Link>
+          </p>
+        ) : null}
         {semCusto ? (
           <p className="flex items-center gap-2 text-xs text-gold">
             <AlertTriangle className="size-4" /> {semCusto} produto(s) vendidos sem custo cadastrado: o lucro deles está maior do que o real. Cadastre o custo no produto.
@@ -172,7 +181,13 @@ export default async function AnalisesPage({ searchParams }: { searchParams: Pro
                   const margem = l.faturamento ? l.lucro / l.faturamento : 0;
                   const conteudo = (
                     <>
-                      {l.imagem ? <img src={l.imagem} alt="" className="size-11 shrink-0 rounded-lg bg-surface-2 object-contain" /> : <span className="size-11 shrink-0 rounded-lg bg-surface-2" />}
+                      {l.imagem ? (
+                        <img src={l.imagem} alt="" className="size-11 shrink-0 rounded-lg bg-surface-2 object-contain" />
+                      ) : (
+                        <span className="grid size-11 shrink-0 place-items-center rounded-lg bg-surface-2 text-muted">
+                          <Package className="size-5" />
+                        </span>
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className="flex items-center gap-2">
                           <Badge tone={CLASSE[l.classe].tom} title={CLASSE[l.classe].dica}>
@@ -182,7 +197,11 @@ export default async function AnalisesPage({ searchParams }: { searchParams: Pro
                         </p>
                         <p className="text-xs text-muted">
                           {l.unidades} un. · {formatBRL(l.faturamento)}
-                          {l.semCusto ? <span className="text-gold"> · sem custo cadastrado</span> : null}
+                          {!l.produtoId ? (
+                            <span className="text-gold"> · anúncio não vinculado a um produto do cadastro</span>
+                          ) : l.semCusto ? (
+                            <span className="text-gold"> · sem custo cadastrado</span>
+                          ) : null}
                         </p>
                       </div>
                       <div className="shrink-0 text-right">
@@ -196,9 +215,10 @@ export default async function AnalisesPage({ searchParams }: { searchParams: Pro
                       {conteudo}
                     </Link>
                   ) : (
-                    <div key={l.chave} className="flex items-center gap-3 px-4 py-2.5 sm:px-5" title="Item sem produto vinculado (SKU não encontrado no cadastro)">
+                    // Sem vínculo: leva para "Vincular anúncios" (lucro e custo só saem certos com o produto ligado).
+                    <Link key={l.chave} href="/marketplaces/anuncios" className="flex items-center gap-3 px-4 py-2.5 hover:bg-surface-2/60 sm:px-5" title="Clique para vincular este anúncio ao produto">
                       {conteudo}
-                    </div>
+                    </Link>
                   );
                 })}
               </div>
