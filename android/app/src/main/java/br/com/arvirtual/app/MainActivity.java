@@ -146,6 +146,11 @@ public class MainActivity extends Activity {
         // Downloads (ZIP de fotos, 3MF/STL, XML/PDF de notas): baixa com o login do app e avisa na barra de notificações.
         web.setDownloadListener((url, userAgent, contentDisposition, mimeType, tamanho) -> {
             if (!url.startsWith("http")) return;
+            // Atualização do app: baixa e abre o instalador sozinho.
+            if (Atualizador.ehApk(url, mimeType)) {
+                Atualizador.baixar(this, url, userAgent);
+                return;
+            }
             try {
                 String nome = URLUtil.guessFileName(url, contentDisposition, mimeType);
                 DownloadManager.Request pedido = new DownloadManager.Request(Uri.parse(url));
@@ -223,6 +228,8 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        // Voltou da permissão "instalar apps desconhecidos": continua a atualização.
+        Atualizador.continuarPendente(this);
         atualizarLocal();
     }
 
