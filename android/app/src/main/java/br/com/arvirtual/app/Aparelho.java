@@ -36,7 +36,8 @@ final class Aparelho {
 
     /** Vai no user-agent de todas as páginas: o ERP reconhece o app e o aparelho (bloqueio vale na hora). */
     static String sufixoUserAgent(Context ctx) {
-        return " ArVirtualApp/" + BuildConfig.VERSION_NAME + " aparelho/" + id(ctx);
+        // instalador/1: este app baixa e instala a própria atualização (o servidor só bloqueia versão antiga que sabe disso).
+        return " ArVirtualApp/" + BuildConfig.VERSION_NAME + " aparelho/" + id(ctx) + " instalador/1";
     }
 
     static JSONObject info(Context ctx, Location local, boolean notificacoes) {

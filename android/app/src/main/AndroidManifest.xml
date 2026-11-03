@@ -9,6 +9,8 @@
     <!-- Localização do aparelho em Configurações › Aparelhos (só com o app aberto). -->
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
+    <!-- Instalar a atualização do próprio app (o Android pede a permissão uma vez). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <!-- Downloads em Android 9 ou anterior. -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
