@@ -30,6 +30,8 @@ import {
   BadgePercent,
   TrendingUp,
   Clapperboard,
+  BarChart3,
+  Wrench,
   Smartphone,
 } from "lucide-react";
 import Image from "next/image";
@@ -53,6 +55,7 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/produtos", label: "Produtos", icon: Package },
       { href: "/clientes", label: "Clientes", icon: Users },
+      { href: "/compras/fornecedores", label: "Fornecedores", icon: Truck },
       { href: "/fiscal", label: "Matriz fiscal", icon: Scale },
     ],
   },
@@ -62,7 +65,13 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/pedidos", label: "Pedidos", icon: ShoppingCart },
       { href: "/notas", label: "Notas fiscais", icon: FileText },
+      { href: "/marketplaces", label: "Marketplaces", icon: Store },
     ],
+  },
+  {
+    label: "Compras",
+    icon: Truck,
+    itens: [{ href: "/compras/notas", label: "Notas de entrada", icon: FileInput }],
   },
   {
     label: "Estoque",
@@ -71,14 +80,6 @@ const NAV: (Item | Grupo)[] = [
       { href: "/estoque", label: "Produtos acabados", icon: Package },
       { href: "/estoque/filamentos", label: "Filamentos", icon: Spool },
       { href: "/estoque/producao", label: "Produção", icon: Printer },
-    ],
-  },
-  {
-    label: "Compras",
-    icon: Truck,
-    itens: [
-      { href: "/compras/notas", label: "Notas de entrada", icon: FileInput },
-      { href: "/compras/fornecedores", label: "Fornecedores", icon: Truck },
     ],
   },
   {
@@ -91,11 +92,23 @@ const NAV: (Item | Grupo)[] = [
       { href: "/financeiro/contas", label: "Contas bancárias", icon: Landmark },
     ],
   },
-  { href: "/marketplaces", label: "Marketplaces", icon: Store },
-  { href: "/pesquisa", label: "Pesquisa de mercado", icon: TrendingUp },
+  {
+    label: "Análises",
+    icon: BarChart3,
+    itens: [
+      { href: "/analises", label: "Análise de vendas", icon: BarChart3 },
+      { href: "/pesquisa", label: "Pesquisa de mercado", icon: TrendingUp },
+    ],
+  },
   { href: "/afiliados", label: "Afiliados Shopee", icon: BadgePercent },
-  { href: "/videos", label: "Conversor de vídeo", icon: Clapperboard },
-  { href: "/assistente", label: "Assistente IA", icon: Sparkles },
+  {
+    label: "Ferramentas",
+    icon: Wrench,
+    itens: [
+      { href: "/assistente", label: "Assistente IA", icon: Sparkles },
+      { href: "/videos", label: "Conversor de vídeo", icon: Clapperboard },
+    ],
+  },
 ];
 const CONFIGURACOES: Item = { href: "/configuracoes", label: "Configurações", icon: Settings };
 
