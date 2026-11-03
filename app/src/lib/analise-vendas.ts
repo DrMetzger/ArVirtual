@@ -1,5 +1,5 @@
 import "server-only";
-import { and, eq, gte, isNull, lt } from "drizzle-orm";
+import { and, eq, gte, isNotNull, isNull, lt } from "drizzle-orm";
 import { db } from "@/db";
 import { anuncios, pedidosMarketplace, produtos, type CanalVenda } from "@/db/schema";
 import { situacaoPedido } from "@/lib/marketplaces/situacao";
@@ -33,26 +33,32 @@ export function intervalo(p: Periodo) {
 }
 
 export type Totais = { faturamento: number; pedidos: number; unidades: number; taxas: number; custoProducao: number; lucro: number };
-export type LinhaProduto = Totais & { chave: string; produtoId: string | null; nome: string; imagem: string; classe: "A" | "B" | "C"; semCusto: boolean };
+export type LinhaProduto = Totais & { chave: string; produtoId: string | null; nome: string; imagem: string; classe: "A" | "B" | "C"; semCusto: boolean; anuncio: string };
 
 const zero = (): Totais => ({ faturamento: 0, pedidos: 0, unidades: 0, taxas: 0, custoProducao: 0, lucro: 0 });
 
 /** Pedidos que viraram venda (pagos, enviados ou entregues) no intervalo, com o custo de cada item pelo SKU do cadastro. */
 async function vendas(de: Date, ate: Date, canal?: CanalVenda) {
-  const [pedidos, cadastro] = await Promise.all([
+  const [pedidos, cadastro, vinculos] = await Promise.all([
     db
       .select({ marketplace: pedidosMarketplace.marketplace, status: pedidosMarketplace.status, total: pedidosMarketplace.total, taxas: pedidosMarketplace.taxas, frete: pedidosMarketplace.freteVendedor, data: pedidosMarketplace.data, itens: pedidosMarketplace.itens })
       .from(pedidosMarketplace)
       .where(and(gte(pedidosMarketplace.data, de), lt(pedidosMarketplace.data, ate), canal ? eq(pedidosMarketplace.marketplace, canal) : undefined)),
     db.select({ id: produtos.id, paiId: produtos.paiId, sku: produtos.sku, nome: produtos.nome, custo: produtos.custo, imagens: produtos.imagens }).from(produtos),
+    // Anúncio → produto (o mesmo vínculo que baixa o estoque): o SKU do marketplace pode ser outro ou vazio.
+    db.select({ marketplace: anuncios.marketplace, idExterno: anuncios.idExterno, produtoId: anuncios.produtoId }).from(anuncios).where(isNotNull(anuncios.idExterno)),
   ]);
   const porId = new Map(cadastro.map((p) => [p.id, p]));
-  const porSku = new Map(cadastro.map((p) => [p.sku.trim().toLowerCase(), p]));
+  const porSkuCadastro = new Map(cadastro.map((p) => [p.sku.trim().toLowerCase(), p]));
+  const porAnuncio = new Map(vinculos.map((v) => [`${v.marketplace}:${v.idExterno}`, porId.get(v.produtoId)]));
+  /** Produto do item: pelo anúncio vinculado e, se não houver, pelo SKU. */
+  const produtoDoItem = (marketplace: string, i: { idAnuncio: string; sku: string }) =>
+    (i.idAnuncio ? porAnuncio.get(`${marketplace}:${i.idAnuncio}`) : undefined) ?? porSkuCadastro.get(i.sku.trim().toLowerCase());
   const validos = pedidos.filter((p) => ["pago", "enviado", "entregue"].includes(situacaoPedido(p.marketplace, p.status)));
-  return { validos, porId, porSku };
+  return { validos, porId, produtoDoItem };
 }
 
-function resumir(validos: Awaited<ReturnType<typeof vendas>>["validos"], porSku: Awaited<ReturnType<typeof vendas>>["porSku"], porId: Awaited<ReturnType<typeof vendas>>["porId"]) {
+function resumir({ validos, porId, produtoDoItem }: Awaited<ReturnType<typeof vendas>>) {
   const t = zero();
   for (const p of validos) {
     t.pedidos++;
@@ -60,7 +66,7 @@ function resumir(validos: Awaited<ReturnType<typeof vendas>>["validos"], porSku:
     t.taxas += p.taxas + p.frete;
     for (const i of p.itens) {
       t.unidades += i.quantidade;
-      const prod = porSku.get(i.sku.trim().toLowerCase());
+      const prod = produtoDoItem(p.marketplace, i);
       // Variação sem custo próprio usa o custo do produto pai.
       const custo = prod ? prod.custo || (prod.paiId ? (porId.get(prod.paiId)?.custo ?? 0) : 0) : 0;
       t.custoProducao += custo * i.quantidade;
@@ -73,9 +79,9 @@ function resumir(validos: Awaited<ReturnType<typeof vendas>>["validos"], porSku:
 export async function analisarVendas(periodo: Periodo, canal?: CanalVenda) {
   const iv = intervalo(periodo);
   const [atual, anterior] = await Promise.all([vendas(iv.de, iv.ate, canal), vendas(iv.antes, iv.de, canal)]);
-  const { validos, porSku, porId } = atual;
-  const totais = resumir(validos, porSku, porId);
-  const totaisAntes = resumir(anterior.validos, anterior.porSku, anterior.porId);
+  const { validos, porId, produtoDoItem } = atual;
+  const totais = resumir(atual);
+  const totaisAntes = resumir(anterior);
 
   // Faturamento no tempo: por dia (até ~3 meses) ou por mês (12 meses).
   const porMes = periodo === "12m";
@@ -108,14 +114,14 @@ export async function analisarVendas(periodo: Periodo, canal?: CanalVenda) {
     // Cada item leva a sua parte do valor e das taxas do pedido (proporcional ao valor do item).
     const somaItens = p.itens.reduce((a, i) => a + i.quantidade * i.valorUnitario, 0) || 1;
     for (const i of p.itens) {
-      const prod = porSku.get(i.sku.trim().toLowerCase());
+      const prod = produtoDoItem(p.marketplace, i);
       const raiz = prod?.paiId ? porId.get(prod.paiId) : prod;
       const chave = raiz?.id ?? `sku:${i.sku || i.titulo}`;
       const custoUnit = prod ? prod.custo || (raiz?.custo ?? 0) : 0;
       const parte = (i.quantidade * i.valorUnitario) / somaItens;
       const l =
         prods.get(chave) ??
-        ({ ...zero(), chave, produtoId: raiz?.id ?? null, nome: raiz?.nome ?? i.titulo, imagem: raiz?.imagens?.[0] ?? "", classe: "C", semCusto: false } as LinhaProduto);
+        ({ ...zero(), chave, produtoId: raiz?.id ?? null, nome: raiz?.nome ?? i.titulo, imagem: raiz?.imagens?.[0] ?? "", classe: "C", semCusto: false, anuncio: i.idAnuncio } as LinhaProduto);
       l.pedidos++;
       l.unidades += i.quantidade;
       l.faturamento += p.total * parte;
