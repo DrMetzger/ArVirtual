@@ -1,0 +1,29 @@
+name: Diagnóstico vínculo de itens vendidos (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-vinculos.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Itens vendidos x anúncios e SKUs do cadastro (sem dados de comprador)
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          const rows = await sql`
+            select p.marketplace, i->>'idAnuncio' as anuncio, i->>'sku' as sku, left(i->>'titulo', 60) as titulo,
+              exists (select 1 from anuncios a where a.marketplace = p.marketplace and a.id_externo = i->>'idAnuncio') as por_anuncio,
+              exists (select 1 from produtos x where lower(trim(x.sku)) = lower(trim(i->>'sku'))) as por_sku
+            from pedidos_marketplace p, jsonb_array_elements(p.itens) i
+            where p.data > now() - interval '90 days'`;
+          for (const r of rows) console.log([r.marketplace, r.anuncio, r.sku || "(sem sku)", r.titulo, r.por_anuncio ? "anuncio:SIM" : "anuncio:nao", r.por_sku ? "sku:SIM" : "sku:nao"].join(" | "));
+          await sql.end();
+          JS
+          REMOTO
