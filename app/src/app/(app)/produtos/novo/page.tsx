@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { PageHeader } from "@/components/ui";
+import { ImportarLink } from "../importar-link";
 import { requireUser } from "@/lib/auth";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
@@ -11,7 +12,10 @@ export default async function NovoProdutoPage() {
   await requireUser();
   return (
     <>
-      <PageHeader title="Novo produto" description="Informe filamento e tempo de impressão para calcular custo e preço sugerido." />
+      <PageHeader title="Novo produto" description="Crie a partir de um link de anúncio ou preencha à mão (filamento e tempo de impressão calculam o custo e o preço sugerido)." />
+      <div className="mb-6">
+        <ImportarLink />
+      </div>
       <ProdutoForm parametros={await getParametrosImpressao()} precos={await getParametrosPreco()} filamentos={await listaFilamentos()} />
     </>
   );

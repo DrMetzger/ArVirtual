@@ -454,6 +454,60 @@ export const magalu: MarketplaceAdapter = {
     return out;
   },
 
+  async importar(conta, link) {
+    // O link do Magalu tem o código do produto (/p/jd8e66daa9/): acha o SKU da conta que tem esse link.
+    const codigo = link.match(/\/p\/([a-z0-9]{6,})/i)?.[1]?.toLowerCase();
+    let sku = codigo ? undefined : link.trim();
+    if (codigo) sku = (await this.anuncios!(conta).catch(() => [])).find((a) => a.link.toLowerCase().includes(`/p/${codigo}`))?.sku;
+    if (!sku) return null;
+    type Dim = { name?: string; height?: { value?: number }; width?: { value?: number }; length?: { value?: number }; weight?: { value?: number; unit?: string } };
+    type Sku = {
+      sku: string;
+      title: string;
+      description?: string;
+      images?: { reference?: string }[];
+      videos?: { reference?: string; url?: string }[];
+      dimensions?: Dim[];
+      identifiers?: { type?: string; value?: string | null }[];
+      ncm?: string;
+      url_marketplace?: { url?: string }[];
+    };
+    const s = await api<Sku>(`/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`, conta.accessToken).catch(() => null);
+    if (!s) return null;
+    const preco = await api<{ price?: number; list_price?: number; normalizer?: number; results?: { price?: number; list_price?: number; normalizer?: number }[] }>(
+      `/seller/v1/portfolios/prices/${encodeURIComponent(sku)}`,
+      conta.accessToken,
+    ).catch(() => null);
+    const p = preco?.results?.[0] ?? preco;
+    const pacote = s.dimensions?.find((d) => d.name === "package") ?? s.dimensions?.[0];
+    // Descrição em HTML → texto com quebras de linha e tópicos.
+    const texto = (s.description ?? "")
+      .replace(/<li[^>]*>/gi, "- ")
+      .replace(/<\/(p|li|div|h\d)>|<br\s*\/?>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/&amp;/g, "&")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+    return {
+      titulo: s.title,
+      descricao: texto,
+      fotos: (s.images ?? []).map((i) => i.reference ?? "").filter(Boolean),
+      videos: (s.videos ?? []).map((v) => v.reference || v.url || "").filter((v) => /\.mp4/i.test(v)),
+      // price = preço de venda; list_price é o "de" (riscado).
+      preco: p?.price || p?.list_price ? (p.price || p.list_price)! / (p.normalizer || 100) : undefined,
+      sku: s.sku,
+      gtin: s.identifiers?.find((i) => i.type === "ean" && i.value)?.value ?? undefined,
+      ncm: /^\d{8}$/.test(s.ncm ?? "") ? s.ncm : undefined,
+      pesoG: pacote?.weight?.value ? (pacote.weight.unit === "kg" ? pacote.weight.value * 1000 : pacote.weight.value) : undefined,
+      alturaCm: pacote?.height?.value,
+      larguraCm: pacote?.width?.value,
+      comprimentoCm: pacote?.length?.value,
+      idExterno: s.sku,
+      link: s.url_marketplace?.find((u) => u.url)?.url ?? link,
+    };
+  },
+
   async situacao(conta, ids) {
     const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
     for (const id of ids) {

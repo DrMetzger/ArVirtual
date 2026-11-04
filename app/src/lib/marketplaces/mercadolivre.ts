@@ -232,6 +232,68 @@ export const mercadoLivre: MarketplaceAdapter = {
     return lista;
   },
 
+  async importar(conta, link) {
+    // Medida do ML ("10 cm", "300 g", "0,5 kg") em número na unidade pedida.
+    const medida = (v: string | null | undefined, unidade: "cm" | "g") => {
+      const m = String(v ?? "").replace(",", ".").match(/([\d.]+)\s*(mm|cm|m|kg|g)?/i);
+      if (!m) return undefined;
+      const n = Number(m[1]);
+      const u = (m[2] ?? unidade).toLowerCase();
+      if (unidade === "cm") return u === "mm" ? n / 10 : u === "m" ? n * 100 : n;
+      return u === "kg" ? n * 1000 : n;
+    };
+    const atributo = (lista: { id: string; value_name: string | null }[] | undefined, ...ids: string[]) =>
+      lista?.find((a) => ids.includes(a.id) && a.value_name)?.value_name ?? undefined;
+
+    // Produto de catálogo (/p/MLB...): liberado para qualquer conta.
+    const catalogo = link.match(/\/p\/(MLB\d+)/i)?.[1]?.toUpperCase();
+    if (catalogo) {
+      const p = await api<{ name: string; pictures?: { url: string }[]; attributes?: { id: string; value_name: string | null }[]; short_description?: { content?: string } }>(
+        `/products/${catalogo}`,
+        conta.accessToken,
+      ).catch(() => null);
+      if (!p) return null;
+      return {
+        titulo: p.name,
+        descricao: p.short_description?.content ?? "",
+        fotos: (p.pictures ?? []).map((f) => f.url.replace(/^http:/, "https:")),
+        videos: [],
+        gtin: atributo(p.attributes, "GTIN"),
+      };
+    }
+    // Anúncio (MLB-123...): o ML só libera os anúncios da própria conta.
+    const num = link.match(/MLB-?(\d{6,})/i)?.[1];
+    if (!num) return null;
+    const id = `MLB${num}`;
+    type Item = {
+      title: string;
+      price: number;
+      permalink: string;
+      seller_custom_field: string | null;
+      pictures?: { secure_url?: string; url?: string }[];
+      attributes?: { id: string; value_name: string | null }[];
+    };
+    const it = await api<Item>(`/items/${id}`, conta.accessToken).catch(() => null);
+    if (!it) return null;
+    const desc = await api<{ plain_text?: string }>(`/items/${id}/description`, conta.accessToken).catch(() => null);
+    return {
+      titulo: it.title,
+      descricao: desc?.plain_text ?? "",
+      fotos: (it.pictures ?? []).map((f) => (f.secure_url || f.url || "").replace(/^http:/, "https:")).filter(Boolean),
+      videos: [],
+      preco: it.price,
+      sku: it.seller_custom_field || atributo(it.attributes, "SELLER_SKU"),
+      gtin: atributo(it.attributes, "GTIN"),
+      // Embalagem informada pelo vendedor (SELLER_PACKAGE_*) primeiro; depois a do produto.
+      pesoG: medida(atributo(it.attributes, "SELLER_PACKAGE_WEIGHT", "PACKAGE_WEIGHT", "WEIGHT"), "g"),
+      alturaCm: medida(atributo(it.attributes, "SELLER_PACKAGE_HEIGHT", "PACKAGE_HEIGHT", "HEIGHT"), "cm"),
+      larguraCm: medida(atributo(it.attributes, "SELLER_PACKAGE_WIDTH", "PACKAGE_WIDTH", "WIDTH"), "cm"),
+      comprimentoCm: medida(atributo(it.attributes, "SELLER_PACKAGE_LENGTH", "PACKAGE_LENGTH", "LENGTH", "DEPTH"), "cm"),
+      idExterno: id,
+      link: it.permalink,
+    };
+  },
+
   async situacao(conta, ids) {
     const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
     for (let i = 0; i < ids.length; i += 20) {

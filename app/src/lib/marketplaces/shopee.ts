@@ -429,6 +429,48 @@ export const shopee: MarketplaceAdapter = {
     return lista;
   },
 
+  async importar(conta, link) {
+    // Só os anúncios da própria loja (shop_id do link = loja conectada); os de outras lojas o importador busca pela API de afiliados.
+    const m = link.match(/\/product\/(\d+)\/(\d+)/) ?? link.match(/-i\.(\d+)\.(\d+)/);
+    if (!m || m[1] !== conta.idExterno) return null;
+    type Item = {
+      item_name: string;
+      description?: string;
+      description_info?: { extended_description?: { field_list?: { field_type: string; text?: string }[] } };
+      item_sku?: string;
+      weight?: string | number;
+      dimension?: { package_length?: number; package_width?: number; package_height?: number };
+      image?: { image_url_list?: string[] };
+      video_info?: { video_url?: string }[];
+      price_info?: { current_price?: number; original_price?: number }[];
+    };
+    const r = await shopCall<ShopeeBase & { response?: { item_list?: Item[] } }>(conta, "/api/v2/product/get_item_base_info", {
+      query: { item_id_list: m[2]!, need_tax_info: "false", need_complaint_policy: "false" },
+    }).catch(() => null);
+    const it = r?.response?.item_list?.[0];
+    if (!it) return null;
+    const descricao =
+      it.description ||
+      (it.description_info?.extended_description?.field_list ?? [])
+        .filter((f) => f.field_type === "text")
+        .map((f) => f.text ?? "")
+        .join("\n");
+    return {
+      titulo: it.item_name,
+      descricao,
+      fotos: it.image?.image_url_list ?? [],
+      videos: (it.video_info ?? []).map((v) => v.video_url ?? "").filter(Boolean),
+      preco: it.price_info?.[0]?.original_price ?? it.price_info?.[0]?.current_price,
+      sku: it.item_sku || undefined,
+      pesoG: it.weight ? Math.round(Number(it.weight) * 1000) : undefined,
+      alturaCm: it.dimension?.package_height,
+      larguraCm: it.dimension?.package_width,
+      comprimentoCm: it.dimension?.package_length,
+      idExterno: m[2],
+      link: `https://shopee.com.br/product/${m[1]}/${m[2]}`,
+    };
+  },
+
   async situacao(conta, ids) {
     const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
     for (let i = 0; i < ids.length; i += 50) {

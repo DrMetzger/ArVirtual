@@ -142,6 +142,25 @@ export type TaxasPedido = { taxas: number; freteVendedor: number; final: boolean
 /** NF-e que o vendedor informou ao marketplace (emitida em outro sistema). */
 export type NotaDoPedido = { chave: string; status: string; emitidaEm: Date | null; xml: string };
 
+/** Dados de um anúncio para criar o produto no ERP a partir do link (importador). */
+export type DadosImportados = {
+  titulo: string;
+  descricao: string;
+  fotos: string[];
+  videos: string[];
+  preco?: number;
+  sku?: string;
+  gtin?: string;
+  ncm?: string;
+  pesoG?: number;
+  alturaCm?: number;
+  larguraCm?: number;
+  comprimentoCm?: number;
+  /** Anúncio da própria conta: o produto nasce vinculado a ele (não duplica depois). */
+  idExterno?: string;
+  link?: string;
+};
+
 export interface MarketplaceAdapter {
   id: Marketplace;
   nome: string;
@@ -156,6 +175,8 @@ export interface MarketplaceAdapter {
   pedidos(conta: ContaComToken, filtro: FiltroPedidos): Promise<PedidoExterno[]>;
   /** Visualizações e curtidas dos anúncios (id externo → números). */
   metricas?(conta: ContaComToken, ids: string[]): Promise<Record<string, MetricasAnuncio>>;
+  /** Dados completos de um anúncio pelo link (null se o link não é deste marketplace ou não é da conta). */
+  importar?(conta: ContaComToken, link: string): Promise<DadosImportados | null>;
   /** Situação atual dos anúncios no marketplace (só os que deu para conferir; os que não existem mais vêm "encerrado"). */
   situacao?(conta: ContaComToken, ids: string[]): Promise<Record<string, SituacaoAnuncio>>;
   /** Taxas que o marketplace cobrou no pedido (`dados` é o pedido como a API devolveu). */
