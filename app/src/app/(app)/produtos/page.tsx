@@ -1,6 +1,6 @@
 import { MarcaIcone } from "@/components/marca";
 import { and, asc, eq, gte, ilike, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
-import { Eye, LayoutGrid, List, Package, Plus, Search, ShoppingCart } from "lucide-react";
+import { Eye, LayoutGrid, Link2, List, Package, Plus, Search, ShoppingCart } from "lucide-react";
 import { cookies } from "next/headers";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -109,9 +109,14 @@ export default async function ProdutosPage({ searchParams }: { searchParams: Pro
         title="Produtos"
         description="Catálogo base para notas fiscais e anúncios nos marketplaces."
         actions={
-          <Link href="/produtos/novo" className={buttonClass()}>
-            <Plus /> Novo produto
-          </Link>
+          <>
+            <Link href="/produtos/novo#importar" className={buttonClass("outline")}>
+              <Link2 /> Criar a partir de link
+            </Link>
+            <Link href="/produtos/novo" className={buttonClass()}>
+              <Plus /> Novo produto
+            </Link>
+          </>
         }
       />
       <div className="mb-6 flex gap-3">
