@@ -261,10 +261,20 @@ export const mercadoLivre: MarketplaceAdapter = {
         gtin: atributo(p.attributes, "GTIN"),
       };
     }
+    // Link novo da página do produto do vendedor (/up/MLBU123...): acha o anúncio desta conta com esse produto.
+    const mlbu = link.match(/MLBU\d{6,}/i)?.[0]?.toUpperCase();
+    let id = link.match(/item_id[:=](MLB\d{6,})/i)?.[1]?.toUpperCase();
+    if (!id && mlbu) {
+      const r = await api<{ results?: string[] }>(`/users/${conta.idExterno}/items/search?user_product_id=${mlbu}`, conta.accessToken).catch(() => null);
+      id = r?.results?.[0];
+      if (!id) return null;
+    }
     // Anúncio (MLB-123...): o ML só libera os anúncios da própria conta.
-    const num = link.match(/MLB-?(\d{6,})/i)?.[1];
-    if (!num) return null;
-    const id = `MLB${num}`;
+    if (!id) {
+      const num = link.match(/MLB-?(\d{6,})/i)?.[1];
+      if (!num) return null;
+      id = `MLB${num}`;
+    }
     type Item = {
       title: string;
       price: number;
