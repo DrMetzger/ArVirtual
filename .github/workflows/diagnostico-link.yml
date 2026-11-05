@@ -1,0 +1,34 @@
+name: Diagnóstico leitura de página pelo link (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-link.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: O servidor consegue abrir as páginas públicas?
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+          for (const u of [
+            "https://www.mercadolivre.com.br/balanco-para-hamster-brinquedo-enriquecimento-ambiental/up/MLBU4617819571",
+            "https://produto.mercadolivre.com.br/MLB-4782851747",
+            "https://www.magazineluiza.com.br/suporte-controle-ps5-gta-6-expositor-mesa-sincrolab/p/jd8e66daa9/ga/otga/",
+            "https://shopee.com.br/product/411878302/58266614930",
+          ]) {
+            try {
+              const r = await fetch(u, { headers: { "User-Agent": UA, "Accept-Language": "pt-BR,pt;q=0.9", Accept: "text/html" }, redirect: "follow", signal: AbortSignal.timeout(30000) });
+              const h = await r.text();
+              const ld = [...h.matchAll(/<script[^>]*application\/ld\+json[^>]*>([\s\S]*?)<\/script>/gi)].map((m) => { try { return JSON.parse(m[1]); } catch { return null; } }).flat().filter(Boolean);
+              const prod = ld.find((x) => [x["@type"]].flat().includes("Product"));
+              console.log(r.status, r.url.slice(0, 90), "| tam", h.length, "| title:", (h.match(/<title>([^<]{0,70})/) || [])[1], "| ld Product:", Boolean(prod), prod ? `imgs ${[prod.image].flat().length}` : "", "| og:image", (h.match(/og:image/g) || []).length, "| mp4", (h.match(/\.mp4/g) || []).length);
+            } catch (e) { console.log("ERRO", u.slice(0, 60), e.message); }
+          }
+          JS
+          REMOTO
