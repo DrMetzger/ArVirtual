@@ -1,0 +1,29 @@
+name: Diagnóstico CDN de fotos (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-cdn.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: O servidor baixa fotos dos CDNs?
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+          const urls = (await sql`select distinct imagem from afiliados_comissoes where imagem <> '' limit 1`).map((r) => r.imagem);
+          urls.push("https://http2.mlstatic.com/D_NQ_NP_2X_826946-MLA80014346713_102024-F.webp", "https://http2.mlstatic.com/D_NQ_NP_826946-MLA80014346713_102024-O.webp");
+          const mg = await sql`select imagens[1] as i from produtos where imagens[1] like '%magalu%' or imagens[1] like '%mlcdn%' limit 1`;
+          if (mg[0]) urls.push(mg[0].i);
+          urls.push("https://a-static.mlcdn.com.br/450x450/suporte-controle-ps5-gta-6-expositor-mesa-sincrolab/sincrolab/sprtgta/2c5b8f2a.jpeg");
+          for (const u of urls) { const r = await fetch(u, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }).catch((e) => ({ status: e.message })); console.log(r.status, r.headers?.get?.("content-type"), u.slice(0, 80)); }
+          await sql.end();
+          JS
+          REMOTO
