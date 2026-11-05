@@ -82,7 +82,9 @@ async function lerAnuncio(link: string): Promise<{ dados: DadosImportados; conta
       if (o) return { dados: { titulo: o.nome, descricao: "", fotos: o.imagem ? [o.imagem] : [], videos: [], preco: o.preco, link: o.linkProduto } };
     }
     if (mp === "mercadolivre")
-      throw new Error("O Mercado Livre só libera pela API os anúncios das suas contas e os produtos de catálogo (link com /p/MLB...). Este anúncio é de outro vendedor.");
+      throw new Error(
+        "Não achei este anúncio nas suas contas do Mercado Livre conectadas. Confira se a conta dona do anúncio está conectada em Marketplaces › Mercado Livre (o ML bloqueia a leitura da página do anúncio por servidores).",
+      );
   }
   const d = await lerPaginaLoja(link);
   if (d) return { dados: d };
