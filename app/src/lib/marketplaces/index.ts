@@ -70,9 +70,15 @@ let emAndamento: Promise<ResultadoSync> | null = null;
 export async function sincronizarPedidos(opcoes: OpcoesSync = { tipo: "novidades" }): Promise<ResultadoSync> {
   if (opcoes.tipo === "novidades" && emAndamento) return emAndamento;
   while (emAndamento) await emAndamento.catch(() => undefined);
-  emAndamento = sincronizar(opcoes).finally(() => {
-    emAndamento = null;
-  });
+  emAndamento = sincronizar(opcoes)
+    .then(async (r) => {
+      // Pedido novo: push no celular na hora (importação dinâmica: push.ts usa este módulo).
+      await import("@/lib/push").then((m) => m.avisarPedidosNovos()).catch((e: Error) => console.warn(`[push] ${e.message}`));
+      return r;
+    })
+    .finally(() => {
+      emAndamento = null;
+    });
   return emAndamento;
 }
 

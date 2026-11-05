@@ -173,6 +173,8 @@ public class MainActivity extends Activity {
         // Aviso de pedido novo mesmo com o app fechado (consulta a cada ~15 min).
         VerificarPedidos.criarCanal(this);
         VerificarPedidos.agendar(this);
+        // Push na hora (Firebase): registra este celular no ERP.
+        Push.registrar(this);
         pedirPermissoes();
     }
 

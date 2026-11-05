@@ -176,6 +176,13 @@
       "when": 1793568805872,
       "tag": "0024_metricas_taxas",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1793845493692,
+      "tag": "0025_push_token",
+      "breakpoints": true
     }
   ]
 }
