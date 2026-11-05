@@ -1,0 +1,29 @@
+name: Diagnóstico notificação de pedido (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-notificacao.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Horários do pedido e dos aparelhos (sem dados de comprador)
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose logs --since 24h app 2>&1 | grep -i "notifica\|sincroniz" | tail -8
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          const fmt = (d) => d ? new Date(d).toLocaleString("pt-BR", { timeZone: "America/Sao_Paulo" }) : "-";
+          for (const p of await sql`select marketplace, id_externo, status, data, criado_em from pedidos_marketplace order by criado_em desc limit 6`)
+            console.log("pedido", p.marketplace, p.id_externo, p.status, "| compra", fmt(p.data), "| entrou no ERP", fmt(p.criado_em), "| atraso min", Math.round((new Date(p.criado_em) - new Date(p.data)) / 60000));
+          for (const a of await sql`select modelo, versao_app, notificacoes, bateria, ultimo_acesso from aparelhos order by ultimo_acesso desc limit 5`)
+            console.log("aparelho", a.modelo, a.versao_app, "notif:", a.notificacoes, "bat", a.bateria, "| último contato", fmt(a.ultimo_acesso));
+          console.log("contas", JSON.stringify(await sql`select marketplace, ultima_sincronizacao from contas_marketplace`));
+          await sql.end();
+          JS
+          REMOTO
