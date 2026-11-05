@@ -1,11 +1,13 @@
 "use client";
 
-import { CheckCircle2, ExternalLink, Link2, Loader2, XCircle } from "lucide-react";
+import { Bookmark, CheckCircle2, ExternalLink, Link2, Loader2, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { codigoBotaoCopiar } from "./botao-copiar";
 import { Button, Card, CardHeader, Textarea } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
+type DadosPagina = { titulo: string; descricao: string; fotos: string[]; videos: string[]; preco: number; gtin: string; link: string };
 type Item = { link: string; etapa: string; pct: number; detalhe?: string; erro?: string; produto?: { id: string; nome: string; avisos: string[] } };
 
 const ETAPAS = ["Lendo o anúncio", "Convertendo fotos", "Convertendo vídeo", "Criando título e descrição", "Escolhendo o NCM", "Salvando o produto"];
@@ -21,9 +23,9 @@ export function ImportarLink() {
 
   const atualizar = (i: number, p: Partial<Item>) => setItens((xs) => xs.map((x, j) => (j === i ? { ...x, ...p } : x)));
 
-  async function importar(i: number, link: string) {
+  async function importar(i: number, link: string, dados?: DadosPagina) {
     try {
-      const res = await fetch("/api/produtos/importar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ link }) });
+      const res = await fetch("/api/produtos/importar", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ link, dados }) });
       if (!res.ok || !res.body) {
         const e = (await res.json().catch(() => ({}))) as { erro?: string };
         return atualizar(i, { erro: e.erro ?? `Falha (${res.status})` });
@@ -47,6 +49,26 @@ export function ImportarLink() {
       atualizar(i, { erro: (e as Error).message });
     }
   }
+
+  // Veio do botão "Copiar para o ArVirtual" (dados lidos da página no navegador): cria na hora.
+  const botao = useRef<HTMLAnchorElement>(null);
+  useEffect(() => {
+    // React bloqueia link javascript: no JSX: o botão de favoritos recebe o código aqui.
+    botao.current?.setAttribute("href", codigoBotaoCopiar(window.location.origin));
+    const m = window.location.hash.match(/^#importar=(.+)$/);
+    if (!m) return;
+    history.replaceState(null, "", window.location.pathname);
+    let dados: DadosPagina;
+    try {
+      dados = JSON.parse(decodeURIComponent(escape(atob(decodeURIComponent(m[1]!))))) as DadosPagina;
+    } catch {
+      return;
+    }
+    setItens((xs) => [...xs, { link: dados.link, etapa: "Na fila", pct: 0, detalhe: dados.titulo }]);
+    setRodando(true);
+    void importar(0, dados.link, dados).finally(() => setRodando(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function iniciar() {
     const links = [...new Set(texto.match(/https?:\/\/[^\s<>"']+/gi) ?? [])].slice(0, 30);
@@ -76,6 +98,27 @@ export function ImportarLink() {
           <Button type="button" variant="gold" onClick={iniciar} disabled={rodando || !/https?:\/\//.test(texto)}>
             {rodando ? <Loader2 className="animate-spin" /> : <Link2 />} Criar produto(s)
           </Button>
+        </div>
+        <div className="grid gap-2 rounded-xl border border-dashed border-gold/60 bg-gold/5 p-3 text-sm">
+          <p className="font-semibold">Produto novo, de outro vendedor ou de qualquer loja?</p>
+          <p className="text-muted">
+            Os marketplaces bloqueiam o servidor de ler a página, mas o seu navegador lê. Arraste o botão abaixo para a <strong>barra de favoritos</strong> (uma vez
+            só). Depois é só abrir o anúncio e clicar nele: o ERP abre já criando o produto com as fotos, vídeo, título, descrição e preço da página.
+          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <a
+              ref={botao}
+              href="#importar"
+              onClick={(e) => {
+                e.preventDefault();
+                alert("Arraste este botão para a barra de favoritos do navegador. Depois, abra o anúncio e clique nele lá.");
+              }}
+              className="inline-flex cursor-grab items-center gap-2 rounded-xl bg-[#0a1a33] px-4 py-2 font-bold text-[#e6c158] shadow"
+            >
+              <Bookmark className="size-4" /> Copiar para o ArVirtual
+            </a>
+            <span className="text-xs text-muted">Barra de favoritos escondida? Ctrl+Shift+B (Chrome/Edge).</span>
+          </div>
         </div>
         {itens.length ? (
           <div className="grid gap-2">

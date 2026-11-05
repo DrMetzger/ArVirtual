@@ -140,10 +140,15 @@ Responda só com JSON: {"ncm": "8 dígitos da lista"}`;
  * vídeo, a IA escreve título e descrição (no estilo do ERP) e escolhe o NCM, e salva. Anúncio da própria conta já
  * fica vinculado ao produto.
  */
-export async function* importarProduto(link: string, origin: string): AsyncGenerator<Passo, { id: string; nome: string; avisos: string[] }> {
+export async function* importarProduto(
+  link: string,
+  origin: string,
+  /** Dados já lidos da página no navegador do usuário (botão "Copiar para o ArVirtual"): não busca nada. */
+  daPagina?: DadosImportados,
+): AsyncGenerator<Passo, { id: string; nome: string; avisos: string[] }> {
   const avisos: string[] = [];
   yield { etapa: "Lendo o anúncio", pct: 5, detalhe: link };
-  const { dados, conta } = await lerAnuncio(link);
+  const { dados, conta } = daPagina ? { dados: daPagina, conta: undefined } : await lerAnuncio(link);
   yield { etapa: "Lendo o anúncio", pct: 15, detalhe: dados.titulo };
 
   const fotosOrigem = [...new Set(dados.fotos)].slice(0, MAX_FOTOS);
