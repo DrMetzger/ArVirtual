@@ -45,3 +45,8 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+dependencies {
+    // Push (Firebase Cloud Messaging, grátis). Sem o plugin google-services: a configuração vem do ERP.
+    implementation "com.google.firebase:firebase-messaging:24.1.0"
+}

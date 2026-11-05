@@ -94,28 +94,40 @@ public class VerificarPedidos extends JobService {
         Aparelho.prefs(ctx).edit().putLong("desde", r.optLong("agora", System.currentTimeMillis())).apply();
         if (desde == 0 || !podeNotificar) return; // primeira rodada só marca a hora (não avisa pedido antigo)
 
-        criarCanal(ctx);
         JSONArray pedidos = r.optJSONArray("pedidos");
         for (int i = 0; pedidos != null && i < pedidos.length(); i++) {
             JSONObject p = pedidos.getJSONObject(i);
-            Intent abrir = new Intent(ctx, MainActivity.class)
-                    .setAction(Intent.ACTION_VIEW)
-                    .setData(Uri.parse("https://app.arvirtual.com.br" + p.optString("link", "/pedidos")))
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
-            int id = p.optString("id").hashCode();
-            PendingIntent toque = PendingIntent.getActivity(ctx, id, abrir, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
-            Notification.Builder n = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(ctx, CANAL) : new Notification.Builder(ctx);
-            n.setSmallIcon(R.drawable.ic_notificacao)
-                    .setColor(0xFFE6C158)
-                    .setContentTitle(p.optString("titulo", "Novo pedido"))
-                    .setContentText(p.optString("texto"))
-                    .setStyle(new Notification.BigTextStyle().bigText(p.optString("texto")))
-                    .setAutoCancel(true)
-                    .setContentIntent(toque)
-                    .setCategory(Notification.CATEGORY_MESSAGE);
-            if (Build.VERSION.SDK_INT < 26) n.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
-            nm.notify(id, n.build());
+            mostrar(ctx, p.optString("id"), p.optString("titulo", "Novo pedido"), p.optString("texto"), p.optString("link", "/pedidos"));
         }
+    }
+
+    /**
+     * Notificação de pedido (a do push e a da consulta usam esta). O mesmo pedido tem o mesmo id: se chegar pelos dois
+     * caminhos, aparece uma vez só. Tocar abre o pedido no app.
+     */
+    static void mostrar(Context ctx, String pedidoId, String titulo, String texto, String link) {
+        NotificationManager nm = (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
+        if (Build.VERSION.SDK_INT >= 24 && !nm.areNotificationsEnabled()) return;
+        criarCanal(ctx);
+        Intent abrir = new Intent(ctx, MainActivity.class)
+                .setAction(Intent.ACTION_VIEW)
+                .setData(Uri.parse("https://app.arvirtual.com.br" + (link.isEmpty() ? "/pedidos" : link)))
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        int id = ("pedido-" + pedidoId).hashCode();
+        PendingIntent toque = PendingIntent.getActivity(ctx, id, abrir, PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+        Notification.Builder n = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(ctx, CANAL) : new Notification.Builder(ctx);
+        n.setSmallIcon(R.drawable.ic_notificacao)
+                .setColor(0xFFE6C158)
+                .setContentTitle(titulo)
+                .setContentText(texto)
+                .setStyle(new Notification.BigTextStyle().bigText(texto))
+                .setAutoCancel(true)
+                .setContentIntent(toque)
+                .setCategory(Notification.CATEGORY_MESSAGE)
+                .setWhen(System.currentTimeMillis())
+                .setShowWhen(true);
+        if (Build.VERSION.SDK_INT < 26) n.setPriority(Notification.PRIORITY_HIGH).setDefaults(Notification.DEFAULT_ALL);
+        nm.notify(id, n.build());
     }
 
     private static String ler(InputStream in) throws Exception {

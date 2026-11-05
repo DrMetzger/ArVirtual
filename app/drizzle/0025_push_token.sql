@@ -1,0 +1,1 @@
+ALTER TABLE "aparelhos" ADD COLUMN "push_token" text DEFAULT '' NOT NULL;

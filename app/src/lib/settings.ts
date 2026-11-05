@@ -65,6 +65,20 @@ export const SETTINGS = {
   "afiliados.secret": { label: "Senha (Secret)", secret: true, group: "Shopee Afiliados" },
   "afiliados.subId": { label: "Sub ID padrão dos links (identifica as vendas que vieram do ERP)", secret: false, group: "Shopee Afiliados", placeholder: "arvirtual" },
 
+  "push.googleServices": {
+    label: "Arquivo google-services.json do app Android (cole o conteúdo)",
+    secret: false,
+    group: "Notificações no celular (Firebase)",
+    multiline: true,
+    placeholder: '{ "project_info": { "project_number": "...", "project_id": "..." }, "client": [ ... ] }',
+  },
+  "push.contaServico": {
+    label: "Chave da conta de serviço do Firebase (arquivo .json gerado em Contas de serviço)",
+    secret: true,
+    group: "Notificações no celular (Firebase)",
+    multiline: true,
+    placeholder: '{ "type": "service_account", "project_id": "...", "private_key": "-----BEGIN PRIVATE KEY-----..." }',
+  },
   "videos.cookies": {
     label: "Cookies das redes (arquivo cookies.txt, formato Netscape) — para Instagram, Facebook e Threads, que pedem login",
     secret: true,

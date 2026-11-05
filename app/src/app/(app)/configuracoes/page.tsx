@@ -57,6 +57,13 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         afiliado e traz as comissões a cada 6 horas.
       </>
     ),
+    "Notificações no celular (Firebase)": (
+      <>
+        Aviso de pedido novo na hora no app (push, grátis). Em console.firebase.google.com: crie um projeto, adicione um app Android com o pacote{" "}
+        <code>br.com.arvirtual.app</code> e baixe o <strong>google-services.json</strong>; depois em Configurações do projeto › Contas de serviço › Gerar nova chave
+        privada. Cole os dois arquivos aqui. Os celulares se registram sozinhos ao abrir o app.
+      </>
+    ),
     "Conversor de vídeo": (
       <>
         TikTok, YouTube e Shopee baixam sem login. Instagram, Facebook e Threads muitas vezes exigem login: no computador, entre na rede social no Chrome, exporte os

@@ -15,6 +15,7 @@
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <application
+        android:name=".AppArVirtual"
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"
         android:roundIcon="@mipmap/ic_launcher"
@@ -41,6 +42,15 @@
                 <data android:scheme="https" android:host="app.arvirtual.com.br" />
             </intent-filter>
         </activity>
+
+        <!-- Push do Firebase: aviso de pedido novo na hora. -->
+        <service
+            android:name=".PushPedidos"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
 
         <service
             android:name=".VerificarPedidos"

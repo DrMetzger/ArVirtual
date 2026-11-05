@@ -511,6 +511,8 @@ export const aparelhos = pgTable("aparelhos", {
   precisaoM: integer("precisao_m"),
   localizadoEm: timestamp("localizado_em", { withTimezone: true }),
   notificacoes: boolean("notificacoes").notNull().default(false),
+  /** Token do Firebase Cloud Messaging: o servidor manda o aviso de pedido novo na hora (push). */
+  pushToken: text("push_token").notNull().default(""),
   ip: text("ip").notNull().default(""),
   ultimoAcesso: timestamp("ultimo_acesso", { withTimezone: true }).notNull().defaultNow(),
   bloqueado: boolean("bloqueado").notNull().default(false),
