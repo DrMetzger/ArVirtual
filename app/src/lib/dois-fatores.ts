@@ -14,7 +14,7 @@ const VALIDADE_MIN = 10;
 const MAX_TENTATIVAS = 5;
 const INTERVALO_REENVIO_S = 60;
 
-type Finalidade = "login" | "ativar";
+type Finalidade = "login" | "ativar" | "senha";
 type Usuario = typeof usuarios.$inferSelect;
 
 function hash(usuarioId: string, finalidade: Finalidade, codigo: string) {
@@ -60,7 +60,7 @@ export async function enviarCodigo(user: Pick<Usuario, "id" | "nome" | "email">,
     });
   });
 
-  const titulo = finalidade === "login" ? "Seu código de acesso" : "Verificação em duas etapas";
+  const titulo = finalidade === "login" ? "Seu código de acesso" : finalidade === "senha" ? "Redefinir sua senha" : "Verificação em duas etapas";
   await enviarEmail({
     para: user.email,
     assunto: `${codigo} é o seu código ArVirtual`,
@@ -69,7 +69,13 @@ export async function enviarCodigo(user: Pick<Usuario, "id" | "nome" | "email">,
       resumo: `${codigo} é o seu código. Vale por ${VALIDADE_MIN} minutos.`,
       corpo:
         paragrafo(`Olá, <strong>${escaparHtml(user.nome.split(" ")[0] ?? "")}</strong>!`) +
-        paragrafo(finalidade === "login" ? "Use o código abaixo para entrar no sistema ArVirtual:" : "Use o código abaixo para ativar a verificação em duas etapas:") +
+        paragrafo(
+          finalidade === "login"
+            ? "Use o código abaixo para entrar no sistema ArVirtual:"
+            : finalidade === "senha"
+              ? "Recebemos um pedido para criar uma senha nova. Use o código abaixo na tela de redefinição:"
+              : "Use o código abaixo para ativar a verificação em duas etapas:",
+        ) +
         blocoCodigo(codigo) +
         paragrafo(`O código vale por <strong>${VALIDADE_MIN} minutos</strong> e só pode ser usado uma vez.`, "text-align:center;color:#5a6b82;font-size:13px;margin-top:10px") +
         paragrafo("Se não foi você quem pediu, ignore este e-mail e troque sua senha: alguém pode tê-la descoberto.", "color:#5a6b82;font-size:13px"),
