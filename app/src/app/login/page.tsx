@@ -10,8 +10,8 @@ import { LoginForm } from "./login-form";
 
 export const metadata: Metadata = { title: "Entrar" };
 
-export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string; expirou?: string }> }) {
-  const { de, expirou } = await searchParams;
+export default async function LoginPage({ searchParams }: { searchParams: Promise<{ de?: string; expirou?: string; senha?: string }> }) {
+  const { de, expirou, senha } = await searchParams;
   const ua = (await headers()).get("user-agent");
   // App antigo nem chega a entrar: vai direto para a tela de atualização.
   if (await appDesatualizado(ua)) redirect("/atualizar-app");
@@ -60,6 +60,11 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
           </div>
           <h2 className="text-2xl font-extrabold">Entrar</h2>
           <p className="mb-6 mt-1 text-sm text-muted">Use o e-mail e a senha cadastrados.</p>
+          {senha === "ok" ? (
+            <div className="mb-4">
+              <Alert tone="green">Senha nova salva. Entre com ela.</Alert>
+            </div>
+          ) : null}
           {expirou ? (
             <div className="mb-4">
               <Alert tone="gold">A verificação expirou. Entre de novo para receber outro código.</Alert>

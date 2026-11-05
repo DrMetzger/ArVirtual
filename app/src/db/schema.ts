@@ -47,7 +47,7 @@ export const codigosVerificacao = pgTable(
     usuarioId: uuid("usuario_id")
       .notNull()
       .references(() => usuarios.id, { onDelete: "cascade" }),
-    finalidade: text("finalidade", { enum: ["login", "ativar"] }).notNull(),
+    finalidade: text("finalidade", { enum: ["login", "ativar", "senha"] }).notNull(),
     codigoHash: text("codigo_hash").notNull(),
     expiraEm: timestamp("expira_em", { withTimezone: true }).notNull(),
     tentativas: integer("tentativas").notNull().default(0),

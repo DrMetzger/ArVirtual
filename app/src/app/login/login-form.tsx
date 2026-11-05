@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { Alert, Field, Input } from "@/components/ui";
 import { InputSenha, SubmitButton, useFormAction } from "@/components/ui/client";
 import { login } from "./actions";
@@ -15,6 +16,9 @@ export function LoginForm({ redirectTo }: { redirectTo: string }) {
       <Field label="Senha">
         <InputSenha name="senha" autoComplete="current-password" required />
       </Field>
+      <Link href="/login/esqueci" className="-mt-2 justify-self-end text-sm font-semibold text-gold hover:underline">
+        Esqueci minha senha
+      </Link>
       {state?.erro ? <Alert>{state.erro}</Alert> : null}
       <SubmitButton pending={pending} size="lg" pendingText="Entrando...">
         Entrar
