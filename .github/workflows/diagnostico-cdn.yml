@@ -16,14 +16,17 @@ jobs:
           cd /opt/arvirtual-app
           docker compose exec -T app node --input-type=module <<'JS'
           import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
           const sql = postgres(process.env.DATABASE_URL);
           const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
-          const urls = (await sql`select distinct imagem from afiliados_comissoes where imagem <> '' limit 1`).map((r) => r.imagem);
-          urls.push("https://http2.mlstatic.com/D_NQ_NP_2X_826946-MLA80014346713_102024-F.webp", "https://http2.mlstatic.com/D_NQ_NP_826946-MLA80014346713_102024-O.webp");
-          const mg = await sql`select imagens[1] as i from produtos where imagens[1] like '%magalu%' or imagens[1] like '%mlcdn%' limit 1`;
-          if (mg[0]) urls.push(mg[0].i);
-          urls.push("https://a-static.mlcdn.com.br/450x450/suporte-controle-ps5-gta-6-expositor-mesa-sincrolab/sincrolab/sprtgta/2c5b8f2a.jpeg");
-          for (const u of urls) { const r = await fetch(u, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }).catch((e) => ({ status: e.message })); console.log(r.status, r.headers?.get?.("content-type"), u.slice(0, 80)); }
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const [c] = await sql`select access_token_enc from contas_marketplace where marketplace = 'mercadolivre' limit 1`;
+          const p = await (await fetch("https://api.mercadolibre.com/products/MLB54153222", { headers: { Authorization: `Bearer ${dec(c.access_token_enc)}` } })).json();
+          const urls = (p.pictures ?? []).slice(0, 2).map((x) => x.url);
+          console.log("fotos reais ML:", urls.length);
+          if (urls[0]) urls.push(urls[0].replace(/-[A-Z]\.(webp|jpg)/, "-F.$1"));
+          for (const u of urls) { const r = await fetch(u, { headers: { "User-Agent": UA }, signal: AbortSignal.timeout(20000) }).catch((e) => ({ status: e.message })); const tam = r.arrayBuffer ? (await r.arrayBuffer()).byteLength : 0; console.log(r.status, r.headers?.get?.("content-type"), tam, "bytes", u.slice(0, 90)); }
           await sql.end();
           JS
           REMOTO
