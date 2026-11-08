@@ -185,6 +185,8 @@ export interface MarketplaceAdapter {
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
+  /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */
+  porSku?(conta: ContaComToken, skus: string[]): Promise<AnuncioExterno[]>;
   /**
    * Troca, num anúncio que já existe, só o que vier em `mudancas`. Cada campo vai separado: o que a plataforma
    * recusar volta como falha (com o motivo) e não impede os outros.
