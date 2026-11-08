@@ -1,6 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
 const API = "https://api.mercadolibre.com";
@@ -35,6 +35,77 @@ async function api<T>(path: string, accessToken: string, init: RequestInit = {})
     signal: AbortSignal.timeout(30_000),
   });
   return lerResposta<T>(res, "Mercado Livre");
+}
+
+/** ML recusou o recurso para este app (403 "ResourceDeprecated" / "not allowed"): tenta o próximo jeito. */
+const recusado = (e: unknown) => /deprecat|not allowed|no longer allowed|forbidden|\(403\)/i.test((e as Error)?.message ?? "");
+
+/**
+ * Ids de todos os anúncios da conta. O ML desligou o search_type=scan para alguns apps (403 ResourceDeprecated):
+ * nesse caso usa a paginação normal (limite de 1.000 por consulta, por isso separa por situação).
+ */
+async function idsDoVendedor(conta: ContaComToken) {
+  const base = `/users/${conta.idExterno}/items/search`;
+  try {
+    const ids: string[] = [];
+    let scroll = "";
+    for (let i = 0; i < 100; i++) {
+      const q = new URLSearchParams({ search_type: "scan", limit: "100", ...(scroll ? { scroll_id: scroll } : {}) });
+      const r = await api<{ results: string[]; scroll_id?: string }>(`${base}?${q}`, conta.accessToken);
+      if (!r.results?.length) break;
+      ids.push(...r.results);
+      scroll = r.scroll_id ?? "";
+      if (!scroll) break;
+    }
+    return ids;
+  } catch (e) {
+    if (!recusado(e)) throw e;
+  }
+  const ids = new Set<string>();
+  const paginar = async (extra: Record<string, string>) => {
+    let total = 0;
+    for (let offset = 0; offset < 1000; offset += 50) {
+      const r = await api<{ results: string[]; paging?: { total?: number } }>(`${base}?${new URLSearchParams({ ...extra, limit: "50", offset: String(offset) })}`, conta.accessToken);
+      total = r.paging?.total ?? 0;
+      for (const id of r.results ?? []) ids.add(id);
+      if (!r.results?.length || offset + 50 >= total) break;
+    }
+    return total;
+  };
+  if ((await paginar({})) > 1000) for (const status of ["active", "paused", "under_review", "inactive"]) await paginar({ status }).catch(() => 0);
+  return [...ids];
+}
+
+/** Detalhes dos anúncios (de 20 em 20), sem os encerrados. */
+async function detalhesItens(conta: ContaComToken, ids: string[]) {
+  type Item = {
+    id: string;
+    title: string;
+    price: number;
+    permalink: string;
+    status: string;
+    thumbnail: string;
+    seller_custom_field: string | null;
+    attributes?: { id: string; value_name: string | null }[];
+  };
+  const lista: AnuncioExterno[] = [];
+  for (let i = 0; i < ids.length; i += 20) {
+    const q = new URLSearchParams({ ids: ids.slice(i, i + 20).join(","), attributes: "id,title,price,permalink,status,thumbnail,seller_custom_field,attributes" });
+    const r = await api<{ code: number; body: Item }[]>(`/items?${q}`, conta.accessToken);
+    for (const { code, body: it } of r) {
+      if (code !== 200 || it.status === "closed") continue;
+      lista.push({
+        idExterno: it.id,
+        titulo: it.title,
+        sku: it.seller_custom_field || it.attributes?.find((a) => a.id === "SELLER_SKU")?.value_name || "",
+        preco: it.price,
+        link: it.permalink,
+        imagem: it.thumbnail?.replace(/^http:/, "https:") ?? "",
+        status: { active: "ativo", paused: "pausado", under_review: "em revisão" }[it.status] ?? it.status,
+      });
+    }
+  }
+  return lista;
 }
 
 /**
@@ -191,45 +262,18 @@ export const mercadoLivre: MarketplaceAdapter = {
   },
 
   async anuncios(conta) {
-    // search_type=scan: percorre todos os anúncios (a busca normal para em 1.000).
-    const ids: string[] = [];
-    let scroll = "";
-    for (let i = 0; i < 100; i++) {
-      const q = new URLSearchParams({ search_type: "scan", limit: "100", ...(scroll ? { scroll_id: scroll } : {}) });
-      const r = await api<{ results: string[]; scroll_id?: string }>(`/users/${conta.idExterno}/items/search?${q}`, conta.accessToken);
-      if (!r.results.length) break;
-      ids.push(...r.results);
-      scroll = r.scroll_id ?? "";
-      if (!scroll) break;
+    return detalhesItens(conta, await idsDoVendedor(conta));
+  },
+
+  async porSku(conta, skus) {
+    // Busca direta pelo SKU (não depende de listar a conta inteira): é o que confere antes de publicar.
+    // O SKU pode estar só na variação do anúncio: o achado leva o SKU procurado, para casar com o cadastro.
+    const skuDoId = new Map<string, string>();
+    for (const sku of [...new Set(skus.map((x) => x.trim()).filter(Boolean))]) {
+      const r = await api<{ results: string[] }>(`/users/${conta.idExterno}/items/search?${new URLSearchParams({ seller_sku: sku })}`, conta.accessToken);
+      for (const id of r.results ?? []) skuDoId.set(id, sku);
     }
-    type Item = {
-      id: string;
-      title: string;
-      price: number;
-      permalink: string;
-      status: string;
-      thumbnail: string;
-      seller_custom_field: string | null;
-      attributes?: { id: string; value_name: string | null }[];
-    };
-    const lista: AnuncioExterno[] = [];
-    for (let i = 0; i < ids.length; i += 20) {
-      const q = new URLSearchParams({ ids: ids.slice(i, i + 20).join(","), attributes: "id,title,price,permalink,status,thumbnail,seller_custom_field,attributes" });
-      const r = await api<{ code: number; body: Item }[]>(`/items?${q}`, conta.accessToken);
-      for (const { code, body: it } of r) {
-        if (code !== 200 || it.status === "closed") continue;
-        lista.push({
-          idExterno: it.id,
-          titulo: it.title,
-          sku: it.seller_custom_field || it.attributes?.find((a) => a.id === "SELLER_SKU")?.value_name || "",
-          preco: it.price,
-          link: it.permalink,
-          imagem: it.thumbnail?.replace(/^http:/, "https:") ?? "",
-          status: { active: "ativo", paused: "pausado", under_review: "em revisão" }[it.status] ?? it.status,
-        });
-      }
-    }
-    return lista;
+    return (await detalhesItens(conta, [...skuDoId.keys()])).map((x) => ({ ...x, sku: skuDoId.get(x.idExterno) ?? x.sku }));
   },
 
   async importar(conta, link) {

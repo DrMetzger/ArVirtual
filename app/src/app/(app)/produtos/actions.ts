@@ -416,7 +416,13 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
     let naPlataforma: AnuncioExterno[];
     try {
       if (token instanceof Error) throw token;
-      naPlataforma = itens.every((x) => jaNoHistorico.has(x.id)) ? [] : await a.anuncios(token);
+      const faltam = itens.filter((x) => !jaNoHistorico.has(x.id));
+      // Busca pelo SKU direto (rápida e sem depender da listagem); se a plataforma não deixar, lista a conta toda.
+      naPlataforma = !faltam.length
+        ? []
+        : a.porSku && faltam.every((x) => x.sku.trim())
+          ? await a.porSku(token, faltam.map((x) => x.sku)).catch(() => a.anuncios(token))
+          : await a.anuncios(token);
     } catch (e) {
       resultados.push({
         conta: `${a.nome} · ${conta.nome}`,
