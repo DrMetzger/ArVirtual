@@ -102,7 +102,14 @@ async function mercadoLivre(q: string, erros: string[]): Promise<Anuncio[]> {
     );
     const produtos = busca?.results ?? [];
     const porProduto = await Promise.all(
-      produtos.map(async (p) => ({ p, itens: (await get<{ results?: ItemML[] }>(`/products/${p.id}/items?limit=50`, token))?.results ?? [] })),
+      produtos.map(async (p) => {
+        const [itens, detalhe] = await Promise.all([
+          get<{ results?: ItemML[] }>(`/products/${p.id}/items?limit=50`, token),
+          // A busca às vezes vem sem foto: o produto do catálogo tem.
+          p.pictures?.length ? null : get<{ pictures?: { url: string }[] }>(`/products/${p.id}`, token),
+        ]);
+        return { p: { ...p, pictures: p.pictures?.length ? p.pictures : (detalhe?.pictures ?? []) }, itens: itens?.results ?? [] };
+      }),
     );
     const ids = [...new Set(porProduto.flatMap((x) => x.itens.map((i) => i.seller_id)))];
     const usuarios = new Map<number, UsuarioML>();
@@ -149,16 +156,17 @@ async function magalu(q: string, erros: string[]): Promise<Anuncio[]> {
   }
   const prompt = `Pesquise no Google (site:magazineluiza.com.br) anúncios à venda AGORA no Magalu para: "${q}".
 Liste até 15 anúncios reais que você encontrou nas páginas do magazineluiza.com.br: nome do produto, quem vende
-(o "Vendido e entregue por ..." da página; "Magalu" se for a própria loja), preço à vista em reais e o link da página do produto.
+(o "Vendido e entregue por ..." da página; "Magalu" se for a própria loja), preço à vista em reais, o link da página do produto
+e, se viu, o endereço da foto do produto (as fotos do Magalu ficam em a-static.mlcdn.com.br; se não viu, "").
 Não invente nada: se não achar, devolva a lista vazia. Responda SOMENTE com um bloco JSON:
-{"anuncios":[{"produto":"...","vendedor":"...","preco":0,"link":"https://www.magazineluiza.com.br/..."}]}`;
+{"anuncios":[{"produto":"...","vendedor":"...","preco":0,"link":"https://www.magazineluiza.com.br/...","imagem":"https://a-static.mlcdn.com.br/..."}]}`;
   try {
     const r = await Promise.race([
       gerarComGeminiDetalhado([{ role: "user", text: prompt }], { pesquisa: true, temperature: 0.1 }),
       new Promise<never>((_, nao) => setTimeout(() => nao(new Error("a pesquisa demorou demais")), 55_000)),
     ]);
     const json = r.texto.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
-    const lista = (JSON.parse(json) as { anuncios?: { produto?: string; vendedor?: string; preco?: number | string; link?: string }[] }).anuncios ?? [];
+    const lista = (JSON.parse(json) as { anuncios?: { produto?: string; vendedor?: string; preco?: number | string; link?: string; imagem?: string }[] }).anuncios ?? [];
     return lista
       .filter((a) => a.produto && /^https:\/\/(www\.)?magazineluiza\.com\.br\//.test(a.link ?? ""))
       .map((a) => ({
@@ -166,7 +174,8 @@ Não invente nada: se não achar, devolva a lista vazia. Responda SOMENTE com um
         vendedor: (a.vendedor || "não informado").slice(0, 80),
         vendedorId: (a.vendedor || "?").toLowerCase(),
         produto: String(a.produto).slice(0, 200),
-        imagem: "",
+        // Só foto da CDN do próprio Magalu.
+        imagem: /^https:\/\/a-static\.mlcdn\.com\.br\//.test(a.imagem ?? "") ? a.imagem! : "",
         link: a.link!,
         preco: Number(String(a.preco ?? 0).replace(/[^\d,.]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", ".")) || 0,
       }));
