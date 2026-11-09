@@ -32,13 +32,13 @@ export async function coletarAgora() {
     await coletarSentinela();
     await analisarComIa();
   });
-  voltar("/sentinela", ok ? "ok" : "erro", ok ? "Sentinelas na rua: lendo Shopee e Mercado Livre e analisando com a IA. Leva alguns minutos; a página atualiza sozinha." : "Já tem um trabalho em andamento.");
+  voltar("/sentinela", ok ? "ok" : "erro", ok ? "Sentinelas na rua: lendo Shopee e Mercado Livre e analisando com a IA. Leva alguns minutos; quando terminar aparece “Ver resultado” no canto da tela." : "Já tem um trabalho em andamento.");
 }
 
 export async function relatorioAgora() {
   await requireUser();
   const ok = emSegundoPlano("relatório", () => gerarRelatorio());
-  voltar("/sentinela", ok ? "ok" : "erro", ok ? "A IA está cruzando os dados com o que está em alta na internet. Leva 1 a 2 minutos." : "Já tem um trabalho em andamento.");
+  voltar("/sentinela", ok ? "ok" : "erro", ok ? "A IA está cruzando os dados com o que está em alta na internet. Leva 1 a 2 minutos; quando terminar aparece “Ver resultado” no canto da tela." : "Já tem um trabalho em andamento.");
 }
 
 export async function adicionarTermo(form: FormData) {

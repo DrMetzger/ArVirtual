@@ -109,6 +109,14 @@ export function ItemCard({ i, acao, semIa, semComissao }: { i: ItemSentinela; ac
           {i.categoria || i.loja} · vigiando “{i.termo}”
         </p>
         {semIa ? null : <Veredito a={i.analise} />}
+        {semIa ? null : (
+          <a
+            href={`/sentinela/concorrencia?q=${encodeURIComponent(i.nome.split(/\s+/).slice(0, 5).join(" "))}`}
+            className="inline-flex items-center gap-1 text-xs font-semibold text-gold hover:underline"
+          >
+            <Users className="size-3.5" /> Ver quem vende
+          </a>
+        )}
         {acao ? <div className="mt-auto pt-1">{acao}</div> : null}
       </div>
     </div>
