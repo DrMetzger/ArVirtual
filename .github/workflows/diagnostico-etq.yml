@@ -1,0 +1,42 @@
+name: Diagnóstico etiqueta Magalu
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-etq.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Gerar etiqueta PDF pela API
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const [m] = await sql`select access_token_enc from contas_marketplace where marketplace = 'magalu' limit 1`;
+          const tm = dec(m.access_token_enc);
+          const call = async (p, init = {}) => { const r = await fetch("https://api.magalu.com" + p, { ...init, headers: { Authorization: `Bearer ${tm}`, Accept: "application/json", "Content-Type": "application/json" } }); const t = await r.text(); return [r.status, t]; };
+          const [, ent] = await call("/seller/v1/deliveries/e9006307-e9a7-4005-983c-d3ac5a0ccff4");
+          const e = JSON.parse(ent);
+          console.log("branch", JSON.stringify({ external_id: e.branch?.external_id }), "channel", e.order?.channel?.id ? "ok" : "sem");
+          for (const type of ["full", "summary"]) {
+            const body = { channel: { id: e.order.channel.id, extras: { alias: "Magazine Luiza" } }, deliveries: [{ id: e.id, branch: { external_id: e.branch?.external_id, name: e.branch?.name } }], label: { format: "pdf", type } };
+            const [s, t] = await call("/seller/v1/logistics/shipping-labels", { method: "POST", body: JSON.stringify(body) });
+            let j = null; try { j = JSON.parse(t); } catch {}
+            console.log("LABEL", type, s, j?.label ? `host=${new URL(j.label.signed_url).host} expira=${j.label.expires_on} extras=${JSON.stringify(j.label.extras)}` : t.slice(0, 500));
+            if (j?.label?.signed_url) {
+              const r = await fetch(j.label.signed_url); const b = Buffer.from(await r.arrayBuffer());
+              const txt = b.toString("latin1");
+              console.log("PDF", r.status, r.headers.get("content-type"), b.length, "bytes", "paginas", (txt.match(/\/Type\s*\/Page[^s]/g) || []).length, "MediaBox", (txt.match(/\/MediaBox\s*\[[^\]]*\]/g) || []).slice(0, 3).join(" "));
+            }
+          }
+          await sql.end();
+          JS
+          REMOTO
