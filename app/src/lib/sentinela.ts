@@ -233,19 +233,21 @@ Para os imprimíveis, estime gramas de filamento e horas de impressão de UMA un
 Responda SOMENTE JSON: {"itens":[{"id":número,"imprimivel":bool,"confianca":0-100,"gramas":número,"horas":número,"ideia":"...","risco":"..."}]}`;
 
 /** Analisa com a IA os que mais sobem e ainda não foram analisados (ou faz mais de 14 dias). */
-export async function analisarComIa(limite = 40) {
+export async function analisarComIa(limite = 60) {
   if (!(await geminiConfigurado())) return 0;
-  const candidatos = await db
-    .select({ id: sentinelaItens.id, nome: sentinelaItens.nome, preco: sentinelaItens.preco, fonte: sentinelaItens.fonte })
-    .from(sentinelaItens)
-    .where(
-      and(
-        gte(sentinelaItens.vistoEm, new Date(Date.now() - 3 * 86400_000)),
-        or(isNull(sentinelaItens.analise), sql`(${sentinelaItens.analise}->>'em')::timestamptz < now() - interval '14 days'`),
-      ),
-    )
-    .orderBy(desc(sentinelaItens.velocidade), desc(sentinelaItens.vendas), asc(sentinelaItens.posicao))
-    .limit(limite);
+  const pendente = (fonte: "shopee" | "mercadolivre") =>
+    and(
+      eq(sentinelaItens.fonte, fonte),
+      gte(sentinelaItens.vistoEm, new Date(Date.now() - 3 * 86400_000)),
+      or(isNull(sentinelaItens.analise), sql`(${sentinelaItens.analise}->>'em')::timestamptz < now() - interval '14 days'`),
+    );
+  const campos = { id: sentinelaItens.id, nome: sentinelaItens.nome, preco: sentinelaItens.preco, fonte: sentinelaItens.fonte };
+  // Metade para cada fonte: na Shopee manda a venda; no ML (sem número de vendas) manda a posição no ranking.
+  const [daShopee_, doML] = await Promise.all([
+    db.select(campos).from(sentinelaItens).where(pendente("shopee")).orderBy(desc(sentinelaItens.velocidade), desc(sentinelaItens.vendas)).limit(Math.ceil(limite * 0.6)),
+    db.select(campos).from(sentinelaItens).where(pendente("mercadolivre")).orderBy(desc(sentinelaItens.velocidade), asc(sentinelaItens.posicao)).limit(Math.floor(limite * 0.4)),
+  ]);
+  const candidatos = [...daShopee_, ...doML];
   if (!candidatos.length) return 0;
   const [pi, pp] = await Promise.all([getParametrosImpressao(), getParametrosPreco()]);
   let feitos = 0;
