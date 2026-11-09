@@ -141,24 +141,27 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
                     <Store className="size-5 text-gold" /> Quem vende ({vendedores.length})
                   </span>
                 }
-                description="Do que mais vende para o que menos vende."
+                description="Só concorrentes diretos (filtrados pela IA), do que mais vende para o que menos vende."
               />
               {vendedores.length ? (
                 <div className="divide-y divide-border">
                   {vendedores.slice(0, 40).map(({ a, anuncios, min, vendas }) => (
-                    <div key={`${a.plataforma}:${a.vendedorId}`} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
-                      <MarcaIcone canal={a.plataforma} className="size-6" />
-                      <span className="min-w-0 flex-1 font-semibold">
-                        {a.vendedor}
-                        {a.medalha ? <span className="ml-2 text-xs font-normal text-gold">{a.medalha}</span> : null}
-                        {a.cidade ? <span className="ml-2 text-xs font-normal text-muted">{a.cidade}</span> : null}
-                      </span>
-                      <span className="text-muted">{anuncios} anúncio(s)</span>
-                      <span>a partir de <b>{formatBRL(min)}</b></span>
-                      <span className="text-right font-semibold">
-                        {vendas ? `${num(vendas)} vendas` : "—"}
-                        <span className="block text-[10px] font-normal text-muted">{a.plataforma === "shopee" ? "destes anúncios" : a.plataforma === "mercadolivre" ? "total da loja no ML" : ""}</span>
-                      </span>
+                    <div key={`${a.plataforma}:${a.vendedorId}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+                      <MarcaIcone canal={a.plataforma} className="mt-0.5 size-6" />
+                      <div className="grid min-w-0 flex-1 gap-0.5">
+                        <p className="font-semibold break-words">
+                          {a.vendedor}
+                          {a.medalha ? <span className="ml-2 text-xs font-normal text-gold">{a.medalha}</span> : null}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {anuncios} anúncio(s) · a partir de <b className="text-foreground">{formatBRL(min)}</b>
+                          {a.cidade ? ` · ${a.cidade}` : ""}
+                        </p>
+                      </div>
+                      <div className="shrink-0 text-right">
+                        <p className="font-bold">{vendas ? `${num(vendas)} vendas` : "—"}</p>
+                        <p className="text-[10px] text-muted">{a.plataforma === "shopee" ? "destes anúncios" : a.plataforma === "mercadolivre" ? "total da loja" : ""}</p>
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -198,6 +201,18 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
                 ),
               }))}
             />
+            {r.descartados.length ? (
+              <details className="rounded-xl border border-border">
+                <summary className="cursor-pointer px-4 py-3 text-sm text-muted">
+                  {r.descartados.length} anúncio(s) que não são o mesmo produto (filtrados) — ver
+                </summary>
+                <div className="divide-y divide-border">
+                  {r.descartados.slice(0, 80).map((a, i) => (
+                    <Linha key={`d-${a.link}-${i}`} a={a} />
+                  ))}
+                </div>
+              </details>
+            ) : null}
           </>
         )}
       </div>
