@@ -17,7 +17,7 @@ const ORIGEM = { padrao: "padrão", ia: "IA", tendencia: "em alta no ML", usuari
 
 function Grade({ itens, vazio }: { itens: ItemSentinela[]; vazio: string }) {
   if (!itens.length) return <p className="p-5 text-sm text-muted">{vazio}</p>;
-  return <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">{itens.map((i) => <ItemCard key={i.id} i={i} />)}</div>;
+  return <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">{itens.map((i) => <ItemCard key={i.id} i={i} semComissao />)}</div>;
 }
 
 export default async function SentinelaPage({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string }> }) {
@@ -48,7 +48,7 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
       <AtualizarSozinho ativo={Boolean(trabalho)} />
       <PageHeader
         title="Sentinela de mercado"
-        description="Vigia Shopee e Mercado Livre o tempo todo: o que está vendendo agora, quem disputa, quanto custa fazer na sua impressora e quanto sobra."
+        description="Vigia o mercado de peças impressas em 3D na Shopee e no Mercado Livre: o que vende agora, quem disputa, quanto custa fazer na sua impressora e quanto sobra no Magalu, ML e Shopee. (O Magalu não libera dados de concorrentes por API; a margem dele vem das suas taxas.)"
         actions={
           <>
             <form action={coletarAgora}>
@@ -106,13 +106,13 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
         <Card>
           <CardHeader
             title="🎯 Oportunidades para imprimir"
-            description="A IA confirmou que dá para fazer na A1 mini e sobra margem de 30% ou mais no preço que o concorrente cobra (já com taxas do marketplace)."
+            description="Só peças impressas em 3D que a IA confirmou que saem da A1 mini, com margem de 30% ou mais no Magalu, no preço que o concorrente cobra (taxas de Configurações). ML e Shopee ao lado para comparar."
           />
           <Grade itens={p.oportunidades as ItemSentinela[]} vazio="Ainda sem oportunidades analisadas: rode uma coleta (a IA analisa em seguida)." />
         </Card>
 
         <Card>
-          <CardHeader title="🔥 Vendendo agora na Shopee" description="Ordenado pela velocidade (vendas por dia entre as leituras) e pelo total vendido." />
+          <CardHeader title="🔥 Peças 3D vendendo agora na Shopee" description="Buscas dos seus nichos com “3d”. Ordenado pela velocidade (vendas por dia entre as leituras) e pelo total vendido." />
           <Grade itens={p.subindoShopee as ItemSentinela[]} vazio="Sem leituras da Shopee: confira as credenciais de afiliado em Configurações." />
         </Card>
 

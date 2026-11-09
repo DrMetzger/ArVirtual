@@ -29,23 +29,42 @@ const num = (n: number, casas = 0) => n.toLocaleString("pt-BR", { maximumFractio
 /** Veredito da IA em uma linha colorida. */
 export function Veredito({ a }: { a: AnaliseSentinela | null }) {
   if (!a) return <p className="text-xs text-muted">IA ainda não analisou</p>;
-  if (!a.imprimivel || a.confianca < 50) return <p className="text-xs text-muted">Não é para impressão 3D</p>;
-  const tom = a.margem >= 80 ? "text-green" : a.margem >= 30 ? "text-gold" : "text-red";
+  if (!a.imprimivel || a.impresso3d === false || a.confianca < 50) return <p className="text-xs text-muted">Não é peça de impressão 3D</p>;
+  const tom = (m: number) => (m >= 80 ? "text-green" : m >= 30 ? "text-gold" : "text-red");
   return (
     <div className="grid gap-0.5 text-xs">
-      <p className={cn("inline-flex items-center gap-1 font-bold", tom)}>
-        <Printer className="size-3.5" /> Dá pra imprimir · margem {num(a.margem)}%
+      <p className={cn("inline-flex items-center gap-1 font-bold", tom(a.margem))}>
+        <Printer className="size-3.5" /> Peça 3D · custo {formatBRL(a.custo)}
       </p>
       <p className="text-muted">
-        ~{num(a.gramas)} g · {num(a.horas, 1)} h · custo {formatBRL(a.custo)} · sobra {formatBRL(a.lucro)}
+        ~{num(a.gramas)} g · {num(a.horas, 1)} h de impressão
       </p>
+      {a.canais ? (
+        <div className="grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1.5 text-center">
+          {(
+            [
+              ["magalu", "Magalu"],
+              ["mercadolivre", "ML"],
+              ["shopee", "Shopee"],
+            ] as const
+          ).map(([k, nome]) => (
+            <div key={k}>
+              <p className="text-[10px] text-muted">{nome}</p>
+              <p className={cn("font-bold", tom(a.canais![k].margem))}>{num(a.canais![k].margem)}%</p>
+              <p className="text-[10px] text-muted">{formatBRL(a.canais![k].lucro)}</p>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className={cn("font-bold", tom(a.margem))}>margem {num(a.margem)}% · sobra {formatBRL(a.lucro)}</p>
+      )}
       {a.ideia ? <p className="text-foreground">💡 {a.ideia}</p> : null}
       {a.risco ? <p className="text-red">⚠ {a.risco}</p> : null}
     </div>
   );
 }
 
-export function ItemCard({ i, acao }: { i: ItemSentinela; acao?: React.ReactNode }) {
+export function ItemCard({ i, acao, semIa, semComissao }: { i: ItemSentinela; acao?: React.ReactNode; semIa?: boolean; semComissao?: boolean }) {
   const shopee = i.fonte === "shopee";
   return (
     <div className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface">
@@ -73,7 +92,7 @@ export function ItemCard({ i, acao }: { i: ItemSentinela; acao?: React.ReactNode
           {shopee ? (
             <>
               <span className="text-muted">{num(i.vendas)} vendas</span>
-              {i.comissao ? <Badge tone="gold">{num(i.comissao * 100, 1)}% comissão</Badge> : null}
+              {i.comissao && !semComissao ? <Badge tone="gold">{num(i.comissao * 100, 1)}% comissão</Badge> : null}
             </>
           ) : (
             <>
@@ -89,7 +108,7 @@ export function ItemCard({ i, acao }: { i: ItemSentinela; acao?: React.ReactNode
         <p className="truncate text-[11px] text-muted">
           {i.categoria || i.loja} · vigiando “{i.termo}”
         </p>
-        <Veredito a={i.analise} />
+        {semIa ? null : <Veredito a={i.analise} />}
         {acao ? <div className="mt-auto pt-1">{acao}</div> : null}
       </div>
     </div>
