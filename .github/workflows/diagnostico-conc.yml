@@ -25,11 +25,10 @@ jobs:
           const g = async (p) => { const t0 = Date.now(); const r = await fetch("https://api.mercadolibre.com" + p, { headers: { Authorization: `Bearer ${tk}` } }); return [r.status, await r.json().catch(() => null), Date.now() - t0]; };
           let [s, j, ms] = await g("/products/search?site_id=MLB&status=active&q=suporte%20alexa%20echo%20pop&limit=10");
           console.log("SEARCH", s, ms, "n", j?.results?.length, JSON.stringify(j?.results?.slice(0, 3)?.map((r) => ({ id: r.id, name: r.name }))));
-          const pid = j?.results?.[0]?.id;
-          [s, j, ms] = await g(`/products/${pid}/items?limit=50`);
-          const it = j?.results ?? [];
+          let it = [];
+          for (const r of j?.results ?? []) { const [s2, j2] = await g(`/products/${r.id}/items?limit=50`); console.log("PROD", r.id, s2, j2?.results?.length ?? 0); if (j2?.results?.length) { it = j2.results; break; } }
           console.log("ITEMS", s, ms, "n", it.length, "keys", Object.keys(it[0] ?? {}).join(","));
-          console.log("ITEM0", JSON.stringify(it[0]).slice(0, 600));
+          console.log("ITEM0", JSON.stringify(it[0] ?? null).slice(0, 600));
           const sid = it[0]?.seller_id;
           [s, j, ms] = await g(`/users/${sid}`);
           console.log("USER", s, ms, JSON.stringify({ nick: j?.nickname, perm: j?.permalink, rep: j?.seller_reputation?.level_id, power: j?.seller_reputation?.power_seller_status, city: j?.address?.city, err: j?.error }));
