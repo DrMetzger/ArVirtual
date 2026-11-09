@@ -1,0 +1,67 @@
+name: Diagnóstico dados de mercado (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-sentinela.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: O que as APIs entregam
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const cfg = Object.fromEntries((await sql`select chave, valor, secreto from configuracoes where chave like 'afiliados.%'`).map((r) => [r.chave, r.secreto ? dec(r.valor) : r.valor]));
+          const af = async (query) => { const corpo = JSON.stringify({ query }); const ts = Math.floor(Date.now() / 1000); const sig = createHash("sha256").update(`${cfg["afiliados.appId"]}${ts}${corpo}${cfg["afiliados.secret"]}`).digest("hex"); const t0 = Date.now(); const r = await fetch("https://open-api.affiliate.shopee.com.br/graphql", { method: "POST", headers: { "Content-Type": "application/json", Authorization: `SHA256 Credential=${cfg["afiliados.appId"]}, Timestamp=${ts}, Signature=${sig}` }, body: corpo }); const j = await r.json(); return [Date.now() - t0, j]; };
+          const resumo = (n) => `${String(n.productName).slice(0, 45)} | vendas=${n.sales} preço=${n.priceMin} com=${n.commissionRate} loja=${String(n.shopName).slice(0, 15)} id=${n.itemId}`;
+          for (const [rot, args] of [
+            ["kw impressão 3d vendidos p1", `keyword: "impressão 3d", sortType: 2, limit: 50, page: 1`],
+            ["kw impressão 3d vendidos p5", `keyword: "impressão 3d", sortType: 2, limit: 50, page: 5`],
+            ["kw suporte controle vendidos", `keyword: "suporte controle ps5", sortType: 2, limit: 50`],
+            ["kw organizador comissao", `keyword: "organizador", sortType: 5, limit: 50`],
+            ["listType 2 (top)", `listType: 2, sortType: 2, limit: 50`],
+            ["listType 1 (comissão)", `listType: 1, limit: 50`],
+          ]) {
+            const [ms, j] = await af(`{ productOfferV2(${args}) { nodes { itemId shopId productName shopName priceMin commissionRate sales ratingStar } pageInfo { page hasNextPage } } }`);
+            const ns = j?.data?.productOfferV2?.nodes ?? [];
+            const lojas = new Set(ns.map((n) => n.shopId)).size;
+            console.log(`SHOPEE ${rot}: ${ms}ms itens=${ns.length} lojas=${lojas} temMais=${j?.data?.productOfferV2?.pageInfo?.hasNextPage} erro=${JSON.stringify(j?.errors?.[0]?.message ?? "")}`);
+            for (const n of ns.slice(0, 4)) console.log("   ", resumo(n));
+            if (ns.length) console.log("    vendas min/max", Math.min(...ns.map((n) => n.sales)), Math.max(...ns.map((n) => n.sales)));
+          }
+          // Mesmo item 2x: o número de vendas é exato (para medir velocidade) ou arredondado?
+          const [, j2] = await af(`{ productOfferV2(keyword: "suporte headset", sortType: 2, limit: 20) { nodes { itemId sales } } }`);
+          console.log("SALES valores", JSON.stringify((j2?.data?.productOfferV2?.nodes ?? []).map((n) => n.sales)));
+          // Mercado Livre
+          const [c] = await sql`select access_token_enc from contas_marketplace where marketplace = 'mercadolivre' limit 1`;
+          const tk = dec(c.access_token_enc);
+          const g = async (p) => { const t0 = Date.now(); const r = await fetch("https://api.mercadolibre.com" + p, { headers: { Authorization: `Bearer ${tk}` } }); return [r.status, await r.json().catch(() => null), Date.now() - t0]; };
+          let [s, j, ms] = await g("/sites/MLB/domain_discovery/search?q=suporte%20controle%20ps5&limit=3");
+          console.log("ML domain", s, ms, JSON.stringify(j).slice(0, 300));
+          const cat = j?.[0]?.category_id;
+          [s, j, ms] = await g(`/highlights/MLB/category/${cat}`);
+          console.log("ML highlights", s, ms, JSON.stringify(j?.content?.slice(0, 5)));
+          const h = j?.content ?? [];
+          const item = h.find((x) => x.type === "ITEM")?.id; const prod = h.find((x) => x.type === "PRODUCT")?.id;
+          if (prod) { [s, j, ms] = await g(`/products/${prod}/items?limit=50`); console.log("ML product items", s, ms, "vendedores", j?.results?.length, JSON.stringify(j?.results?.slice(0, 2)?.map((r) => ({ item_id: r.item_id, price: r.price, sold: r.sold_quantity, seller: r.seller_id })))); }
+          const alvo = item ?? j?.results?.[0]?.item_id;
+          if (alvo) {
+            [s, j, ms] = await g(`/items/${alvo}`); console.log("ML item outro vendedor", s, ms, j?.error ?? "", "sold", j?.sold_quantity, "keys", Object.keys(j ?? {}).length);
+            [s, j, ms] = await g(`/items/${alvo}/visits/time_window?last=7&unit=day`); console.log("ML visitas outro vendedor", s, ms, j?.error ?? "", "total", j?.total_visits);
+            [s, j, ms] = await g(`/visits/items?ids=${alvo}`); console.log("ML visits/items", s, JSON.stringify(j).slice(0, 120));
+          }
+          [s, j, ms] = await g(`/trends/MLB/${cat}`); console.log("ML trends", s, ms, JSON.stringify(j?.slice?.(0, 8)));
+          [s, j, ms] = await g(`/trends/MLB`); console.log("ML trends geral", s, ms, JSON.stringify(j?.slice?.(0, 10)));
+          [s, j, ms] = await g(`/sites/MLB/search?q=suporte%20controle%20ps5&limit=3`); console.log("ML search", s, ms, j?.error ?? "", j?.paging?.total);
+          await sql.end();
+          JS
+          REMOTO
