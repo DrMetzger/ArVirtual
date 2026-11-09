@@ -112,6 +112,7 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/analises", label: "Análise de vendas", icon: BarChart3 },
       { href: "/sentinela", label: "Sentinela de mercado", icon: Radar },
+      { href: "/sentinela/concorrencia", label: "Concorrência por produto", icon: Users },
       { href: "/pesquisa", label: "Pesquisa manual", icon: TrendingUp },
     ],
   },

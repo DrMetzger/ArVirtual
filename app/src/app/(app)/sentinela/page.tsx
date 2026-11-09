@@ -1,4 +1,4 @@
-import { Bot, Eye, EyeOff, Loader2, Plus, Radar, Search, Sparkles, Trash2 } from "lucide-react";
+import { Bot, Eye, EyeOff, Loader2, Plus, Radar, Sparkles, Trash2, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
@@ -61,8 +61,8 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
                 <Sparkles /> Plano da IA
               </SubmitButton>
             </form>
-            <Link href="/pesquisa" className={buttonClass("outline")}>
-              <Search /> Pesquisa manual
+            <Link href="/sentinela/concorrencia" className={buttonClass("outline")}>
+              <Users /> Concorrência por produto
             </Link>
           </>
         }
@@ -73,8 +73,8 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
         {trabalho ? (
           <Alert tone="gold">
             <span className="inline-flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" /> {trabalho.tipo === "coleta" ? "Coletando e analisando" : "Gerando o plano da IA"} há {Math.round((Date.now() - trabalho.desde) / 60_000)} min… a página
-              atualiza sozinha.
+              <Loader2 className="size-4 animate-spin" /> {trabalho.tipo === "coleta" ? "Coletando e analisando" : "Gerando o plano da IA"} em segundo plano. Quando
+              terminar, aparece o botão “Ver resultado” no canto da tela.
             </span>
           </Alert>
         ) : null}
