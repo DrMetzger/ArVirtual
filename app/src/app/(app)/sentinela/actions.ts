@@ -32,13 +32,15 @@ export async function coletarAgora() {
     await coletarSentinela();
     await analisarComIa();
   });
-  voltar("/sentinela", ok ? "ok" : "erro", ok ? "Sentinelas na rua: lendo Shopee e Mercado Livre e analisando com a IA. Leva alguns minutos; quando terminar aparece “Ver resultado” no canto da tela." : "Já tem um trabalho em andamento.");
+  if (!ok) voltar("/sentinela", "erro", "Já tem um trabalho em andamento.");
+  redirect("/sentinela");
 }
 
 export async function relatorioAgora() {
   await requireUser();
   const ok = emSegundoPlano("relatório", () => gerarRelatorio());
-  voltar("/sentinela", ok ? "ok" : "erro", ok ? "A IA está cruzando os dados com o que está em alta na internet. Leva 1 a 2 minutos; quando terminar aparece “Ver resultado” no canto da tela." : "Já tem um trabalho em andamento.");
+  if (!ok) voltar("/sentinela", "erro", "Já tem um trabalho em andamento.");
+  redirect("/sentinela?aba=plano");
 }
 
 export async function adicionarTermo(form: FormData) {
@@ -47,26 +49,26 @@ export async function adicionarTermo(form: FormData) {
     .split(/[\n;,]/)
     .map((t) => t.trim().toLowerCase().slice(0, 80))
     .filter((t) => t.length >= 3);
-  if (!termos.length) voltar("/sentinela#termos", "erro", "Escreva o termo que quer vigiar (ex.: suporte de controle).");
+  if (!termos.length) voltar("/sentinela?aba=vigiar", "erro", "Escreva o termo que quer vigiar (ex.: suporte de controle).");
   for (const termo of termos) {
     await db.insert(sentinelaTermos).values({ termo, origem: "usuario" }).onConflictDoUpdate({ target: sentinelaTermos.termo, set: { ativo: true } });
   }
   revalidatePath("/sentinela");
-  voltar("/sentinela#termos", "ok", `${termos.length} termo(s) na vigília. Entram na próxima coleta.`);
+  redirect("/sentinela?aba=vigiar");
 }
 
 export async function alternarTermo(id: number, ativo: boolean) {
   await requireUser();
   await db.update(sentinelaTermos).set({ ativo }).where(eq(sentinelaTermos.id, id));
   revalidatePath("/sentinela");
-  redirect("/sentinela#termos");
+  redirect("/sentinela?aba=vigiar");
 }
 
 export async function excluirTermo(id: number) {
   await requireUser();
   await db.delete(sentinelaTermos).where(eq(sentinelaTermos.id, id));
   revalidatePath("/sentinela");
-  redirect("/sentinela#termos");
+  redirect("/sentinela?aba=vigiar");
 }
 
 /** Garimpo → afiliados: pega a oferta atual do produto, gera o link e salva como ideia. */

@@ -416,6 +416,10 @@ export async function gerarRelatorio() {
     .map((n) => `- ${n.termo} [${n.fonte}]: ${n.itens} produtos, preço mediano R$ ${n.preco_mediano.toFixed(2)}, ${n.fonte === "shopee" ? `${n.vendas} vendas, ${n.lojas} lojas` : `${n.vendedores.toFixed(1)} vendedores por produto`}`)
     .join("\n");
   const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full" });
+  const meusMagalu = (await campeoesMagalu().catch(() => []))
+    .slice(0, 12)
+    .map((m) => `- ${m.titulo}: ${m.quantidade} un. em ${m.pedidos} pedido(s), R$ ${m.faturamento.toFixed(2)}`)
+    .join("\n");
   const prompt = `Hoje é ${hoje}. Sou fabricante de peças em impressão 3D (Bambu Lab A1 mini, marca Sincrolab) e vendo principalmente no Magalu (minhas melhores taxas), além de Mercado Livre e Shopee. Só me interessa o que eu fabrico na impressora 3D.
 Tenho filamento e impressora parados: preciso vender. Abaixo estão os dados REAIS que meu sistema coletou dos marketplaces.
 
@@ -428,10 +432,14 @@ ${p.subindoShopee.slice(0, 15).map(linha).join("\n")}
 RANKING DO MERCADO LIVRE:
 ${p.subindoML.slice(0, 15).map(linha).join("\n")}
 
+MEUS MAIS VENDIDOS NO MAGALU (últimos 60 dias, meus pedidos reais):
+${meusMagalu || "(sem pedidos no período)"}
+
 NICHOS VIGIADOS (demanda x concorrência):
 ${nichos}
 
-Pesquise na internet o que está em alta AGORA no Brasil (datas comemorativas das próximas 6 semanas, lançamentos de games/filmes/séries,
+Pesquise também no magazineluiza.com.br quem vende peças parecidas com as minhas e as oportunidades, e por quanto
+(o Magalu não tem API, só a sua pesquisa). Pesquise na internet o que está em alta AGORA no Brasil (datas comemorativas das próximas 6 semanas, lançamentos de games/filmes/séries,
 modas de decoração e de presente) e cruze com os dados. Entregue, em português, direto ao ponto, sem enrolação:
 1. "Fazer esta semana": 5 produtos concretos para imprimir e anunciar já (nome do anúncio sugerido, preço, por que vai vender, em qual marketplace primeiro).
 2. "Nichos com pouca concorrência": onde a demanda é boa e há poucos vendedores.
@@ -468,4 +476,23 @@ export async function rotinaSentinela() {
   await analisarComIa().catch((e: Error) => console.warn(`[sentinela] IA: ${e.message}`));
   const ultimo = await db.query.sentinelaRelatorios.findFirst({ orderBy: desc(sentinelaRelatorios.criadoEm), columns: { criadoEm: true } });
   if (!ultimo || Date.now() - ultimo.criadoEm.getTime() > 24 * 3600_000) await gerarRelatorio().catch((e: Error) => console.warn(`[sentinela] relatório: ${e.message}`));
+}
+
+/** Seus mais vendidos no Magalu (pedidos reais dos últimos 60 dias, sem cancelados). */
+export async function campeoesMagalu() {
+  const linhas = await db.execute<{ titulo: string; sku: string; quantidade: number; faturamento: number; pedidos: number; imagem: string | null; produto_id: string | null }>(sql`
+    with vendas as (
+      select i->>'titulo' as titulo, coalesce(i->>'sku', '') as sku,
+        sum((i->>'quantidade')::numeric)::int as quantidade,
+        sum((i->>'quantidade')::numeric * (i->>'valorUnitario')::numeric)::float as faturamento,
+        count(distinct p.id)::int as pedidos
+      from pedidos_marketplace p, jsonb_array_elements(p.itens) i
+      where p.marketplace = 'magalu' and p.data > now() - interval '60 days' and p.status <> 'cancelled'
+      group by 1, 2
+    )
+    select v.*,
+      (select pr.imagens[1] from produtos pr where lower(pr.sku) = lower(v.sku) limit 1) as imagem,
+      (select pr.id::text from produtos pr where lower(pr.sku) = lower(v.sku) limit 1) as produto_id
+    from vendas v order by v.quantidade desc, v.faturamento desc limit 30`);
+  return [...linhas];
 }

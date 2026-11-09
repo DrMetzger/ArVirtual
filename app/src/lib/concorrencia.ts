@@ -1,5 +1,6 @@
 import "server-only";
 import { afiliadosConfigurado, buscarOfertas, type Oferta } from "@/lib/afiliados";
+import { gerarComGeminiDetalhado, geminiConfigurado } from "@/lib/gemini";
 import { get, tokenML } from "@/lib/pesquisa-mercado";
 
 /**
@@ -11,7 +12,7 @@ import { get, tokenML } from "@/lib/pesquisa-mercado";
  */
 
 export type Anuncio = {
-  plataforma: "shopee" | "mercadolivre";
+  plataforma: "shopee" | "mercadolivre" | "magalu";
   vendedor: string;
   vendedorId: string;
   produto: string;
@@ -137,8 +138,64 @@ async function mercadoLivre(q: string, erros: string[]): Promise<Anuncio[]> {
   }
 }
 
+/**
+ * Magalu não tem API de concorrência e bloqueia leitura automática do site; a IA pesquisa no Google
+ * só dentro do magazineluiza.com.br e lista o que achou. Só entram links do próprio Magalu.
+ */
+async function magalu(q: string, erros: string[]): Promise<Anuncio[]> {
+  if (!(await geminiConfigurado())) {
+    erros.push("Magalu: cadastre a chave do Gemini em Configurações para a IA pesquisar no Magalu.");
+    return [];
+  }
+  const prompt = `Pesquise no Google (site:magazineluiza.com.br) anúncios à venda AGORA no Magalu para: "${q}".
+Liste até 15 anúncios reais que você encontrou nas páginas do magazineluiza.com.br: nome do produto, quem vende
+(o "Vendido e entregue por ..." da página; "Magalu" se for a própria loja), preço à vista em reais e o link da página do produto.
+Não invente nada: se não achar, devolva a lista vazia. Responda SOMENTE com um bloco JSON:
+{"anuncios":[{"produto":"...","vendedor":"...","preco":0,"link":"https://www.magazineluiza.com.br/..."}]}`;
+  try {
+    const r = await Promise.race([
+      gerarComGeminiDetalhado([{ role: "user", text: prompt }], { pesquisa: true, temperature: 0.1 }),
+      new Promise<never>((_, nao) => setTimeout(() => nao(new Error("a pesquisa demorou demais")), 55_000)),
+    ]);
+    const json = r.texto.match(/\{[\s\S]*\}/)?.[0] ?? "{}";
+    const lista = (JSON.parse(json) as { anuncios?: { produto?: string; vendedor?: string; preco?: number | string; link?: string }[] }).anuncios ?? [];
+    return lista
+      .filter((a) => a.produto && /^https:\/\/(www\.)?magazineluiza\.com\.br\//.test(a.link ?? ""))
+      .map((a) => ({
+        plataforma: "magalu" as const,
+        vendedor: (a.vendedor || "não informado").slice(0, 80),
+        vendedorId: (a.vendedor || "?").toLowerCase(),
+        produto: String(a.produto).slice(0, 200),
+        imagem: "",
+        link: a.link!,
+        preco: Number(String(a.preco ?? 0).replace(/[^\d,.]/g, "").replace(/\.(?=\d{3})/g, "").replace(",", ".")) || 0,
+      }));
+  } catch (e) {
+    erros.push(`Magalu (pesquisa da IA): ${(e as Error).message}`);
+    return [];
+  }
+}
+
+// Mesma pesquisa repetida em 10 minutos (voltar à página, trocar de tela) não consulta tudo de novo.
+const cache = new Map<string, { ate: number; r: Awaited<ReturnType<typeof pesquisarAgora>> }>();
 export async function pesquisarConcorrencia(q: string) {
+  const k = q.toLowerCase();
+  const c = cache.get(k);
+  if (c && c.ate > Date.now()) return c.r;
+  const r = await pesquisarAgora(q);
+  // Resultado com falha não fica guardado.
+  if (!r.erros.length) cache.set(k, { ate: Date.now() + 10 * 60_000, r });
+  if (cache.size > 100) cache.delete(cache.keys().next().value!);
+  return r;
+}
+
+async function pesquisarAgora(q: string) {
   const erros: string[] = [];
-  const [s, m] = await Promise.all([shopee(q, erros), mercadoLivre(q, erros)]);
-  return { shopee: s.sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)), mercadolivre: m.sort((a, b) => a.preco - b.preco), erros };
+  const [s, m, g] = await Promise.all([shopee(q, erros), mercadoLivre(q, erros), magalu(q, erros)]);
+  return {
+    shopee: s.sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
+    mercadolivre: m.sort((a, b) => a.preco - b.preco),
+    magalu: g.sort((a, b) => a.preco - b.preco),
+    erros,
+  };
 }
