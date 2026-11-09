@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { CANAIS, MarcaLogo } from "@/components/marca";
-import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, RefreshCw, Upload, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, Printer, RefreshCw, Upload, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -88,6 +88,11 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
             {link ? (
               <a href={link} target="_blank" rel="noreferrer" className={buttonClass("outline")}>
                 <ExternalLink /> Abrir no {info.nome}
+              </a>
+            ) : null}
+            {pedido.marketplace === "magalu" && podeFaturar && (notaValida?.status === "autorizada" || externaValida) ? (
+              <a href={`/api/pedidos/${pedido.id}/etiqueta`} target="_blank" rel="noreferrer" className={buttonClass("gold")}>
+                <Printer /> Imprimir etiqueta (A4)
               </a>
             ) : null}
             {nota && !notaValida ? (

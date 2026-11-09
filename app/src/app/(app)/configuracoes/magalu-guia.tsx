@@ -1,5 +1,5 @@
 import { Copiavel } from "@/components/copiavel";
-import { MAGALU_SCOPES } from "@/lib/marketplaces/magalu";
+import { MAGALU_SCOPES, MAGALU_SCOPES_ETIQUETA } from "@/lib/marketplaces/magalu";
 
 /** Passo a passo do ID Magalu: o Client ID/Secret saem do `idm client create` (não são as chaves da Magalu Cloud). */
 export function MagaluGuia({ base, clientId }: { base: string; clientId: string }) {
@@ -12,8 +12,8 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
     `  --privacy-term "${base}/privacidade"`,
     `  --redirect-uris "${redirect}"`,
     `  --audience "https://api.magalu.com https://services.magalu.com"`,
-    `  --scopes "${MAGALU_SCOPES}"`,
-    `  --scopes-default "${MAGALU_SCOPES}"`,
+    `  --scopes "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}"`,
+    `  --scopes-default "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}"`,
     "  --access-token-exp 7200",
     "  --always-require-login false",
   ];
@@ -24,6 +24,14 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
     ? `https://id.magalu.com/login?${new URLSearchParams({ client_id: clientId, redirect_uri: redirect, scope: MAGALU_SCOPES, response_type: "code", choose_tenants: "true" })}`
     : "";
 
+  // App já criado: só adiciona a permissão de logística (etiquetas).
+  const addScope = [
+    "client add-scope",
+    `  --client-uuid "${clientId || "SEU_CLIENT_ID"}"`,
+    `  --scopes "${MAGALU_SCOPES_ETIQUETA}"`,
+    `  --scopes-default "${MAGALU_SCOPES_ETIQUETA}"`,
+    `  --reason "Gerar e imprimir as etiquetas de envio dos pedidos pelo sistema de gestão"`,
+  ];
   return (
     <div className="grid gap-3">
       <p>
@@ -46,6 +54,12 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
       <Copiavel rotulo="URL de consentimento da ArVirtual (botão Conectar)" texto={`${base}/api/marketplaces/magalu/conectar`} />
       <Copiavel rotulo="Redirect URI" texto={redirect} />
       {consentimento ? <Copiavel rotulo="URL de consentimento do ID Magalu (para teste)" texto={consentimento} /> : null}
+      <p className="mt-2">
+        <b>Etiquetas pela API (app já criado):</b> rode o comando abaixo no PowerShell (mesma pasta do <code>idm.exe</code>, depois do{" "}
+        <code>.\idm.exe login</code>), ligue <b>Etiquetas pela API</b> aqui em cima, salve e, em Marketplaces › Magalu, clique em <b>Conectar conta</b> de novo para
+        aceitar a nova permissão.
+      </p>
+      <Copiavel rotulo="Adicionar permissão de etiquetas (Windows PowerShell)" texto={`.\\idm.exe ${addScope.map((p) => p.trim()).join(" ")}`} />
       <p>
         Termos: <a className="text-gold underline" href={`${base}/termos`} target="_blank" rel="noreferrer">{base}/termos</a> · Privacidade:{" "}
         <a className="text-gold underline" href={`${base}/privacidade`} target="_blank" rel="noreferrer">{base}/privacidade</a>

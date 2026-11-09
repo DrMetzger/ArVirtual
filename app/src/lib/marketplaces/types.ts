@@ -188,6 +188,8 @@ export interface MarketplaceAdapter {
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
   /** Informa ao marketplace a NF-e emitida no ERP para o pedido (`dados` é o pedido como a API devolveu). */
   enviarNota?(conta: ContaComToken, dados: unknown, nota: NotaParaEnviar): Promise<void>;
+  /** Etiqueta de envio do pedido em PDF (`dados` é o pedido como a API devolveu). */
+  etiqueta?(conta: ContaComToken, dados: unknown): Promise<Buffer>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */

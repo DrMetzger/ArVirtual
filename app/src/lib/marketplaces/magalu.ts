@@ -1,5 +1,5 @@
 import "server-only";
-import { getSettings } from "@/lib/settings";
+import { getSetting, getSettings } from "@/lib/settings";
 import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
@@ -20,6 +20,13 @@ export const MAGALU_SCOPES = [
   "open:portfolio-stocks-seller:read",
   "open:portfolio-stocks-seller:write",
 ].join(" ");
+/** Permissão de logística (gerar etiquetas). O client precisa dela antes (idm client add-scope), senão o login recusa. */
+export const MAGALU_SCOPES_ETIQUETA = ["open:order-logistics-seller:read", "open:order-logistics-seller:write"].join(" ");
+
+/** Escopos pedidos ao conectar: os de sempre e, se ligado em Configurações, os de etiqueta. */
+export async function escoposMagalu() {
+  return (await getSetting("magalu.etiquetas")) === "ligado" ? `${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}` : MAGALU_SCOPES;
+}
 
 async function credenciais() {
   const s = await getSettings(["magalu.clientId", "magalu.clientSecret"]);
@@ -145,7 +152,7 @@ export const magalu: MarketplaceAdapter = {
     const q = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
-      scope: MAGALU_SCOPES,
+      scope: await escoposMagalu(),
       response_type: "code",
       choose_tenants: "true",
       state,
@@ -594,5 +601,44 @@ export const magalu: MarketplaceAdapter = {
         body: JSON.stringify(corpo),
       });
     }
+  },
+
+  async etiqueta(conta, dados) {
+    type Canal = { id?: string; extras?: Record<string, unknown> };
+    type Entrega = { id?: string; status?: string; branch?: { external_id?: string; name?: string }; order?: { channel?: Canal }; shipping?: { provider?: { extras?: { is_fulfillment?: boolean } } } };
+    const ids = (((dados ?? {}) as { deliveries?: Entrega[] }).deliveries ?? []).filter((d) => d.id && d.status !== "cancelled").map((d) => d.id!);
+    if (!ids.length) throw new MarketplaceError("O pedido não tem entrega ativa para etiquetar.");
+    // A entrega (consultada agora) traz a filial e o canal do pedido, que a etiqueta exige.
+    const entregas = await Promise.all(ids.map((id) => api<Entrega>(`/seller/v1/deliveries/${encodeURIComponent(id)}`, conta.accessToken)));
+    if (entregas.every((e) => e.shipping?.provider?.extras?.is_fulfillment)) throw new MarketplaceError("Pedido Fulfillment: a etiqueta é do Magalu, não sua.");
+    const canal = entregas.find((e) => e.order?.channel?.id)?.order?.channel;
+    if (!canal?.id) throw new MarketplaceError("O Magalu não informou o canal de venda do pedido.");
+    const corpo = {
+      channel: { id: canal.id, extras: Object.fromEntries(Object.entries(canal.extras ?? {}).filter(([, v]) => typeof v === "string")) },
+      deliveries: entregas.map((e) => ({ id: e.id!, ...(e.branch?.external_id ? { branch: { external_id: e.branch.external_id, ...(e.branch.name ? { name: e.branch.name } : {}) } } : {}) })),
+      label: { format: "pdf", type: "full" },
+    };
+    const res = await fetch(`${API}/seller/v1/logistics/shipping-labels`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${conta.accessToken}`, "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(corpo),
+      signal: AbortSignal.timeout(60_000),
+    });
+    const texto = await res.text();
+    let r: { label?: { signed_url?: string } } | null = null;
+    try {
+      r = JSON.parse(texto);
+    } catch {
+      // resposta não-JSON (o gateway devolve HTML/XML quando falta permissão)
+    }
+    if (!res.ok || !r?.label?.signed_url) {
+      if (res.status === 422 || (r && !texto.startsWith("<"))) return lerResposta(new Response(texto, { status: res.ok ? 500 : res.status }), "Magalu");
+      throw new MarketplaceError(
+        `O Magalu recusou gerar a etiqueta (${res.status}). Falta a permissão de logística no app: em Configurações › Magalu, rode o comando "add-scope", ligue "Etiquetas pela API" e reconecte a conta do Magalu.`,
+      );
+    }
+    const pdf = await fetch(r.label.signed_url, { signal: AbortSignal.timeout(60_000) });
+    if (!pdf.ok) throw new MarketplaceError(`Não consegui baixar a etiqueta do Magalu (${pdf.status}).`);
+    return Buffer.from(await pdf.arrayBuffer());
   },
 };
