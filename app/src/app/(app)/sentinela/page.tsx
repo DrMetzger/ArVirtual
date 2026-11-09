@@ -79,7 +79,8 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
           </Alert>
         ) : null}
         <p className="text-xs text-muted">
-          {p.totais?.itens ?? 0} produtos vigiados · {p.totais?.leituras ?? 0} leituras · última coleta {p.ultimaColeta ? formatDate(p.ultimaColeta) : "nunca"} · coleta
+          {p.totais?.itens ?? 0} produtos vigiados · <b className="text-foreground">{p.totais?.aprovados ?? 0} peças 3D que cabem na sua impressora</b>
+          {p.totais?.naFila ? ` · ${p.totais.naFila} aguardando a IA` : ""} · {p.totais?.leituras ?? 0} leituras · última coleta {p.ultimaColeta ? formatDate(p.ultimaColeta) : "nunca"} · coleta
           automática a cada 4 h, IA analisa o que sobe e o plano sai 1 vez por dia. A velocidade (vendas/dia) aparece a partir da segunda leitura.
         </p>
 
@@ -113,12 +114,12 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
 
         <Card>
           <CardHeader title="🔥 Peças 3D vendendo agora na Shopee" description="Buscas dos seus nichos com “3d”. Ordenado pela velocidade (vendas por dia entre as leituras) e pelo total vendido." />
-          <Grade itens={p.subindoShopee as ItemSentinela[]} vazio="Sem leituras da Shopee: confira as credenciais de afiliado em Configurações." />
+          <Grade itens={p.subindoShopee as ItemSentinela[]} vazio="Nenhuma peça 3D aprovada ainda na Shopee: a IA analisa a fila a cada coleta." />
         </Card>
 
         <Card>
-          <CardHeader title="🏆 Ranking do Mercado Livre" description="Mais vendidos das categorias dos seus nichos, com quantos vendedores disputam cada produto e o menor preço." />
-          <Grade itens={p.subindoML as ItemSentinela[]} vazio="Sem leituras do Mercado Livre: confira a conta conectada em Marketplaces." />
+          <CardHeader title="🏆 Peças 3D no ranking do Mercado Livre" description="Mais vendidos das categorias dos seus nichos que a IA aprovou para a sua impressora, com quantos vendedores disputam e o menor preço." />
+          <Grade itens={p.subindoML as ItemSentinela[]} vazio="Nenhuma peça 3D aprovada ainda no Mercado Livre: a IA analisa a fila a cada coleta." />
         </Card>
 
         {p.novos.length ? (
