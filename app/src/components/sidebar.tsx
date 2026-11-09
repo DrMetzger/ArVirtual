@@ -34,8 +34,7 @@ import {
   Music2,
   BarChart3,
   Wrench,
-  Smartphone,
-} from "lucide-react";
+  Smartphone, Gem, Radar } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -112,10 +111,18 @@ const NAV: (Item | Grupo)[] = [
     icon: BarChart3,
     itens: [
       { href: "/analises", label: "Análise de vendas", icon: BarChart3 },
-      { href: "/pesquisa", label: "Pesquisa de mercado", icon: TrendingUp },
+      { href: "/sentinela", label: "Sentinela de mercado", icon: Radar },
+      { href: "/pesquisa", label: "Pesquisa manual", icon: TrendingUp },
     ],
   },
-  { href: "/afiliados", label: "Afiliados Shopee", icon: BadgePercent },
+  {
+    label: "Afiliados Shopee",
+    icon: BadgePercent,
+    itens: [
+      { href: "/afiliados", label: "Meus produtos", icon: BadgePercent },
+      { href: "/afiliados/garimpo", label: "Garimpo automático", icon: Gem },
+    ],
+  },
   {
     label: "Ferramentas",
     icon: Wrench,

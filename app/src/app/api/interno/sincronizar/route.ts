@@ -2,6 +2,7 @@ import { chamadaInterna } from "@/lib/interno";
 import { afiliadosConfigurado, sincronizarComissoes } from "@/lib/afiliados";
 import { sincronizarPedidos } from "@/lib/marketplaces";
 import { reenviarNotasPendentes } from "@/lib/marketplaces/enviar-nota";
+import { rotinaSentinela } from "@/lib/sentinela";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -28,5 +29,7 @@ export async function POST(req: Request) {
       .then(() => atualizarMetricas())
       .catch((e: Error) => console.warn(`[metricas] ${e.message}`));
   }
+  // Sentinela de mercado: coleta a cada 4 h (o controle de intervalo fica na própria rotina).
+  void rotinaSentinela().catch((e: Error) => console.warn(`[sentinela] ${e.message}`));
   return Response.json(r);
 }
