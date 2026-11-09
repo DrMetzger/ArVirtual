@@ -1,6 +1,6 @@
 import { and, asc, eq } from "drizzle-orm";
 import { CANAIS, MarcaLogo } from "@/components/marca";
-import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, RefreshCw, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, FileCheck2, FileText, MapPin, Package, RefreshCw, Upload, User } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -14,7 +14,7 @@ import { requireUser } from "@/lib/auth";
 import { linkPedido, numeroPedido, packMercadoLivre, situacaoPedido, SITUACOES, type Situacao } from "@/lib/marketplaces/situacao";
 import { clienteDoPedido, documentoDoPedido, vincularItens } from "@/lib/pedidos";
 import { formatBRL, formatCep, formatDate, formatDocumento, formatTelefone } from "@/lib/utils";
-import { alterarSituacao, buscarNotaDoPedido, faturarPedido } from "../actions";
+import { alterarSituacao, buscarNotaDoPedido, faturarPedido, sincronizarNotaMagalu } from "../actions";
 import { notasDosPedidos } from "@/lib/marketplaces/notas-externas";
 import { MAGALU_SEM_NOTA } from "@/lib/marketplaces/situacao";
 import { Vincular } from "./vincular";
@@ -33,7 +33,7 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
     vincularItens(pedido),
     clienteDoPedido(pedido),
     db.select({ id: produtos.id, nome: produtos.nome, sku: produtos.sku }).from(produtos).where(and(eq(produtos.ativo, true), eq(produtos.temVariacoes, false))).orderBy(asc(produtos.nome)),
-    pedido.notaId ? db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { id: true, status: true, numero: true } }) : undefined,
+    pedido.notaId ? db.query.notas.findFirst({ where: eq(notas.id, pedido.notaId), columns: { id: true, status: true, numero: true, envioMarketplace: true } }) : undefined,
   ]);
   const notaValida = nota && notaVale(nota.status) ? nota : null;
   const externas = await notasDosPedidos([pedido.id]);
@@ -100,9 +100,18 @@ export default async function PedidoPage({ params, searchParams }: { params: Pro
                 <FileCheck2 /> DANFE NF {externaValida.numero}
               </a>
             ) : notaValida ? (
-              <Link href={`/notas/${notaValida.id}`} className={buttonClass("primary")}>
-                <FileCheck2 /> Ver nota fiscal{notaValida.numero ? ` ${notaValida.numero}` : ""}
-              </Link>
+              <>
+                {pedido.marketplace === "magalu" && notaValida.status === "autorizada" ? (
+                  <form action={sincronizarNotaMagalu.bind(null, pedido.id)}>
+                    <SubmitButton variant={notaValida.envioMarketplace === "enviada" ? "outline" : "gold"} pendingText="Sincronizando com o Magalu...">
+                      <Upload /> Sincronizar nota no Magalu
+                    </SubmitButton>
+                  </form>
+                ) : null}
+                <Link href={`/notas/${notaValida.id}`} className={buttonClass("primary")}>
+                  <FileCheck2 /> Ver nota fiscal{notaValida.numero ? ` ${notaValida.numero}` : ""}
+                </Link>
+              </>
             ) : (
               <form action={faturarPedido.bind(null, pedido.id)}>
                 <SubmitButton variant="gold" pendingText="Preparando..." disabled={!podeFaturar}>

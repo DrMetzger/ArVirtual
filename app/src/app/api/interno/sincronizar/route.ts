@@ -1,6 +1,7 @@
 import { chamadaInterna } from "@/lib/interno";
 import { afiliadosConfigurado, sincronizarComissoes } from "@/lib/afiliados";
 import { sincronizarPedidos } from "@/lib/marketplaces";
+import { reenviarNotasPendentes } from "@/lib/marketplaces/enviar-nota";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -17,6 +18,8 @@ export async function POST(req: Request) {
     void sincronizarComissoes(new Date(Date.now() - 45 * 86400_000)).catch((e: Error) => console.warn(`[afiliados] ${e.message}`));
   }
   // Taxas dos pedidos (as da Shopee só fecham com o pedido concluído) e, a cada 3 horas, visualizações dos anúncios.
+  // Nota autorizada que o Magalu não aceitou antes (fora do ar, token vencido): tenta de novo.
+  void reenviarNotasPendentes().catch((e: Error) => console.warn(`[nota-marketplace] ${e.message}`));
   void atualizarTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
   if (Date.now() - ultimasMetricas > 3 * 3600_000) {
     ultimasMetricas = Date.now();

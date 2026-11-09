@@ -557,4 +557,42 @@ export const magalu: MarketplaceAdapter = {
     }
     return out;
   },
+
+  async enviarNota(conta, dados, nota) {
+    type Ped = {
+      id?: string;
+      channel?: { id?: string; extras?: Record<string, unknown> };
+      deliveries?: { id?: string; status?: string; shipping?: { provider?: { extras?: { is_fulfillment?: boolean } } } }[];
+    };
+    const p = (dados ?? {}) as Ped;
+    // Fulfillment: o próprio Magalu emite a nota; entrega cancelada não recebe nota.
+    const entregas = (p.deliveries ?? []).filter((d) => d.id && d.status !== "cancelled" && !d.shipping?.provider?.extras?.is_fulfillment);
+    if (!entregas.length) throw new MarketplaceError("O pedido não tem entrega que aceite nota (cancelado ou Fulfillment, em que o Magalu emite a nota).");
+    type Canal = { id?: string; extras?: Record<string, unknown> };
+    // A listagem de pedidos vem sem o id do canal; a entrega traz o pedido com o canal completo.
+    let c: Canal | undefined = p.channel?.id ? p.channel : undefined;
+    if (!c) c = (await api<{ order?: { channel?: Canal } }>(`/seller/v1/deliveries/${encodeURIComponent(entregas[0]!.id!)}`, conta.accessToken)).order?.channel;
+    if (!c?.id) throw new MarketplaceError("O Magalu não informou o canal de venda do pedido.");
+    // Extras do canal só aceitam texto.
+    const canal = { id: c.id, extras: Object.fromEntries(Object.entries(c.extras ?? {}).filter(([, v]) => typeof v === "string")) };
+    for (const d of entregas) {
+      // Já informada (envio anterior ou feito no portal): não manda de novo.
+      const ja = await api<{ results?: { key?: string; status?: string | { id?: string } }[] }>(`/seller/v1/deliveries/${encodeURIComponent(d.id!)}/invoices?_limit=50`, conta.accessToken).catch(() => null);
+      const existente = ja?.results?.find((n) => n.key?.replace(/\D/g, "") === nota.chave);
+      const st = (n?: { status?: string | { id?: string } }) => String(typeof n?.status === "string" ? n.status : (n?.status?.id ?? "")).toLowerCase();
+      const corpo = {
+        key: nota.chave,
+        xml: nota.xml,
+        amount: Math.round(nota.valor * 100) / 100,
+        issued_at: nota.emitidaEm.toISOString(),
+        issuer: nota.cnpjEmitente.replace(/\D/g, ""),
+        channel: canal,
+      };
+      if (existente && st(existente) !== "invalid") continue;
+      await api(`/seller/v1/deliveries/${encodeURIComponent(d.id!)}/invoices${existente ? `/${nota.chave}` : ""}`, conta.accessToken, {
+        method: existente ? "PUT" : "POST",
+        body: JSON.stringify(corpo),
+      });
+    }
+  },
 };

@@ -183,6 +183,13 @@
       "when": 1793845493692,
       "tag": "0025_push_token",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1794241907541,
+      "tag": "0026_nota_frete_marketplace",
+      "breakpoints": true
     }
   ]
 }

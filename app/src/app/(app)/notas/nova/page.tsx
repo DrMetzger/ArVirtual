@@ -40,6 +40,13 @@ export default async function NovaNotaPage({ searchParams }: { searchParams: Pro
         cliente?.enderecos[0]?.id ??
         "",
       itens: itens.map((i) => ({ produtoId: i.produto?.id ?? "", quantidade: i.quantidade, valorUnitario: i.valorUnitario })),
+      // A nota fecha com o que o comprador pagou: produtos + frete cobrado dele − desconto/cupom.
+      // O marketplace não manda o desconto separado: é a diferença entre itens + frete e o total pago.
+      frete: pedido.frete,
+      desconto:
+        pedido.desconto ||
+        Math.max(0, Math.round((pedido.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0) + pedido.frete - pedido.total) * 100) / 100),
+      totalPedido: pedido.total,
     };
   }
   return (

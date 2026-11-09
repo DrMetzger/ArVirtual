@@ -18,8 +18,11 @@ export const EntradaNotaSchema = z.object({
       }),
     )
     .min(1, "Adicione ao menos um item"),
+  /** Frete cobrado do comprador e desconto da venda (o total da nota fica igual ao que ele pagou). */
+  frete: z.number().nonnegative("Frete não pode ser negativo").default(0),
+  desconto: z.number().nonnegative("Desconto não pode ser negativo").default(0),
 });
-export type EntradaNota = z.infer<typeof EntradaNotaSchema>;
+export type EntradaNota = z.input<typeof EntradaNotaSchema>;
 
 /** Impostos da nota com o cadastro atual (cliente, endereço, produtos, matriz fiscal, ICMS por UF, NCM). */
 export async function calcularNota(entrada: EntradaNota) {
@@ -48,5 +51,5 @@ export async function calcularNota(entrada: EntradaNota) {
       valorUnitario: i.valorUnitario,
     };
   });
-  return { cliente, endereco, ...calcularItens(regras, itens, ctx) };
+  return { cliente, endereco, ...calcularItens(regras, itens, ctx, { frete: entrada.frete, desconto: entrada.desconto }) };
 }

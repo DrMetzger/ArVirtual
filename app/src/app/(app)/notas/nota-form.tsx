@@ -14,6 +14,9 @@ type Iniciais = {
   clienteId: string;
   enderecoId: string;
   itens: { produtoId: string; quantidade: number; valorUnitario: number }[];
+  frete: number;
+  desconto: number;
+  totalPedido: number;
 };
 
 const decimal = (n: number) => (Number.isInteger(n) ? String(n) : String(n).replace(".", ","));
@@ -39,6 +42,8 @@ export function NotaForm({
       ? iniciais.itens.map((i, n) => ({ key: n + 1, produtoId: i.produtoId, quantidade: decimal(i.quantidade), valorUnitario: formatValor(i.valorUnitario) }))
       : [{ key: 1, produtoId: "", quantidade: "1", valorUnitario: "" }],
   );
+  const [frete, setFrete] = useState(iniciais?.frete ? formatValor(iniciais.frete) : "");
+  const [desconto, setDesconto] = useState(iniciais?.desconto ? formatValor(iniciais.desconto) : "");
   const [preview, setPreview] = useState<Preview | null>(null);
   const [erro, setErro] = useState("");
   const [calculando, startCalc] = useTransition();
@@ -52,10 +57,14 @@ export function NotaForm({
       itens: linhas
         .filter((l) => l.produtoId)
         .map((l) => ({ produtoId: l.produtoId, quantidade: parseDecimal(l.quantidade), valorUnitario: parseDecimal(l.valorUnitario) })),
+      frete: parseDecimal(frete),
+      desconto: parseDecimal(desconto),
     }),
-    [clienteId, enderecoId, linhas],
+    [clienteId, enderecoId, linhas, frete, desconto],
   );
   const subtotal = entrada.itens.reduce((s, i) => s + i.quantidade * i.valorUnitario, 0);
+  const totalVenda = Math.round((subtotal + entrada.frete - entrada.desconto) * 100) / 100;
+  const diferenca = iniciais ? Math.round((totalVenda - iniciais.totalPedido) * 100) / 100 : 0;
 
   function atualizar(key: number, patch: Partial<Linha>) {
     setPreview(null);
@@ -151,8 +160,42 @@ export function NotaForm({
               </Button>
             </div>
           ))}
-          <div className="flex justify-end border-t border-border pt-3 text-sm">
-            Subtotal: <strong className="ml-2">{formatBRL(subtotal)}</strong>
+          <div className="grid gap-3 border-t border-border pt-3 sm:grid-cols-[1fr_150px_150px] sm:items-end">
+            <p className="text-sm">
+              Produtos: <strong>{formatBRL(subtotal)}</strong>
+            </p>
+            <Field label="Frete cobrado (R$)" hint="Pago pelo comprador">
+              <Input
+                inputMode="decimal"
+                value={frete}
+                placeholder="0,00"
+                onChange={(e) => (setFrete(e.target.value), setPreview(null))}
+                onBlur={() => frete.trim() && setFrete(formatValor(parseDecimal(frete)))}
+              />
+            </Field>
+            <Field label="Desconto (R$)" hint="Cupom da venda">
+              <Input
+                inputMode="decimal"
+                value={desconto}
+                placeholder="0,00"
+                onChange={(e) => (setDesconto(e.target.value), setPreview(null))}
+                onBlur={() => desconto.trim() && setDesconto(formatValor(parseDecimal(desconto)))}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-1 text-sm">
+            {iniciais ? (
+              Math.abs(diferenca) < 0.01 ? (
+                <Badge tone="green">Igual ao valor pago no pedido</Badge>
+              ) : (
+                <Badge tone="red">
+                  {diferenca > 0 ? "Acima" : "Abaixo"} do pedido em {formatBRL(Math.abs(diferenca))} (pedido: {formatBRL(iniciais.totalPedido)})
+                </Badge>
+              )
+            ) : null}
+            <span>
+              Total da venda: <strong className="text-base">{formatBRL(totalVenda)}</strong>
+            </span>
           </div>
         </div>
       </Card>

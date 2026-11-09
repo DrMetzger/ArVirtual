@@ -10,6 +10,7 @@ import { escaparHtml, layoutEmail, paragrafo } from "@/lib/email-layout";
 import { calcularNota, EntradaNotaSchema, type EntradaNota } from "@/lib/fiscal/calculo";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
 import { enviarEmail } from "@/lib/mail";
+import { enviarNotaAoMarketplace } from "@/lib/marketplaces/enviar-nota";
 import { arquivoXml, cancelarNota as cancelarNaSefaz, cartaCorrecao, danfePdf, FORMAS_PAGAMENTO, statusSefaz, transmitirNota } from "@/lib/nfe/emissor";
 import { formatBRL } from "@/lib/utils";
 
@@ -56,6 +57,8 @@ export async function criarNota(entrada: EntradaNota & { formaPagamento: string;
         totalProdutos: calc.totalProdutos,
         totalImpostos: calc.totalImpostos,
         totalNota: calc.totalNota,
+        frete: parsed.data.frete,
+        desconto: parsed.data.desconto,
         itens: calc.itens,
       })
       .returning({ id: notas.id });
@@ -78,8 +81,22 @@ export async function emitirNota(id: string) {
   } catch (e) {
     voltar(id, "erro", (e as Error).message);
   }
+  // Autorizada e de pedido do Magalu: já informa a nota no pedido de lá.
+  const envio = await enviarNotaAoMarketplace(id).catch((e: Error) => e.message);
   revalidatePath(`/notas/${id}`);
   revalidatePath("/notas");
+  revalidatePath("/pedidos");
+  if (envio === "enviada") voltar(id, "aviso", "NF-e autorizada e enviada ao Magalu: o pedido já está com a nota lá.");
+  else if (envio) voltar(id, "erro", `NF-e autorizada, mas o Magalu não aceitou a nota: ${envio}. O ERP tenta de novo sozinho; você também pode usar "Sincronizar nota no Magalu".`);
+}
+
+/** Manda de novo ao marketplace a nota autorizada do pedido (tela da nota). */
+export async function reenviarNotaMarketplace(id: string) {
+  await requireUser();
+  const envio = await enviarNotaAoMarketplace(id).catch((e: Error) => e.message);
+  revalidatePath(`/notas/${id}`);
+  if (envio === "enviada") voltar(id, "aviso", "Nota sincronizada: o pedido no Magalu está com esta NF-e.");
+  voltar(id, "erro", envio ? `O Magalu não aceitou a nota: ${envio}` : "Esta nota não é de um pedido do Magalu.");
 }
 
 export async function cancelarNota(id: string, form: FormData) {
