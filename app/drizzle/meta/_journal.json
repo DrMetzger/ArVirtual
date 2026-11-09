@@ -197,6 +197,13 @@
       "when": 1794258245081,
       "tag": "0027_sentinela",
       "breakpoints": true
+    },
+    {
+      "idx": 28,
+      "version": "7",
+      "when": 1794260494342,
+      "tag": "0028_sentinela_extras",
+      "breakpoints": true
     }
   ]
 }

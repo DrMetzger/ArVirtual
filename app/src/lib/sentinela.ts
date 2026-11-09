@@ -1,7 +1,7 @@
 import "server-only";
-import { and, asc, desc, eq, gte, inArray, isNull, lt, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { sentinelaItens, sentinelaLeituras, sentinelaRelatorios, sentinelaTermos, type AnaliseSentinela } from "@/db/schema";
+import { sentinelaItens, sentinelaLeituras, sentinelaRelatorios, sentinelaTermos, type AnaliseSentinela, type ExtrasAfiliado } from "@/db/schema";
 import { afiliadosConfigurado, buscarOfertas, type Oferta } from "@/lib/afiliados";
 import { gerarComGemini, gerarComGeminiDetalhado, geminiConfigurado } from "@/lib/gemini";
 import { custoImpressao } from "@/lib/impressao";
@@ -18,6 +18,9 @@ import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
  */
 
 const TERMOS_POR_RODADA = 30;
+/** Lista geral "top performing" da Shopee: serve ao garimpo de afiliados, não ao mercado de impressão 3D. */
+export const EM_ALTA = "em alta na Shopee";
+const VERSAO_ANALISE = 2;
 const MAX_TERMOS_ATIVOS = 80;
 let rodando = false;
 
@@ -37,6 +40,7 @@ type Lido = {
   avaliacao?: number;
   posicao?: number | null;
   vendedores?: number | null;
+  extras?: ExtrasAfiliado;
 };
 
 const daShopee = (o: Oferta, termo: string): Lido => ({
@@ -52,6 +56,16 @@ const daShopee = (o: Oferta, termo: string): Lido => ({
   comissao: o.comissaoTaxa,
   vendas: o.vendas,
   avaliacao: o.avaliacao,
+  extras: {
+    comissaoVendedor: o.comissaoVendedor,
+    comissaoShopee: o.comissaoShopee,
+    comissaoNovo: o.comissaoNovo,
+    ofertaDesde: o.ofertaDesde,
+    ofertaAte: o.ofertaAte,
+    tiposLoja: o.tiposLoja,
+    desconto: o.desconto,
+    categorias: o.categorias,
+  },
 });
 
 async function gravar(lidos: Lido[]) {
@@ -77,6 +91,7 @@ async function gravar(lidos: Lido[]) {
         avaliacao: l.avaliacao ?? 0,
         posicao: l.posicao ?? null,
         vendedores: l.vendedores ?? null,
+        extras: l.extras ?? null,
       })),
     )
     .onConflictDoUpdate({
@@ -93,6 +108,7 @@ async function gravar(lidos: Lido[]) {
         avaliacao: sql`excluded.avaliacao`,
         posicao: sql`excluded.posicao`,
         vendedores: sql`excluded.vendedores`,
+        extras: sql`coalesce(excluded.extras, ${sentinelaItens.extras})`,
         vistoEm: sql`now()`,
       },
     })
@@ -137,14 +153,16 @@ async function coletarShopee(termos: string[], erros: string[]) {
   for (let pagina = 1; pagina <= 3; pagina++) {
     const r = await buscarOfertas({ lista: 2, pagina, limite: 50 }).catch((e: Error) => (erros.push(`Shopee top: ${e.message}`), null));
     if (!r) break;
-    ids.push(...(await gravar(r.ofertas.map((o) => daShopee(o, "em alta na Shopee")))));
+    ids.push(...(await gravar(r.ofertas.map((o) => daShopee(o, EM_ALTA)))));
     if (!r.temMais) break;
   }
   for (const termo of termos) {
     // Mais vendidos primeiro; se a Shopee recusar a ordenação, cai para a relevância.
+    // Foco no mercado de peças impressas em 3D: o termo vai com "3d" na busca.
+    const busca = /\b3d\b/i.test(termo) ? termo : `${termo} 3d`;
     const r =
-      (await buscarOfertas({ termo, ordem: "vendidos", limite: 50 }).catch(() => null)) ??
-      (await buscarOfertas({ termo, limite: 50 }).catch((e: Error) => (erros.push(`Shopee "${termo}": ${e.message}`), null)));
+      (await buscarOfertas({ termo: busca, ordem: "vendidos", limite: 50 }).catch(() => null)) ??
+      (await buscarOfertas({ termo: busca, limite: 50 }).catch((e: Error) => (erros.push(`Shopee "${busca}": ${e.message}`), null)));
     if (r) ids.push(...(await gravar(r.ofertas.map((o) => daShopee(o, termo)))));
   }
   return ids;
@@ -223,14 +241,18 @@ export async function coletarSentinela() {
 
 // ---------------------------------------------------------------------------------------------- IA
 
-const PROMPT_ANALISE = `Você é especialista em impressão 3D FDM (Bambu Lab A1 mini, mesa 18x18x18 cm, PLA/PETG) e em vender no Mercado Livre e Shopee.
-Para cada produto da lista (nome e preço que o concorrente cobra), responda se dá para fabricar na A1 mini com qualidade de venda
-(peça inteira ou em partes que encaixam, sem eletrônica complexa, tecido, vidro ou metal como parte principal).
-Seja realista: tecido, roupa, eletrônico, cosmético, alimento, papel e kits industriais NÃO são imprimíveis.
+const PROMPT_ANALISE = `Você é especialista em impressão 3D FDM (Bambu Lab A1 mini, mesa 18x18x18 cm, PLA/PETG) e vende peças impressas em 3D no Magalu, Mercado Livre e Shopee.
+Para cada produto da lista (nome e preço que o concorrente cobra), avalie o produto COMO ELE É VENDIDO, não uma versão reinventada:
+- "impresso3d": true só se o anúncio é de peça impressa em 3D (o nome cita 3D/impresso, ou é peça plástica tipicamente impressa:
+  suporte, organizador, vaso, miniatura, action figure, articulado, chaveiro, topo de bolo, luminária de PLA, peça de reposição, case, encaixe).
+- "imprimivel": true só se o MESMO produto sai da A1 mini com qualidade de venda, inteiro em plástico (PLA/PETG), sem precisar de metal, madeira,
+  vidro, tecido, planta artificial, glitter, LED/eletrônica, ímã, adesivo industrial, cerâmica ou espelho como parte principal.
+  Na dúvida, false. Itens de ferro/aço, madeira/MDF, flores e plantas artificiais, pisca-pisca, ganchos adesivos, roupas, cosméticos,
+  eletrônicos, kits de bolinhas de vidro/plástico injetado em massa (centenas de peças) = false.
 Para os imprimíveis, estime gramas de filamento e horas de impressão de UMA unidade, como um maker experiente faria.
 "ideia": em 1 frase, como fazer MELHOR ou MAIS BARATO que o concorrente (personalização, kit, cor, encaixe, variação). Para não imprimíveis, deixe "".
 "risco": em poucas palavras o principal risco (marca registrada/licença, peça frágil, tamanho, concorrência de chinês barato) ou "".
-Responda SOMENTE JSON: {"itens":[{"id":número,"imprimivel":bool,"confianca":0-100,"gramas":número,"horas":número,"ideia":"...","risco":"..."}]}`;
+Responda SOMENTE JSON: {"itens":[{"id":número,"impresso3d":bool,"imprimivel":bool,"confianca":0-100,"gramas":número,"horas":número,"ideia":"...","risco":"..."}]}`;
 
 /** Analisa com a IA os que mais sobem e ainda não foram analisados (ou faz mais de 14 dias). */
 export async function analisarComIa(limite = 60) {
@@ -238,8 +260,13 @@ export async function analisarComIa(limite = 60) {
   const pendente = (fonte: "shopee" | "mercadolivre") =>
     and(
       eq(sentinelaItens.fonte, fonte),
+      ne(sentinelaItens.termo, EM_ALTA),
       gte(sentinelaItens.vistoEm, new Date(Date.now() - 3 * 86400_000)),
-      or(isNull(sentinelaItens.analise), sql`(${sentinelaItens.analise}->>'em')::timestamptz < now() - interval '14 days'`),
+      or(
+        isNull(sentinelaItens.analise),
+        sql`coalesce((${sentinelaItens.analise}->>'v')::int, 1) < ${VERSAO_ANALISE}`,
+        sql`(${sentinelaItens.analise}->>'em')::timestamptz < now() - interval '14 days'`,
+      ),
     );
   const campos = { id: sentinelaItens.id, nome: sentinelaItens.nome, preco: sentinelaItens.preco, fonte: sentinelaItens.fonte };
   // Metade para cada fonte: na Shopee manda a venda; no ML (sem número de vendas) manda a posição no ranking.
@@ -254,7 +281,7 @@ export async function analisarComIa(limite = 60) {
   for (let i = 0; i < candidatos.length; i += 20) {
     const lote = candidatos.slice(i, i + 20);
     const lista = lote.map((c) => `${c.id} | ${c.nome} | R$ ${c.preco.toFixed(2)}`).join("\n");
-    let r: { itens?: { id: number; imprimivel: boolean; confianca: number; gramas: number; horas: number; ideia: string; risco: string }[] };
+    let r: { itens?: { id: number; impresso3d?: boolean; imprimivel: boolean; confianca: number; gramas: number; horas: number; ideia: string; risco: string }[] };
     try {
       r = JSON.parse(await gerarComGemini([{ role: "user", text: `${PROMPT_ANALISE}\n\nProdutos (id | nome | preço):\n${lista}` }], { json: true, temperature: 0.2 }));
     } catch (e) {
@@ -267,8 +294,17 @@ export async function analisarComIa(limite = 60) {
       const gramas = Math.max(0, Number(a.gramas) || 0);
       const horas = Math.max(0, Number(a.horas) || 0);
       const custo = a.imprimivel ? custoImpressao(gramas, horas * 60, pi).custo : 0;
-      const l = a.imprimivel && c.preco > 0 ? liquido(c.preco, custo, pp.canais[c.fonte], pp) : { lucro: 0, margem: 0 };
+      // Margem vendendo no mesmo preço em cada canal; a principal é a do Magalu (onde você mais vende).
+      const noCanal = (canal: "magalu" | "mercadolivre" | "shopee") => {
+        const l = a.imprimivel && c.preco > 0 ? liquido(c.preco, custo, pp.canais[canal], pp) : { lucro: 0, margem: 0 };
+        return { lucro: l.lucro, margem: l.margem };
+      };
+      const canais = { magalu: noCanal("magalu"), mercadolivre: noCanal("mercadolivre"), shopee: noCanal("shopee") };
+      const l = canais.magalu;
       const analise: AnaliseSentinela = {
+        v: VERSAO_ANALISE,
+        impresso3d: Boolean(a.impresso3d),
+        canais,
         imprimivel: Boolean(a.imprimivel),
         confianca: Math.max(0, Math.min(100, Number(a.confianca) || 0)),
         gramas,
@@ -312,21 +348,31 @@ export async function painelSentinela() {
     primeiraVez: sentinelaItens.primeiraVez,
   };
   const [subindoShopee, subindoML, oportunidades, novos, nichos, termos, ultima, relatorio, totais] = await Promise.all([
-    db.select(campos).from(sentinelaItens).where(and(recentes, eq(sentinelaItens.fonte, "shopee"))).orderBy(desc(sentinelaItens.velocidade), desc(sentinelaItens.vendas)).limit(24),
+    db.select(campos).from(sentinelaItens).where(and(recentes, eq(sentinelaItens.fonte, "shopee"), ne(sentinelaItens.termo, EM_ALTA))).orderBy(desc(sentinelaItens.velocidade), desc(sentinelaItens.vendas)).limit(24),
     db.select(campos).from(sentinelaItens).where(and(recentes, eq(sentinelaItens.fonte, "mercadolivre"))).orderBy(desc(sentinelaItens.velocidade), asc(sentinelaItens.posicao)).limit(24),
     db
       .select(campos)
       .from(sentinelaItens)
-      .where(and(recentes, sql`(${sentinelaItens.analise}->>'imprimivel')::boolean`, sql`(${sentinelaItens.analise}->>'confianca')::int >= 60`, sql`(${sentinelaItens.analise}->>'margem')::float >= 30`))
+      .where(
+        and(
+          recentes,
+          ne(sentinelaItens.termo, EM_ALTA),
+          sql`coalesce((${sentinelaItens.analise}->>'v')::int, 1) >= ${VERSAO_ANALISE}`,
+          sql`(${sentinelaItens.analise}->>'imprimivel')::boolean`,
+          sql`(${sentinelaItens.analise}->>'impresso3d')::boolean`,
+          sql`(${sentinelaItens.analise}->>'confianca')::int >= 75`,
+          sql`(${sentinelaItens.analise}->>'margem')::float >= 30`,
+        ),
+      )
       .orderBy(sql`${sentinelaItens.velocidade} * 10 + least(${sentinelaItens.vendas}, 5000) / 50.0 + (${sentinelaItens.analise}->>'margem')::float / 10 desc`)
       .limit(24),
-    db.select(campos).from(sentinelaItens).where(gte(sentinelaItens.primeiraVez, new Date(Date.now() - 2 * 86400_000))).orderBy(desc(sentinelaItens.vendas)).limit(12),
+    db.select(campos).from(sentinelaItens).where(and(gte(sentinelaItens.primeiraVez, new Date(Date.now() - 2 * 86400_000)), ne(sentinelaItens.termo, EM_ALTA))).orderBy(desc(sentinelaItens.vendas)).limit(12),
     db.execute<{ termo: string; fonte: string; itens: number; preco_mediano: number; vendas: number; velocidade: number; lojas: number; vendedores: number }>(sql`
       select termo, fonte, count(*)::int as itens,
         coalesce(percentile_cont(0.5) within group (order by preco), 0)::float as preco_mediano,
         coalesce(sum(vendas), 0)::int as vendas, coalesce(sum(velocidade), 0)::float as velocidade,
         count(distinct nullif(loja_id, ''))::int as lojas, coalesce(avg(vendedores), 0)::float as vendedores
-      from ${sentinelaItens} where visto_em > ${desde.toISOString()}::timestamptz and termo <> 'em alta na Shopee'
+      from ${sentinelaItens} where visto_em > ${desde.toISOString()}::timestamptz and termo <> ${EM_ALTA}
       group by termo, fonte order by termo`),
     db.select().from(sentinelaTermos).orderBy(desc(sentinelaTermos.ativo), asc(sentinelaTermos.termo)),
     db.select({ em: sql<Date | null>`max(${sentinelaLeituras.em})` }).from(sentinelaLeituras),
@@ -340,12 +386,12 @@ export async function painelSentinela() {
 export async function gerarRelatorio() {
   const p = await painelSentinela();
   const linha = (i: (typeof p.oportunidades)[number]) =>
-    `- ${i.nome} (${i.fonte}, R$ ${i.preco.toFixed(2)}${i.fonte === "shopee" ? `, ${i.vendas} vendas, ${i.velocidade.toFixed(1)}/dia` : `, #${i.posicao} no ranking, ${i.vendedores ?? "?"} vendedores`}${i.analise ? `, custo R$ ${i.analise.custo.toFixed(2)}, margem ${i.analise.margem.toFixed(0)}%` : ""})`;
+    `- ${i.nome} (${i.fonte}, R$ ${i.preco.toFixed(2)}${i.fonte === "shopee" ? `, ${i.vendas} vendas, ${i.velocidade.toFixed(1)}/dia` : `, #${i.posicao} no ranking, ${i.vendedores ?? "?"} vendedores`}${i.analise ? `, custo R$ ${i.analise.custo.toFixed(2)}, margem no Magalu ${i.analise.margem.toFixed(0)}%` : ""})`;
   const nichos = p.nichos
     .map((n) => `- ${n.termo} [${n.fonte}]: ${n.itens} produtos, preço mediano R$ ${n.preco_mediano.toFixed(2)}, ${n.fonte === "shopee" ? `${n.vendas} vendas, ${n.lojas} lojas` : `${n.vendedores.toFixed(1)} vendedores por produto`}`)
     .join("\n");
   const hoje = new Date().toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full" });
-  const prompt = `Hoje é ${hoje}. Sou fabricante de peças em impressão 3D (Bambu Lab A1 mini) e vendo no Mercado Livre, Shopee e Magalu.
+  const prompt = `Hoje é ${hoje}. Sou fabricante de peças em impressão 3D (Bambu Lab A1 mini, marca Sincrolab) e vendo principalmente no Magalu (minhas melhores taxas), além de Mercado Livre e Shopee. Só me interessa o que eu fabrico na impressora 3D.
 Tenho filamento e impressora parados: preciso vender. Abaixo estão os dados REAIS que meu sistema coletou dos marketplaces.
 
 OPORTUNIDADES (imprimíveis, com margem no preço do concorrente):

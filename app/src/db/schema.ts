@@ -913,6 +913,24 @@ export type AnaliseSentinela = {
   ideia: string;
   risco: string;
   em: string;
+  /** Versão da regra de análise (2 = só peça impressa em 3D, com margem por canal). */
+  v?: number;
+  /** O anúncio do concorrente é de peça impressa em 3D (ou plástica que se faz igual na impressora). */
+  impresso3d?: boolean;
+  /** Margem (%) e lucro (R$) vendendo no mesmo preço em cada canal, com as taxas de Configurações. */
+  canais?: { magalu: { lucro: number; margem: number }; mercadolivre: { lucro: number; margem: number }; shopee: { lucro: number; margem: number } };
+};
+
+/** Dados de afiliado do produto da Shopee (para o garimpo). */
+export type ExtrasAfiliado = {
+  comissaoVendedor: number;
+  comissaoShopee: number;
+  comissaoNovo: number;
+  ofertaDesde: string;
+  ofertaAte: string;
+  tiposLoja: string[];
+  desconto: number;
+  categorias: number[];
 };
 
 export const sentinelaItens = pgTable(
@@ -939,6 +957,7 @@ export const sentinelaItens = pgTable(
     /** Vendas por dia (Shopee) ou posições ganhas por dia (ML), entre a leitura mais antiga dos últimos 7 dias e a última. */
     velocidade: doublePrecision("velocidade").notNull().default(0),
     analise: jsonb("analise").$type<AnaliseSentinela>(),
+    extras: jsonb("extras").$type<ExtrasAfiliado>(),
     primeiraVez: timestamp("primeira_vez", { withTimezone: true }).notNull().defaultNow(),
     vistoEm: timestamp("visto_em", { withTimezone: true }).notNull().defaultNow(),
   },

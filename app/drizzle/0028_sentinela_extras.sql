@@ -1,0 +1,1 @@
+ALTER TABLE "sentinela_itens" ADD COLUMN "extras" jsonb;

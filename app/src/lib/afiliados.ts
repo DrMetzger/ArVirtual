@@ -91,6 +91,12 @@ export type Oferta = {
   tiposLoja: string[];
   /** Fim da oferta de comissão (ISO), se a Shopee informar. */
   ofertaAte: string;
+  /** Início da oferta de comissão (ISO): oferta nova = poucos afiliados sabendo dela. */
+  ofertaDesde: string;
+  /** Comissão (fração) para comprador novo no app, quando a Shopee informa. */
+  comissaoNovo: number;
+  /** Categorias da Shopee (do nível 1 ao 3). */
+  categorias: number[];
 };
 
 type NoOferta = {
@@ -112,10 +118,13 @@ type NoOferta = {
   priceDiscountRate?: number | string;
   shopType?: number[] | number | null;
   periodEndTime?: number;
+  periodStartTime?: number;
+  appNewRate?: string;
+  productCatIds?: number[] | null;
 };
 
 const CAMPOS_OFERTA =
-  "itemId shopId productName imageUrl shopName priceMin priceMax commissionRate commission sales ratingStar productLink offerLink sellerCommissionRate shopeeCommissionRate priceDiscountRate shopType periodEndTime";
+  "itemId shopId productName imageUrl shopName priceMin priceMax commissionRate commission sales ratingStar productLink offerLink sellerCommissionRate shopeeCommissionRate priceDiscountRate shopType periodEndTime periodStartTime appNewRate productCatIds";
 
 const TIPOS_LOJA: Record<number, string> = { 1: "Shopee Mall", 2: "Loja Indicada", 4: "Indicada+" };
 
@@ -142,6 +151,9 @@ function oferta(n: NoOferta): Oferta {
     desconto: Number(n.priceDiscountRate) || 0,
     tiposLoja: (Array.isArray(n.shopType) ? n.shopType : n.shopType ? [n.shopType] : []).map((t) => TIPOS_LOJA[t]).filter((t): t is string => Boolean(t)),
     ofertaAte: n.periodEndTime ? new Date(n.periodEndTime * 1000).toISOString() : "",
+    ofertaDesde: n.periodStartTime ? new Date(n.periodStartTime * 1000).toISOString() : "",
+    comissaoNovo: Number(n.appNewRate) || 0,
+    categorias: Array.isArray(n.productCatIds) ? n.productCatIds.map(Number).filter(Boolean) : [],
   };
 }
 
