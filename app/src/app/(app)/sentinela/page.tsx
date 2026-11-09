@@ -1,10 +1,12 @@
-import { Bot, Eye, EyeOff, Loader2, Plus, Radar, Sparkles, Trash2, Users } from "lucide-react";
+import { Bot, Clock, Eye, EyeOff, Hourglass, Plus, Printer, Radar, Sparkles, Trash2, Users } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Abas } from "@/components/abas";
+import { MarcaIcone } from "@/components/marca";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { requireUser } from "@/lib/auth";
-import { painelSentinela } from "@/lib/sentinela";
+import { campeoesMagalu, painelSentinela } from "@/lib/sentinela";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { Markdown } from "../assistente/markdown";
 import { adicionarTermo, alternarTermo, coletarAgora, excluirTermo, relatorioAgora, trabalhoEmAndamento } from "./actions";
@@ -20,13 +22,19 @@ function Grade({ itens, vazio }: { itens: ItemSentinela[]; vazio: string }) {
   return <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">{itens.map((i) => <ItemCard key={i.id} i={i} semComissao />)}</div>;
 }
 
-export default async function SentinelaPage({ searchParams }: { searchParams: Promise<{ ok?: string; erro?: string }> }) {
+const Selo = ({ icone, children }: { icone: React.ReactNode; children: React.ReactNode }) => (
+  <span className="inline-flex items-center gap-1.5 rounded-full border border-border bg-surface px-3 py-1 text-xs font-semibold">
+    {icone}
+    {children}
+  </span>
+);
+
+export default async function SentinelaPage({ searchParams }: { searchParams: Promise<{ erro?: string; aba?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  const [p, trabalho] = await Promise.all([painelSentinela(), trabalhoEmAndamento()]);
+  const [p, trabalho, magalu] = await Promise.all([painelSentinela(), trabalhoEmAndamento(), campeoesMagalu()]);
   const ativos = p.termos.filter((t) => t.ativo);
   const sugeridos = p.termos.filter((t) => !t.ativo);
-  // Demanda x concorrência por nicho: muita venda (ou bom ranking) com poucos vendedores = oportunidade.
   const nichos = Object.values(
     p.nichos.reduce<Record<string, { termo: string; shopee?: (typeof p.nichos)[number]; ml?: (typeof p.nichos)[number] }>>((acc, n) => {
       const x = (acc[n.termo] ??= { termo: n.termo });
@@ -35,139 +43,144 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
       return acc;
     }, {}),
   )
-    .map((n) => {
-      const demanda = (n.shopee?.vendas ?? 0) + (n.shopee?.velocidade ?? 0) * 30;
-      const concorrencia = Math.max(1, n.shopee?.lojas ?? 0) * Math.max(1, n.ml?.vendedores ?? 1);
-      return { ...n, demanda, concorrencia, score: demanda / concorrencia };
-    })
+    .map((n) => ({ ...n, score: ((n.shopee?.vendas ?? 0) + (n.shopee?.velocidade ?? 0) * 30) / (Math.max(1, n.shopee?.lojas ?? 0) * Math.max(1, n.ml?.vendedores ?? 1)) }))
     .sort((a, b) => b.score - a.score);
   const semDados = !p.totais?.itens;
 
-  return (
-    <>
-      <AtualizarSozinho ativo={Boolean(trabalho)} />
-      <PageHeader
-        title="Sentinela de mercado"
-        description="Vigia o mercado de peças impressas em 3D na Shopee e no Mercado Livre: o que vende agora, quem disputa, quanto custa fazer na sua impressora e quanto sobra no Magalu, ML e Shopee. (O Magalu não libera dados de concorrentes por API; a margem dele vem das suas taxas.)"
-        actions={
-          <>
-            <form action={coletarAgora}>
-              <SubmitButton variant="gold" pendingText="Soltando as sentinelas..." disabled={Boolean(trabalho)}>
-                <Radar /> Coletar agora
-              </SubmitButton>
-            </form>
-            <form action={relatorioAgora}>
-              <SubmitButton variant="primary" pendingText="Chamando a IA..." disabled={Boolean(trabalho) || semDados}>
-                <Sparkles /> Plano da IA
-              </SubmitButton>
-            </form>
-            <Link href="/sentinela/concorrencia" className={buttonClass("outline")}>
-              <Users /> Concorrência por produto
-            </Link>
-          </>
-        }
-      />
-      <div className="grid gap-6">
-        {sp.ok ? <Alert tone="green">{sp.ok}</Alert> : null}
-        {sp.erro ? <Alert>{sp.erro}</Alert> : null}
-        {trabalho ? (
-          <Alert tone="gold">
-            <span className="inline-flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" /> {trabalho.tipo === "coleta" ? "Coletando e analisando" : "Gerando o plano da IA"} em segundo plano. Quando
-              terminar, aparece o botão “Ver resultado” no canto da tela.
-            </span>
-          </Alert>
-        ) : null}
-        <p className="text-xs text-muted">
-          {p.totais?.itens ?? 0} produtos vigiados · <b className="text-foreground">{p.totais?.aprovados ?? 0} peças 3D que cabem na sua impressora</b>
-          {p.totais?.naFila ? ` · ${p.totais.naFila} aguardando a IA` : ""} · {p.totais?.leituras ?? 0} leituras · última coleta {p.ultimaColeta ? formatDate(p.ultimaColeta) : "nunca"} · coleta
-          automática a cada 4 h, IA analisa o que sobe e o plano sai 1 vez por dia. A velocidade (vendas/dia) aparece a partir da segunda leitura.
-        </p>
-
-        {semDados ? (
-          <EmptyState icon={<Radar />} title="As sentinelas ainda não saíram" description="Clique em Coletar agora: em alguns minutos aparecem os produtos, nichos e oportunidades." />
-        ) : null}
-
-        {p.relatorio ? (
-          <Card>
-            <CardHeader
-              title={
-                <span className="inline-flex items-center gap-2">
-                  <Bot className="size-5 text-gold" /> Plano da IA
-                </span>
-              }
-              description={`Gerado em ${formatDate(p.relatorio.criadoEm)} com os dados do sentinela e pesquisa na internet.`}
-            />
-            <div className="prose-sm max-w-none p-5 text-sm leading-relaxed">
-              <Markdown texto={p.relatorio.texto} />
+  const abas = [
+    {
+      id: "oportunidades",
+      rotulo: <>🎯 Oportunidades ({p.oportunidades.length})</>,
+      conteudo: (
+        <Card>
+          <CardHeader title="Oportunidades para imprimir" description="Peças 3D que cabem na sua impressora e deixam 30%+ de margem no Magalu." />
+          <Grade itens={p.oportunidades as ItemSentinela[]} vazio="Ainda sem oportunidades: a IA está analisando a fila." />
+        </Card>
+      ),
+    },
+    {
+      id: "magalu",
+      rotulo: (
+        <>
+          <MarcaIcone canal="magalu" className="size-5" /> Seu Magalu ({magalu.length})
+        </>
+      ),
+      conteudo: (
+        <Card>
+          <CardHeader title="Seus campeões no Magalu" description="Seus pedidos dos últimos 60 dias. Clique para ver quem mais vende o mesmo." />
+          {magalu.length ? (
+            <div className="divide-y divide-border">
+              {magalu.map((m, i) => (
+                <div key={`${m.sku}-${i}`} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
+                  <span className="w-6 text-center font-bold text-muted">{i + 1}</span>
+                  {m.imagem ? <img src={m.imagem} alt="" className="size-12 rounded-lg bg-white object-contain" /> : <div className="size-12 rounded-lg bg-surface-2" />}
+                  <div className="min-w-0 flex-1">
+                    <p className="line-clamp-2 font-semibold">{m.titulo}</p>
+                    <p className="text-xs text-muted">
+                      {m.sku ? `${m.sku} · ` : ""}
+                      {m.pedidos} pedido(s)
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-bold">{m.quantidade} un.</p>
+                    <p className="text-xs text-muted">{formatBRL(m.faturamento)}</p>
+                  </div>
+                  <Link href={`/sentinela/concorrencia?q=${encodeURIComponent(m.titulo.split(/\s+/).slice(0, 5).join(" "))}`} className={buttonClass("outline", "sm")}>
+                    <Users /> Quem vende
+                  </Link>
+                </div>
+              ))}
             </div>
-          </Card>
-        ) : null}
-
+          ) : (
+            <p className="p-5 text-sm text-muted">Nenhum pedido do Magalu nos últimos 60 dias.</p>
+          )}
+        </Card>
+      ),
+    },
+    {
+      id: "shopee",
+      rotulo: (
+        <>
+          <MarcaIcone canal="shopee" className="size-5" /> Shopee ({p.subindoShopee.length})
+        </>
+      ),
+      conteudo: (
+        <Card>
+          <CardHeader title="Peças 3D vendendo na Shopee" description="Ordem: vendas por dia, depois total vendido." />
+          <Grade itens={p.subindoShopee as ItemSentinela[]} vazio="Nenhuma peça aprovada ainda: a IA está analisando a fila." />
+        </Card>
+      ),
+    },
+    {
+      id: "ml",
+      rotulo: (
+        <>
+          <MarcaIcone canal="mercadolivre" className="size-5" /> Mercado Livre ({p.subindoML.length})
+        </>
+      ),
+      conteudo: (
+        <Card>
+          <CardHeader title="Peças 3D no ranking do Mercado Livre" description="Mais vendidos da categoria, vendedores e menor preço." />
+          <Grade itens={p.subindoML as ItemSentinela[]} vazio="Nenhuma peça aprovada ainda: a IA está analisando a fila." />
+        </Card>
+      ),
+    },
+    {
+      id: "nichos",
+      rotulo: <>📊 Nichos ({nichos.length})</>,
+      conteudo: (
+        <Card>
+          <CardHeader title="Demanda x concorrência" description="Mais acima = mais venda para menos vendedores." />
+          {nichos.length ? (
+            <div className="divide-y divide-border">
+              {nichos.map((n, idx) => (
+                <div key={n.termo} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
+                  <span className="min-w-0 flex-1 font-semibold">{n.termo}</span>
+                  <span className="text-muted">{(n.shopee?.vendas ?? 0).toLocaleString("pt-BR")} vendas</span>
+                  <span className="text-muted">{n.shopee?.lojas ?? 0} lojas</span>
+                  <span className="text-muted">{formatBRL(n.shopee?.preco_mediano || n.ml?.preco_mediano || 0)}</span>
+                  {idx < 5 ? <Badge tone="green">Entrar já</Badge> : idx < nichos.length / 2 ? <Badge tone="gold">Bom</Badge> : <Badge>Disputado</Badge>}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="p-5 text-sm text-muted">Sem nichos com peças aprovadas ainda.</p>
+          )}
+        </Card>
+      ),
+    },
+    {
+      id: "plano",
+      rotulo: <>🤖 Plano da IA</>,
+      conteudo: (
         <Card>
           <CardHeader
-            title="🎯 Oportunidades para imprimir"
-            description="Só peças impressas em 3D que a IA confirmou que saem da A1 mini, com margem de 30% ou mais no Magalu, no preço que o concorrente cobra (taxas de Configurações). ML e Shopee ao lado para comparar."
+            title={
+              <span className="inline-flex items-center gap-2">
+                <Bot className="size-5 text-gold" /> Plano da IA
+              </span>
+            }
+            description={p.relatorio ? `Gerado em ${formatDate(p.relatorio.criadoEm)}` : "Ainda não gerado"}
           />
-          <Grade itens={p.oportunidades as ItemSentinela[]} vazio="Ainda sem oportunidades analisadas: rode uma coleta (a IA analisa em seguida)." />
-        </Card>
-
-        <Card>
-          <CardHeader title="🔥 Peças 3D vendendo agora na Shopee" description="Buscas dos seus nichos com “3d”. Ordenado pela velocidade (vendas por dia entre as leituras) e pelo total vendido." />
-          <Grade itens={p.subindoShopee as ItemSentinela[]} vazio="Nenhuma peça 3D aprovada ainda na Shopee: a IA analisa a fila a cada coleta." />
-        </Card>
-
-        <Card>
-          <CardHeader title="🏆 Peças 3D no ranking do Mercado Livre" description="Mais vendidos das categorias dos seus nichos que a IA aprovou para a sua impressora, com quantos vendedores disputam e o menor preço." />
-          <Grade itens={p.subindoML as ItemSentinela[]} vazio="Nenhuma peça 3D aprovada ainda no Mercado Livre: a IA analisa a fila a cada coleta." />
-        </Card>
-
-        {p.novos.length ? (
-          <Card>
-            <CardHeader title="🆕 Apareceram nas últimas 48 h" description="Produtos que as sentinelas viram pela primeira vez: novidade entrando no mercado." />
-            <Grade itens={p.novos as ItemSentinela[]} vazio="" />
-          </Card>
-        ) : null}
-
-        {nichos.length ? (
-          <Card>
-            <CardHeader title="Nichos: demanda x concorrência" description="Mais acima = mais venda para menos lojas/vendedores. É onde entrar primeiro." />
-            <div className="overflow-x-auto">
-              <table className="table-base">
-                <thead>
-                  <tr>
-                    <th>Nicho</th>
-                    <th className="text-right">Vendas Shopee</th>
-                    <th className="text-right">Lojas Shopee</th>
-                    <th className="text-right">Preço mediano</th>
-                    <th className="text-right">Vendedores/produto ML</th>
-                    <th>Leitura</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {nichos.map((n, idx) => (
-                    <tr key={n.termo}>
-                      <td className="font-semibold">{n.termo}</td>
-                      <td className="text-right">{(n.shopee?.vendas ?? 0).toLocaleString("pt-BR")}</td>
-                      <td className="text-right">{n.shopee?.lojas ?? "—"}</td>
-                      <td className="text-right">{formatBRL(n.shopee?.preco_mediano || n.ml?.preco_mediano || 0)}</td>
-                      <td className="text-right">{n.ml ? n.ml.vendedores.toLocaleString("pt-BR", { maximumFractionDigits: 1 }) : "—"}</td>
-                      <td>
-                        {idx < 5 ? <Badge tone="green">Entrar já</Badge> : idx < nichos.length / 2 ? <Badge tone="gold">Bom</Badge> : <Badge>Disputado</Badge>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+          {p.relatorio ? (
+            <div className="max-w-3xl p-5 text-sm leading-relaxed">
+              <Markdown texto={p.relatorio.texto} />
             </div>
-          </Card>
-        ) : null}
-
-        <Card id="termos">
-          <CardHeader title="O que as sentinelas vigiam" description={`${ativos.length} termo(s) ativos. A IA e as buscas em alta do ML sugerem novos sozinhas.`} />
+          ) : (
+            <p className="p-5 text-sm text-muted">Clique em Plano da IA lá em cima.</p>
+          )}
+        </Card>
+      ),
+    },
+    {
+      id: "vigiar",
+      rotulo: <>👁 Vigiar ({ativos.length})</>,
+      conteudo: (
+        <Card>
+          <CardHeader title="O que as sentinelas vigiam" description="A IA e as buscas em alta do ML sugerem novos termos sozinhas." />
           <div className="grid gap-4 p-5">
             <form action={adicionarTermo} className="flex flex-wrap gap-2">
-              <Input name="termo" placeholder="Ex.: suporte de controle, vaso geométrico (separe vários por vírgula)" className="min-w-0 flex-1" />
+              <Input name="termo" placeholder="Ex.: suporte de controle, vaso geométrico" className="min-w-0 flex-1" />
               <SubmitButton pendingText="Adicionando...">
                 <Plus /> Vigiar
               </SubmitButton>
@@ -186,10 +199,10 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
               ))}
             </div>
             {sugeridos.length ? (
-              <>
-                <p className="text-xs font-semibold tracking-wide text-muted uppercase">Sugestões (buscas em alta no ML e termos pausados)</p>
-                <div className="flex flex-wrap gap-2">
-                  {sugeridos.slice(0, 60).map((t) => (
+              <details>
+                <summary className="cursor-pointer text-xs font-semibold tracking-wide text-muted uppercase">Sugestões ({sugeridos.length})</summary>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {sugeridos.slice(0, 80).map((t) => (
                     <span key={t.id} className="inline-flex items-center gap-1 rounded-full border border-dashed border-border py-1 pr-1 pl-3 text-sm text-muted" title={t.motivo}>
                       {t.termo}
                       <form action={alternarTermo.bind(null, t.id, true)}>
@@ -205,10 +218,50 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
                     </span>
                   ))}
                 </div>
-              </>
+              </details>
             ) : null}
           </div>
         </Card>
+      ),
+    },
+  ];
+
+  return (
+    <>
+      <AtualizarSozinho ativo={Boolean(trabalho)} />
+      <PageHeader
+        title="Sentinela de mercado"
+        description="Peças 3D que vendem, quem disputa e quanto sobra para você."
+        actions={
+          <>
+            <form action={coletarAgora}>
+              <SubmitButton variant="gold" pendingText="Soltando..." disabled={Boolean(trabalho)}>
+                <Radar /> Coletar agora
+              </SubmitButton>
+            </form>
+            <form action={relatorioAgora}>
+              <SubmitButton variant="outline" pendingText="Chamando a IA..." disabled={Boolean(trabalho) || semDados}>
+                <Sparkles /> Plano da IA
+              </SubmitButton>
+            </form>
+            <Link href="/sentinela/concorrencia" className={buttonClass("outline")}>
+              <Users /> Concorrência
+            </Link>
+          </>
+        }
+      />
+      <div className="grid gap-5">
+        {sp.erro ? <Alert>{sp.erro}</Alert> : null}
+        <div className="flex flex-wrap gap-2">
+          <Selo icone={<Printer className="size-3.5 text-green" />}>{p.totais?.aprovados ?? 0} peças 3D aprovadas</Selo>
+          {p.totais?.naFila ? <Selo icone={<Hourglass className="size-3.5 text-gold" />}>{p.totais.naFila} na fila da IA</Selo> : null}
+          <Selo icone={<Clock className="size-3.5 text-muted" />}>coleta {p.ultimaColeta ? formatDate(p.ultimaColeta) : "nunca"}</Selo>
+        </div>
+        {semDados ? (
+          <EmptyState icon={<Radar />} title="As sentinelas ainda não saíram" description="Clique em Coletar agora." />
+        ) : (
+          <Abas abas={abas} inicial={sp.aba && abas.some((a) => a.id === sp.aba) ? sp.aba : undefined} />
+        )}
       </div>
     </>
   );

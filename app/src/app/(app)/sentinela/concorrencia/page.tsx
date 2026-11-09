@@ -1,5 +1,6 @@
 import { Award, ExternalLink, MapPin, Search, Star, Store, Truck, Users } from "lucide-react";
 import type { Metadata } from "next";
+import { Abas } from "@/components/abas";
 import { MarcaIcone } from "@/components/marca";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -10,7 +11,7 @@ export const metadata: Metadata = { title: "Concorrência por produto" };
 
 const num = (n: number) => n.toLocaleString("pt-BR");
 
-function CartaoResumo({ canal, nome, r, rotuloVendas }: { canal: "shopee" | "mercadolivre"; nome: string; r: Resumo; rotuloVendas: string }) {
+function CartaoResumo({ canal, nome, r, rotuloVendas }: { canal: "shopee" | "mercadolivre" | "magalu"; nome: string; r: Resumo; rotuloVendas: string }) {
   return (
     <div className="grid gap-2 rounded-xl border border-border p-4">
       <div className="flex items-center gap-2">
@@ -96,7 +97,7 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
   // Ranking de vendedores: cada loja/vendedor uma vez, com quantos anúncios tem nesta busca e o menor preço.
   const vendedores = r
     ? Object.values(
-        [...r.shopee, ...r.mercadolivre].reduce<Record<string, { a: Anuncio; anuncios: number; min: number; vendas: number }>>((acc, a) => {
+        [...r.shopee, ...r.mercadolivre, ...r.magalu].reduce<Record<string, { a: Anuncio; anuncios: number; min: number; vendas: number }>>((acc, a) => {
           const k = `${a.plataforma}:${a.vendedorId}`;
           const v = (acc[k] ??= { a, anuncios: 0, min: a.preco, vendas: 0 });
           v.anuncios++;
@@ -111,7 +112,7 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
     <>
       <PageHeader
         title="Concorrência por produto"
-        description="Digite o produto e veja quem vende, em qual plataforma, por quanto e quanto vendeu. Shopee e Mercado Livre em tempo real."
+        description="Quem vende, onde, por quanto e quanto vendeu."
       />
       <div className="grid gap-6">
         <form className="flex flex-wrap gap-2">
@@ -122,23 +123,14 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
         </form>
 
         {!r ? (
-          <EmptyState icon={<Users />} title="Quem vende o que você quer vender?" description="Pesquise um produto (3 letras ou mais) para ver os concorrentes da Shopee e do Mercado Livre." />
+          <EmptyState icon={<Users />} title="Quem vende o que você quer vender?" description="Pesquise um produto para ver os concorrentes no Magalu, Mercado Livre e Shopee." />
         ) : (
           <>
             {r.erros.length ? <Alert tone="gold">{r.erros.join(" · ")}</Alert> : null}
             <div className="grid gap-3 sm:grid-cols-3">
-              <CartaoResumo canal="shopee" nome="Shopee" r={resumir(r.shopee, true)} rotuloVendas="Vendas somadas" />
+              <CartaoResumo canal="magalu" nome="Magalu" r={resumir(r.magalu, false)} rotuloVendas="" />
               <CartaoResumo canal="mercadolivre" nome="Mercado Livre" r={resumir(r.mercadolivre, false)} rotuloVendas="" />
-              <div className="grid content-start gap-2 rounded-xl border border-border p-4">
-                <div className="flex items-center gap-2">
-                  <MarcaIcone canal="magalu" className="size-7" />
-                  <span className="font-semibold">Magalu</span>
-                </div>
-                <p className="text-sm text-muted">O Magalu não libera dados de concorrentes por API. Abra a busca do site para conferir:</p>
-                <a href={`https://www.magazineluiza.com.br/busca/${encodeURIComponent(q)}/`} target="_blank" rel="noreferrer" className={buttonClass("outline", "sm")}>
-                  <ExternalLink /> Ver no Magalu
-                </a>
-              </div>
+              <CartaoResumo canal="shopee" nome="Shopee" r={resumir(r.shopee, true)} rotuloVendas="Vendas somadas" />
             </div>
 
             <Card>
@@ -148,7 +140,7 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
                     <Store className="size-5 text-gold" /> Quem vende ({vendedores.length})
                   </span>
                 }
-                description="Cada vendedor uma vez, do que mais vende para o que menos vende. Shopee: soma das vendas dos anúncios dele nesta busca. ML: vendas totais do vendedor."
+                description="Do que mais vende para o que menos vende."
               />
               {vendedores.length ? (
                 <div className="divide-y divide-border">
@@ -164,7 +156,7 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
                       <span>a partir de <b>{formatBRL(min)}</b></span>
                       <span className="text-right font-semibold">
                         {vendas ? `${num(vendas)} vendas` : "—"}
-                        <span className="block text-[10px] font-normal text-muted">{a.plataforma === "shopee" ? "destes anúncios" : "total da loja no ML"}</span>
+                        <span className="block text-[10px] font-normal text-muted">{a.plataforma === "shopee" ? "destes anúncios" : a.plataforma === "mercadolivre" ? "total da loja no ML" : ""}</span>
                       </span>
                     </div>
                   ))}
@@ -174,27 +166,37 @@ export default async function ConcorrenciaPage({ searchParams }: { searchParams:
               )}
             </Card>
 
-            <div className="grid gap-6 lg:grid-cols-2">
-              <Card>
-                <CardHeader title={<span className="inline-flex items-center gap-2"><MarcaIcone canal="shopee" /> Anúncios na Shopee ({r.shopee.length})</span>} description="Mais vendidos primeiro." />
-                <div className="divide-y divide-border">
-                  {r.shopee.slice(0, 50).map((a, i) => (
-                    <Linha key={`${a.link}-${i}`} a={a} />
-                  ))}
-                </div>
-              </Card>
-              <Card>
-                <CardHeader
-                  title={<span className="inline-flex items-center gap-2"><MarcaIcone canal="mercadolivre" /> Vendedores no Mercado Livre ({r.mercadolivre.length})</span>}
-                  description="Todos os vendedores dos produtos de catálogo que batem com a busca, do mais barato ao mais caro."
-                />
-                <div className="divide-y divide-border">
-                  {r.mercadolivre.slice(0, 60).map((a, i) => (
-                    <Linha key={`${a.link}-${i}`} a={a} />
-                  ))}
-                </div>
-              </Card>
-            </div>
+            <Abas
+              abas={(
+                [
+                  ["magalu", "Magalu", r.magalu],
+                  ["mercadolivre", "Mercado Livre", r.mercadolivre],
+                  ["shopee", "Shopee", r.shopee],
+                ] as const
+              ).map(([k, nome, lista]) => ({
+                id: k,
+                rotulo: (
+                  <>
+                    <MarcaIcone canal={k} className="size-5" /> {nome} ({lista.length})
+                  </>
+                ),
+                conteudo: (
+                  <Card>
+                    {k === "magalu" ? (
+                      <p className="px-4 pt-3 text-xs text-muted">
+                        Pesquisa da IA no Google dentro do magazineluiza.com.br (o Magalu não tem API de concorrência). Confira pelo link ·{" "}
+                        <a href={`https://www.magazineluiza.com.br/busca/${encodeURIComponent(q)}/`} target="_blank" rel="noreferrer" className="text-gold underline">
+                          abrir a busca no Magalu
+                        </a>
+                      </p>
+                    ) : null}
+                    <div className="divide-y divide-border">
+                      {lista.length ? lista.slice(0, 60).map((a, i) => <Linha key={`${a.link}-${i}`} a={a} />) : <p className="p-5 text-sm text-muted">Ninguém encontrado aqui.</p>}
+                    </div>
+                  </Card>
+                ),
+              }))}
+            />
           </>
         )}
       </div>
