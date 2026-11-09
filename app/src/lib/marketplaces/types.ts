@@ -140,6 +140,9 @@ export type SituacaoAnuncio = "publicado" | "pausado" | "encerrado";
 export type TaxasPedido = { taxas: number; freteVendedor: number; final: boolean };
 
 /** NF-e que o vendedor informou ao marketplace (emitida em outro sistema). */
+/** NF-e autorizada no ERP, para mandar ao marketplace. */
+export type NotaParaEnviar = { chave: string; xml: string; valor: number; emitidaEm: Date; cnpjEmitente: string };
+
 export type NotaDoPedido = { chave: string; status: string; emitidaEm: Date | null; xml: string };
 
 /** Dados de um anúncio para criar o produto no ERP a partir do link (importador). */
@@ -183,6 +186,8 @@ export interface MarketplaceAdapter {
   taxas?(conta: ContaComToken, idExterno: string, dados: unknown): Promise<TaxasPedido>;
   /** Notas fiscais informadas no marketplace para o pedido (`dados` é o pedido como a API devolveu). */
   notasDoPedido?(conta: ContaComToken, dados: unknown): Promise<NotaDoPedido[]>;
+  /** Informa ao marketplace a NF-e emitida no ERP para o pedido (`dados` é o pedido como a API devolveu). */
+  enviarNota?(conta: ContaComToken, dados: unknown, nota: NotaParaEnviar): Promise<void>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */

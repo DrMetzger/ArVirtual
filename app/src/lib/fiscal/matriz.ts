@@ -97,7 +97,24 @@ export function encontrarRegra(regras: RegraFiscal[], ncm: string, ctx: Contexto
 
 // Cálculo por item no estilo do motor do ERP Vanguard (taxes/tax-engine.ts), com CFOP/CST/alíquotas da matriz fiscal.
 // Ainda sem ICMS-ST (MVA) e sem IBS/CBS: CST de substituição gera aviso.
-export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: Contexto) {
+// Frete cobrado do comprador e desconto da venda são rateados pelo valor dos itens (o último leva o arredondamento)
+// e entram na base dos impostos: base = produto + frete − desconto.
+export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: Contexto, venda: { frete?: number; desconto?: number } = {}) {
+  const valores = itens.map((i) => round2(i.quantidade * i.valorUnitario));
+  const somaValores = valores.reduce((a, b) => a + b, 0);
+  const ratear = (total: number) => {
+    const t = round2(Math.max(0, total || 0));
+    let resto = t;
+    return valores.map((v, n) => {
+      if (n === valores.length - 1) return round2(resto);
+      const parte = somaValores ? round2((t * v) / somaValores) : 0;
+      resto -= parte;
+      return parte;
+    });
+  };
+  const fretes = ratear(venda.frete ?? 0);
+  const descontos = ratear(venda.desconto ?? 0);
+  if (round2(venda.desconto ?? 0) > round2(somaValores)) throw new Error("O desconto não pode ser maior que o valor dos produtos.");
   const interna = ctx.ufEmitente === ctx.ufDestino;
   const simples = isSimples(ctx.regime);
   const ufOrigem = ctx.ufs.get(ctx.ufEmitente) ?? { interna: 18, fcp: 0 };
@@ -112,7 +129,11 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
       erros.push(`Nenhuma regra fiscal atende o item "${item.nome}" (NCM ${item.ncm}, UF ${ctx.ufDestino}).`);
       return;
     }
-    const valor = round2(item.quantidade * item.valorUnitario);
+    const valorProduto = valores[n]!;
+    const freteItem = fretes[n]!;
+    const descontoItem = descontos[n]!;
+    // Base de cálculo dos impostos do item.
+    const valor = round2(valorProduto + freteItem - descontoItem);
     const regras_: string[] = [regra.nome];
 
     // IPI (só quando a regra tem CST de IPI; alíquota da regra ou da TIPI do NCM)
@@ -190,7 +211,7 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
     const aproximado = ctx.ncmAproximado.get(item.ncm) ?? ctx.aproximadoPadrao;
     calculados.push({
       ...item,
-      valorBruto: valor,
+      valorBruto: valorProduto,
       regraId: regra.id,
       regraNome: regra.nome,
       cfop,
@@ -202,8 +223,8 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
         difal,
         pis,
         cofins,
-        freight: 0,
-        discount: 0,
+        freight: freteItem,
+        discount: descontoItem,
         approx: { rate: aproximado, value: round2((valor * aproximado) / 100) },
         ibsCbs: null,
         total: round2(valor + (ipi?.value ?? 0)),
@@ -215,8 +236,8 @@ export function calcularItens(regras: RegraFiscal[], itens: ItemEntrada[], ctx: 
   const soma = (f: (t: ItemTaxes) => number) => round2(calculados.reduce((s, i) => s + f(i.taxes), 0));
   const totalProdutos = round2(calculados.reduce((s, i) => s + i.valorBruto, 0));
   const totalImpostos = soma((t) => t.icms.value + (t.fcp?.value ?? 0) + (t.ipi?.value ?? 0) + t.pis.value + t.cofins.value + (t.difal?.value ?? 0) + (t.difal?.fcpValue ?? 0));
-  // vNF = produtos + IPI (ICMS, PIS e COFINS ficam "por dentro"; DIFAL é recolhido à parte)
-  const totalNota = round2(totalProdutos + soma((t) => t.ipi?.value ?? 0));
+  // vNF = produtos + frete − desconto + IPI (ICMS, PIS e COFINS ficam "por dentro"; DIFAL é recolhido à parte)
+  const totalNota = round2(totalProdutos + soma((t) => t.freight - t.discount) + soma((t) => t.ipi?.value ?? 0));
 
   return { itens: calculados, erros, avisos, interna, totalProdutos, totalImpostos, totalNota };
 }

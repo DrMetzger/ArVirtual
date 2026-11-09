@@ -1,16 +1,16 @@
 import { desc, eq } from "drizzle-orm";
-import { ArrowLeft, Ban, Download, FileText, Mail, PenLine, Send, Trash2 } from "lucide-react";
+import { ArrowLeft, Ban, Download, FileText, Mail, PenLine, Send, Trash2, Upload } from "lucide-react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, Input, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { eventosNfe, notas } from "@/db/schema";
+import { eventosNfe, notas, pedidosMarketplace } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import type { ItemCalculado } from "@/lib/fiscal/matriz";
 import { FORMAS_PAGAMENTO } from "@/lib/nfe/emissor";
 import { formatBRL, formatCep, formatDate, formatDocumento } from "@/lib/utils";
-import { cancelarNota, corrigirNota, emitirNota, enviarNotaPorEmail, excluirRascunho } from "../actions";
+import { cancelarNota, corrigirNota, emitirNota, enviarNotaPorEmail, excluirRascunho, reenviarNotaMarketplace } from "../actions";
 import { StatusNota } from "../status";
 
 const TIPO_EVENTO: Record<string, string> = {
@@ -46,6 +46,11 @@ export default async function NotaPage({
     .from(eventosNfe)
     .where(eq(eventosNfe.notaId, id))
     .orderBy(desc(eventosNfe.criadoEm), desc(eventosNfe.id));
+  const pedido = await db.query.pedidosMarketplace.findFirst({
+    where: eq(pedidosMarketplace.notaId, id),
+    columns: { id: true, idExterno: true, marketplace: true },
+  });
+  const doMagalu = pedido?.marketplace === "magalu";
   const itens = nota.itens as ItemCalculado[];
   const emitivel = ["rascunho", "rejeitada", "erro"].includes(nota.status);
   const forma = FORMAS_PAGAMENTO.find(([v]) => v === nota.formaPagamento)?.[1] ?? nota.formaPagamento;
@@ -84,6 +89,13 @@ export default async function NotaPage({
                 <FileText /> DANFE
               </a>
             ) : null}
+            {nota.status === "autorizada" && doMagalu ? (
+              <form action={reenviarNotaMarketplace.bind(null, id)}>
+                <SubmitButton variant={nota.envioMarketplace === "enviada" ? "outline" : "gold"} pendingText="Sincronizando com o Magalu...">
+                  <Upload /> Sincronizar nota no Magalu
+                </SubmitButton>
+              </form>
+            ) : null}
             {nota.status === "autorizada" ? (
               <form action={enviarNotaPorEmail.bind(null, id)}>
                 <SubmitButton pendingText="Enviando...">
@@ -102,6 +114,21 @@ export default async function NotaPage({
           {nota.protocolo ? <span className="text-xs text-muted">Protocolo {nota.protocolo}</span> : null}
           {nota.chave ? <span className="font-mono text-xs text-muted">Chave {nota.chave}</span> : null}
         </div>
+        {pedido ? (
+          <p className="text-sm text-muted">
+            Pedido{" "}
+            <Link href={`/pedidos/${pedido.id}`} className="font-mono font-semibold text-foreground hover:text-gold">
+              {pedido.idExterno}
+            </Link>
+            {doMagalu && nota.status === "autorizada" ? (
+              nota.envioMarketplace === "enviada" ? (
+                <span className="ml-2 font-semibold text-green">· nota já informada no Magalu</span>
+              ) : (
+                <span className="ml-2 font-semibold text-gold">· nota ainda não informada no Magalu{nota.envioMarketplace ? ` (${nota.envioMarketplace})` : ""}</span>
+              )
+            ) : null}
+          </p>
+        ) : null}
         {erro ? <Alert>{erro}</Alert> : null}
         {aviso ? <Alert tone="green">{aviso}</Alert> : null}
         {nota.mensagem ? (
@@ -140,6 +167,13 @@ export default async function NotaPage({
                 <p className="text-xs uppercase tracking-wide text-muted">Impostos</p>
                 <p className="text-xl font-bold">{formatBRL(nota.totalImpostos)}</p>
               </div>
+              {nota.frete || nota.desconto ? (
+                <p className="order-last col-span-3 -mt-1 text-xs text-muted">
+                  {nota.frete ? `Frete cobrado do comprador: ${formatBRL(nota.frete)}` : ""}
+                  {nota.frete && nota.desconto ? " · " : ""}
+                  {nota.desconto ? `Desconto: − ${formatBRL(nota.desconto)}` : ""}
+                </p>
+              ) : null}
               <div>
                 <p className="text-xs uppercase tracking-wide text-muted">Total da nota</p>
                 <p className="text-xl font-extrabold text-gold">{formatBRL(nota.totalNota)}</p>

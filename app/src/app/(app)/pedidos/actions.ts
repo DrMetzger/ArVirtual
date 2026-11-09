@@ -11,6 +11,7 @@ import { z } from "zod";
 import { atualizarEstoqueDoPedido, movimentar } from "@/lib/estoque";
 import { atualizarFinanceiroDoPedido } from "@/lib/financeiro";
 import { adapter, buscarNotasDosPedidos, contaComToken, sincronizarPedidos } from "@/lib/marketplaces";
+import { enviarNotaAoMarketplace } from "@/lib/marketplaces/enviar-nota";
 import { importarNotasDoPedido } from "@/lib/marketplaces/notas-externas";
 import type { Situacao } from "@/lib/marketplaces/situacao";
 import { cadastrarClienteDoPedido, garantirEnderecoEntrega } from "@/lib/pedidos";
@@ -71,6 +72,19 @@ export async function buscarNotaDoPedido(id: number) {
   } catch (e) {
     q = `erro=${encodeURIComponent((e as Error).message)}`;
   }
+  revalidatePath(`/pedidos/${id}`);
+  redirect(`/pedidos/${id}?${q}`);
+}
+
+/** Manda ao Magalu a NF-e do ERP deste pedido (o mesmo que acontece sozinho ao autorizar a nota). */
+export async function sincronizarNotaMagalu(id: number) {
+  await requireUser();
+  const pedido = await db.query.pedidosMarketplace.findFirst({ where: eq(pedidosMarketplace.id, id), columns: { notaId: true } });
+  const envio = pedido?.notaId ? await enviarNotaAoMarketplace(pedido.notaId).catch((e: Error) => e.message) : null;
+  const q =
+    envio === "enviada"
+      ? `ok=${encodeURIComponent("Nota sincronizada: o pedido no Magalu está com a NF-e emitida aqui.")}`
+      : `erro=${encodeURIComponent(envio ? `O Magalu não aceitou a nota: ${envio}` : "Este pedido ainda não tem NF-e autorizada no ERP.")}`;
   revalidatePath(`/pedidos/${id}`);
   redirect(`/pedidos/${id}?${q}`);
 }

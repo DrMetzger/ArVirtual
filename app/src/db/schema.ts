@@ -272,8 +272,13 @@ export const notas = pgTable("notas", {
   totalProdutos: money("total_produtos").notNull().default(0),
   totalImpostos: money("total_impostos").notNull().default(0),
   totalNota: money("total_nota").notNull().default(0),
+  /** Frete cobrado do comprador e desconto dados na venda (rateados nos itens, como no pedido do marketplace). */
+  frete: money("frete").notNull().default(0),
+  desconto: money("desconto").notNull().default(0),
   itens: jsonb("itens").notNull(),
   mensagem: text("mensagem").notNull().default(""),
+  /** Envio da nota ao marketplace do pedido: "" (não se aplica), "enviada" ou o erro da última tentativa. */
+  envioMarketplace: text("envio_marketplace").notNull().default(""),
   ...timestamps,
 });
 

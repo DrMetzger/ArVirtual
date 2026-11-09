@@ -170,7 +170,7 @@ async function montarEntrada(tx: Tx, nota: Nota, itens: ItemCalculado[], ambient
       itemDiscount: 0,
       taxes: i.taxes,
     })),
-    freight: 0,
+    freight: round2(itens.reduce((s, i) => s + (i.taxes.freight ?? 0), 0)),
     duplicates: [],
     payment:
       nota.formaPagamento === "90"
@@ -247,6 +247,8 @@ export async function transmitirNota(id: string) {
         clienteId: nota.clienteId,
         enderecoId: nota.enderecoId ?? "",
         itens: (nota.itens as ItemCalculado[]).map((i) => ({ produtoId: i.produtoId, quantidade: i.quantidade, valorUnitario: i.valorUnitario })),
+        frete: nota.frete,
+        desconto: nota.desconto,
       });
       if (calc.erros.length) throw new Error(calc.erros.join(" "));
 
