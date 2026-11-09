@@ -20,28 +20,19 @@ jobs:
           const sql = postgres(process.env.DATABASE_URL);
           const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
           const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
-          // Tira dados pessoais (nome, documento, endereço, telefone, e-mail) antes de imprimir.
-          const PII = /name|document|address|street|phone|email|zipcode|district|complement|number$|city|recipient|customer|reference|first|last/i;
-          const limpar = (o) => Array.isArray(o) ? o.map(limpar) : o && typeof o === "object" ? Object.fromEntries(Object.entries(o).map(([k, v]) => [k, PII.test(k) && (typeof v !== "object" || v === null) ? "<omitido>" : PII.test(k) && k !== "items" ? "<omitido>" : limpar(v)])) : o;
-          const ps = await sql`select id, id_externo, total, frete, status, itens, dados, cliente_id, nota_id from pedidos_marketplace where marketplace = 'magalu' order by data desc limit 2`;
-          for (const p of ps) {
-            console.log("PEDIDO", p.id, p.id_externo, "total", p.total, "frete", p.frete, "status", p.status, "cliente", Boolean(p.cliente_id), "nota", p.nota_id);
-            console.log("ITENS", JSON.stringify(p.itens.map((i) => ({ q: i.quantidade, v: i.valorUnitario, sku: i.sku }))));
-            console.log("DADOS", JSON.stringify(limpar(p.dados)));
-          }
           const [m] = await sql`select access_token_enc from contas_marketplace where marketplace = 'magalu' limit 1`;
           const tm = dec(m.access_token_enc);
-          const pl = JSON.parse(Buffer.from(tm.split(".")[1] ?? "", "base64url").toString() || "{}");
-          console.log("MAGALU scopes", pl.scope ?? pl.scopes ?? Object.keys(pl).join(","));
-          const [c] = await sql`select id_externo, access_token_enc from contas_marketplace where marketplace = 'mercadolivre' limit 1`;
-          const tk = dec(c.access_token_enc);
-          const g = async (p) => { const r = await fetch("https://api.mercadolibre.com" + p, { headers: { Authorization: `Bearer ${tk}` } }); return [r.status, await r.json().catch(() => null)]; };
-          let [s, j] = await g(`/users/${c.id_externo}/items/search?search_type=scan&limit=5`);
-          console.log("ML scan", s, j?.error ?? "");
-          [s, j] = await g(`/users/${c.id_externo}/items/search?limit=5&offset=0`);
-          console.log("ML offset", s, j?.error ?? "", "total", j?.paging?.total);
-          [s, j] = await g(`/users/${c.id_externo}/items/search?seller_sku=TESTE-INEXISTENTE`);
-          console.log("ML seller_sku", s, j?.error ?? "", JSON.stringify(j?.results ?? []));
+          const g = async (p) => { const r = await fetch("https://api.magalu.com" + p, { headers: { Authorization: `Bearer ${tm}`, Accept: "application/json" } }); return [r.status, await r.json().catch(() => null)]; };
+          let [s, j] = await g("/seller/v1/orders/e7d06e55-2cad-490b-946d-bbdd94edcec9");
+          console.log("ORDER GET", s, "keys", Object.keys(j ?? {}).join(","), "channel", JSON.stringify({ id: j?.channel?.id, extras: j?.channel?.extras, keys: Object.keys(j?.channel ?? {}) }), "source", JSON.stringify(j?.source_channel));
+          [s, j] = await g("/seller/v1/deliveries/4da3509c-4c8b-4104-b654-ad276fb29b16");
+          console.log("DELIVERY GET", s, "keys", Object.keys(j ?? {}).join(","), "channel", JSON.stringify(j?.channel ? { id: j.channel.id, keys: Object.keys(j.channel) } : null));
+          [s, j] = await g("/seller/v1/deliveries/4da3509c-4c8b-4104-b654-ad276fb29b16/invoices");
+          console.log("INVOICES GET", s, JSON.stringify(j).slice(0, 300));
+          // Últimas notas de entregas já enviadas (só chave e canal) para ver o formato do canal.
+          [s, j] = await g("/seller/v1/orders?_limit=30&_sort=purchased_at:desc");
+          const ids = new Set((j?.results ?? []).map((o) => JSON.stringify(o.channel?.id ?? null)));
+          console.log("CHANNEL ids nos pedidos", [...ids].join(" "));
           await sql.end();
           JS
           REMOTO
