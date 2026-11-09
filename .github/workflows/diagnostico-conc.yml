@@ -26,6 +26,8 @@ jobs:
           let [s, j, ms] = await g("/products/search?site_id=MLB&status=active&q=suporte%20alexa%20echo%20pop&limit=10");
           console.log("SEARCH", s, ms, "n", j?.results?.length, JSON.stringify(j?.results?.slice(0, 3)?.map((r) => ({ id: r.id, name: r.name }))));
           let it = [];
+          const meus = await sql`select id_externo from sentinela_itens where fonte = 'mercadolivre' and vendedores > 3 order by vendedores desc limit 5`;
+          for (const r of meus) { const [s2, j2] = await g(`/products/${r.id_externo}/items?limit=50`); console.log("PRODDB", r.id_externo, s2, j2?.results?.length ?? 0); if (j2?.results?.length) { it = j2.results; break; } }
           for (const r of j?.results ?? []) { const [s2, j2] = await g(`/products/${r.id}/items?limit=50`); console.log("PROD", r.id, s2, j2?.results?.length ?? 0); if (j2?.results?.length) { it = j2.results; break; } }
           console.log("ITEMS", s, ms, "n", it.length, "keys", Object.keys(it[0] ?? {}).join(","));
           console.log("ITEM0", JSON.stringify(it[0] ?? null).slice(0, 600));
