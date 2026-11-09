@@ -1,5 +1,6 @@
 import {
   type AnyPgColumn,
+  doublePrecision,
   boolean,
   index,
   integer,
@@ -882,3 +883,88 @@ export type ConversaIa = typeof conversasIa.$inferSelect;
 export type MensagemIa = typeof mensagensIa.$inferSelect;
 export type MemoriaIa = typeof memoriasIa.$inferSelect;
 export type NotaExterna = typeof notasExternas.$inferSelect;
+
+// ---------------------------------------------------------------------------------------------
+// Sentinela de mercado: o que está vendendo na Shopee e no Mercado Livre, lido de tempos em tempos.
+// Cada leitura guarda vendas/posição/preço; a diferença entre leituras dá a velocidade (o que sobe agora).
+
+/** Termos vigiados (nichos). Origem: padrão do sistema, sugerido pela IA, busca em alta do ML ou cadastrado por você. */
+export const sentinelaTermos = pgTable("sentinela_termos", {
+  id: serial("id").primaryKey(),
+  termo: text("termo").notNull().unique(),
+  origem: text("origem", { enum: ["padrao", "ia", "tendencia", "usuario"] }).notNull().default("usuario"),
+  ativo: boolean("ativo").notNull().default(true),
+  /** Por que a IA sugeriu (ou a categoria da busca em alta). */
+  motivo: text("motivo").notNull().default(""),
+  ultimaColeta: timestamp("ultima_coleta", { withTimezone: true }),
+  ...timestamps,
+});
+
+export type AnaliseSentinela = {
+  imprimivel: boolean;
+  /** 0 a 100: quanto a IA confia que dá para fazer na impressora 3D. */
+  confianca: number;
+  gramas: number;
+  horas: number;
+  custo: number;
+  /** Lucro (R$) e margem sobre o custo vendendo no preço do concorrente, já com taxas do canal. */
+  lucro: number;
+  margem: number;
+  ideia: string;
+  risco: string;
+  em: string;
+};
+
+export const sentinelaItens = pgTable(
+  "sentinela_itens",
+  {
+    id: serial("id").primaryKey(),
+    fonte: text("fonte", { enum: ["shopee", "mercadolivre"] }).notNull(),
+    idExterno: text("id_externo").notNull(),
+    /** Loja/ID do vendedor (Shopee) — com o item forma o link de afiliado. */
+    lojaId: text("loja_id").notNull().default(""),
+    termo: text("termo").notNull().default(""),
+    nome: text("nome").notNull(),
+    imagem: text("imagem").notNull().default(""),
+    link: text("link").notNull().default(""),
+    loja: text("loja").notNull().default(""),
+    categoria: text("categoria").notNull().default(""),
+    preco: money("preco").notNull().default(0),
+    comissao: doublePrecision("comissao").notNull().default(0),
+    vendas: integer("vendas").notNull().default(0),
+    avaliacao: doublePrecision("avaliacao").notNull().default(0),
+    /** Mercado Livre: posição no ranking de mais vendidos da categoria e quantos vendedores disputam o produto. */
+    posicao: integer("posicao"),
+    vendedores: integer("vendedores"),
+    /** Vendas por dia (Shopee) ou posições ganhas por dia (ML), entre a leitura mais antiga dos últimos 7 dias e a última. */
+    velocidade: doublePrecision("velocidade").notNull().default(0),
+    analise: jsonb("analise").$type<AnaliseSentinela>(),
+    primeiraVez: timestamp("primeira_vez", { withTimezone: true }).notNull().defaultNow(),
+    vistoEm: timestamp("visto_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("sentinela_itens_ext_idx").on(t.fonte, t.idExterno), index("sentinela_itens_vel_idx").on(t.velocidade)],
+);
+
+export const sentinelaLeituras = pgTable(
+  "sentinela_leituras",
+  {
+    id: serial("id").primaryKey(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => sentinelaItens.id, { onDelete: "cascade" }),
+    em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+    vendas: integer("vendas").notNull().default(0),
+    preco: money("preco").notNull().default(0),
+    posicao: integer("posicao"),
+    vendedores: integer("vendedores"),
+  },
+  (t) => [index("sentinela_leituras_item_idx").on(t.itemId, t.em)],
+);
+
+/** Relatório da IA (estratégia do dia) guardado para abrir na hora. */
+export const sentinelaRelatorios = pgTable("sentinela_relatorios", {
+  id: serial("id").primaryKey(),
+  texto: text("texto").notNull(),
+  fontes: jsonb("fontes").$type<{ titulo: string; url: string }[]>().notNull().default([]),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});

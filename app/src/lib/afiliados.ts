@@ -21,7 +21,21 @@ export async function afiliadosConfigurado() {
   return Boolean(c.appId && c.secret);
 }
 
-async function chamar<T>(query: string): Promise<T> {
+// A API da Shopee devolve "System Error" (10000) de vez em quando para a mesma consulta que funciona no segundo seguinte:
+// repete algumas vezes antes de desistir.
+export async function chamar<T>(query: string, tentativas = 4): Promise<T> {
+  for (let i = 1; ; i++) {
+    try {
+      return await chamarUmaVez<T>(query);
+    } catch (e) {
+      const instavel = e instanceof AfiliadosErro && /\(10000\)|System Error|\((?:429|5\d\d)\)|timeout|aborted/i.test(e.message);
+      if (!instavel || i >= tentativas) throw e;
+      await new Promise((r) => setTimeout(r, 800 * i));
+    }
+  }
+}
+
+async function chamarUmaVez<T>(query: string): Promise<T> {
   const c = await credenciais();
   if (!c.appId || !c.secret) throw new AfiliadosErro("Cadastre o App ID e a Senha da API de afiliados em Configurações › Integrações › Shopee Afiliados.");
   const corpo = JSON.stringify({ query });
@@ -32,6 +46,8 @@ async function chamar<T>(query: string): Promise<T> {
     headers: { "Content-Type": "application/json", Authorization: `SHA256 Credential=${c.appId}, Timestamp=${ts}, Signature=${assinatura}` },
     body: corpo,
     signal: AbortSignal.timeout(30_000),
+  }).catch((e: Error) => {
+    throw new AfiliadosErro(`Shopee Afiliados: ${e.message}`);
   });
   const texto = await res.text();
   let r: { data?: T; errors?: { message?: string; extensions?: { message?: string; code?: number } }[] };
@@ -150,6 +166,8 @@ export async function buscarOfertas(opcoes: {
   vendedorDestaque?: boolean;
   /** Lista pronta da Shopee: 2 = mais vendidos pelos afiliados agora (top performing). */
   lista?: number;
+  /** Itens por página (a Shopee aceita até 50). */
+  limite?: number;
 }) {
   const args = [
     opcoes.lista ? `listType: ${opcoes.lista}` : "",
@@ -160,7 +178,7 @@ export async function buscarOfertas(opcoes: {
     opcoes.shopId ? `shopId: ${Number(opcoes.shopId)}` : "",
     `sortType: ${ORDENS[opcoes.ordem ?? "relevancia"]}`,
     `page: ${opcoes.pagina ?? 1}`,
-    "limit: 20",
+    `limit: ${Math.min(50, Math.max(1, opcoes.limite ?? 20))}`,
   ].filter(Boolean);
   const r = await chamar<{ productOfferV2: { nodes: NoOferta[]; pageInfo: { hasNextPage: boolean } } }>(
     `{ productOfferV2(${args.join(", ")}) { nodes { ${CAMPOS_OFERTA} } pageInfo { page limit hasNextPage } } }`,

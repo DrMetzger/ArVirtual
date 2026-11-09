@@ -44,14 +44,14 @@ async function emCache<T>(chave: string, fn: () => Promise<T>): Promise<T> {
   return valor;
 }
 
-async function tokenML() {
+export async function tokenML() {
   const [conta] = await db.select().from(contasMarketplace).where(eq(contasMarketplace.marketplace, "mercadolivre")).orderBy(asc(contasMarketplace.id)).limit(1);
   if (!conta) throw new Error("Conecte uma conta do Mercado Livre em Marketplaces para usar a pesquisa.");
   return (await contaComToken(conta)).accessToken;
 }
 
 /** GET na API do ML; devolve null quando o recurso não existe ou não é liberado para o app. */
-async function get<T>(caminho: string, token: string): Promise<T | null> {
+export async function get<T>(caminho: string, token: string): Promise<T | null> {
   const r = await fetch(`${API}${caminho}`, { headers: { Authorization: `Bearer ${token}` }, signal: AbortSignal.timeout(20_000) });
   if (r.status === 401) throw new Error("O token do Mercado Livre expirou: reconecte a conta em Marketplaces.");
   if (r.status === 429) throw new Error("O Mercado Livre limitou as consultas agora. Tente de novo em alguns minutos.");
@@ -66,7 +66,7 @@ type ItensML = {
 };
 
 /** Produto do catálogo com o menor preço entre os vendedores que disputam a vitrine dele. */
-async function produto(id: string, token: string, posicao?: number): Promise<ProdutoMercado | null> {
+export async function produto(id: string, token: string, posicao?: number): Promise<ProdutoMercado | null> {
   return emCache(`p:${id}`, async () => {
     const [p, itens] = await Promise.all([get<ProdutoML>(`/products/${id}`, token), get<ItensML>(`/products/${id}/items?limit=20`, token)]);
     if (!p?.name) return null;

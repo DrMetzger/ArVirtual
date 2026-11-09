@@ -1,5 +1,5 @@
 import { and, desc, eq, inArray, sql } from "drizzle-orm";
-import { BadgePercent, Clapperboard, Link2, Plus, Search, Wallet } from "lucide-react";
+import { BadgePercent, Clapperboard, Gem, Link2, Plus, Search, Wallet } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Copiavel } from "@/components/copiavel";
@@ -53,6 +53,9 @@ export default async function AfiliadosPage({ searchParams }: { searchParams: Pr
             <a href="#adicionar" className={buttonClass("primary")}>
               <Plus /> Adicionar produtos
             </a>
+            <Link href="/afiliados/garimpo" className={buttonClass("gold")}>
+              <Gem /> Garimpo automático
+            </Link>
             <Link href="/videos" className={buttonClass("outline")}>
               <Clapperboard /> Vídeos
             </Link>
