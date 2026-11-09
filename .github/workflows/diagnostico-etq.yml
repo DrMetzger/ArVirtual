@@ -30,17 +30,15 @@ jobs:
           console.log("SHIPPING", JSON.stringify(semPii(e.shipping)).slice(0, 1500));
           console.log("DELIVERY keys", Object.keys(e).join(","));
           const body = JSON.stringify({ channel: { id: e.order.channel.id, extras: { alias: "Magazine Luiza" } }, deliveries: [{ id: e.id, branch: { external_id: e.branch?.external_id } }], label: { format: "pdf", type: "full" } });
+          const sem = { channel: { id: e.order.channel.id }, deliveries: [{ id: e.id }], label: { format: "zpl", type: "summary" } };
           for (const [metodo, p, corpo] of [
-            ["POST", "/seller/v1/logistics/shipping-labels/", body],
-            ["POST", "/seller/v1/logistics/shipping_labels", body],
-            ["POST", "/seller/v1/shipping-labels", body],
-            ["POST", "/seller/v1/logistics/labels", body],
-            ["GET", `/seller/v1/deliveries/${e.id}/labels`, null],
-            ["GET", `/seller/v1/deliveries/${e.id}/shipping-labels`, null],
-            ["GET", `/seller/v1/logistics/shipping-labels?delivery_id=${e.id}`, null],
+            ["GET", "/seller/v1/tickets?_limit=1", null],
+            ["GET", "/seller/v1/portfolios/scores?_limit=1", null],
+            ["POST", "/seller/v1/logistics/shipping-labels", JSON.stringify(sem)],
+            ["POST", "/seller/v1/logistics/shipping-labels", "{}"],
           ]) {
             const [s, t] = await call(p, corpo ? { method: metodo, body: corpo } : {});
-            console.log("TENTA", metodo, p.replace(e.id, "{id}"), s, t.replace(/https:\/\/[^"\s]+/g, (u) => "URL:" + new URL(u).host).slice(0, 300));
+            console.log("TENTA", metodo, p, corpo?.slice(0, 40), s, t.replace(/\s+/g, " ").slice(0, 300));
           }
           await sql.end();
           JS
