@@ -2,6 +2,7 @@ import { Bot, Clock, Eye, EyeOff, Hourglass, Plus, Printer, Radar, Sparkles, Tra
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Abas } from "@/components/abas";
+import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { MarcaIcone } from "@/components/marca";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
@@ -71,23 +72,21 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
           {magalu.length ? (
             <div className="divide-y divide-border">
               {magalu.map((m, i) => (
-                <div key={`${m.sku}-${i}`} className="flex flex-wrap items-center gap-3 px-4 py-3 text-sm">
-                  <span className="w-6 text-center font-bold text-muted">{i + 1}</span>
-                  {m.imagem ? <img src={m.imagem} alt="" className="size-12 rounded-lg bg-white object-contain" /> : <div className="size-12 rounded-lg bg-surface-2" />}
-                  <div className="min-w-0 flex-1">
+                <div key={`${m.sku}-${i}`} className="flex items-start gap-3 px-4 py-3 text-sm">
+                  <span className="w-5 shrink-0 pt-1 text-center font-bold text-muted">{i + 1}</span>
+                  <FotoAmpliavel src={m.imagem ?? ""} alt={m.titulo} className="size-16" />
+                  <div className="grid min-w-0 flex-1 gap-1">
                     <p className="line-clamp-2 font-semibold">{m.titulo}</p>
                     <p className="text-xs text-muted">
-                      {m.sku ? `${m.sku} · ` : ""}
-                      {m.pedidos} pedido(s)
+                      <b className="text-foreground">{m.quantidade} un.</b> · {formatBRL(m.faturamento)} · {m.pedidos} pedido(s){m.sku ? ` · ${m.sku}` : ""}
                     </p>
+                    <Link
+                      href={`/sentinela/concorrencia?q=${encodeURIComponent(m.titulo.split(/\s+/).slice(0, 5).join(" "))}`}
+                      className="inline-flex w-fit items-center gap-1 text-xs font-semibold text-gold hover:underline"
+                    >
+                      <Users className="size-3.5" /> Ver quem vende
+                    </Link>
                   </div>
-                  <div className="text-right">
-                    <p className="font-bold">{m.quantidade} un.</p>
-                    <p className="text-xs text-muted">{formatBRL(m.faturamento)}</p>
-                  </div>
-                  <Link href={`/sentinela/concorrencia?q=${encodeURIComponent(m.titulo.split(/\s+/).slice(0, 5).join(" "))}`} className={buttonClass("outline", "sm")}>
-                    <Users /> Quem vende
-                  </Link>
                 </div>
               ))}
             </div>

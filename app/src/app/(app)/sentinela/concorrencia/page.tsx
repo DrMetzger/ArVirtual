@@ -1,6 +1,7 @@
 import { Award, ExternalLink, MapPin, Search, Star, Store, Truck, Users } from "lucide-react";
 import type { Metadata } from "next";
 import { Abas } from "@/components/abas";
+import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { MarcaIcone } from "@/components/marca";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { requireUser } from "@/lib/auth";
@@ -47,7 +48,7 @@ function CartaoResumo({ canal, nome, r, rotuloVendas }: { canal: "shopee" | "mer
 function Linha({ a }: { a: Anuncio }) {
   return (
     <div className="flex items-start gap-3 px-4 py-3">
-      {a.imagem ? <img src={a.imagem} alt="" loading="lazy" className="size-14 shrink-0 rounded-lg bg-white object-contain" /> : <div className="size-14 shrink-0 rounded-lg bg-surface-2" />}
+      <FotoAmpliavel src={a.imagem} alt={`${a.produto} · ${a.vendedor}`} className="size-20 sm:size-24" />
       <div className="grid min-w-0 flex-1 gap-1">
         <div className="flex flex-wrap items-baseline gap-x-2">
           <span className="font-bold">{a.vendedor}</span>

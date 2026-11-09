@@ -482,17 +482,28 @@ export async function rotinaSentinela() {
 export async function campeoesMagalu() {
   const linhas = await db.execute<{ titulo: string; sku: string; quantidade: number; faturamento: number; pedidos: number; imagem: string | null; produto_id: string | null }>(sql`
     with vendas as (
-      select i->>'titulo' as titulo, coalesce(i->>'sku', '') as sku,
+      select coalesce(nullif(i->>'sku', ''), i->>'titulo') as chave, coalesce(i->>'sku', '') as sku,
+        max(i->>'titulo') as titulo,
         sum((i->>'quantidade')::numeric)::int as quantidade,
         sum((i->>'quantidade')::numeric * (i->>'valorUnitario')::numeric)::float as faturamento,
         count(distinct p.id)::int as pedidos
       from pedidos_marketplace p, jsonb_array_elements(p.itens) i
       where p.marketplace = 'magalu' and p.data > now() - interval '60 days' and p.status <> 'cancelled'
       group by 1, 2
+    ),
+    -- Produto do item: pelo anúncio vinculado no Magalu (o SKU de lá pode ser outro) e, se não houver, pelo SKU do cadastro.
+    ligados as (
+      select v.*, coalesce(
+        (select a.produto_id from anuncios a where a.marketplace = 'magalu' and lower(a.id_externo) = lower(v.sku) limit 1),
+        (select pr.id from produtos pr where lower(pr.sku) = lower(v.sku) limit 1)
+      ) as pid
+      from vendas v
     )
-    select v.*,
-      (select pr.imagens[1] from produtos pr where lower(pr.sku) = lower(v.sku) limit 1) as imagem,
-      (select pr.id::text from produtos pr where lower(pr.sku) = lower(v.sku) limit 1) as produto_id
-    from vendas v order by v.quantidade desc, v.faturamento desc limit 30`);
+    select l.titulo, l.sku, l.quantidade, l.faturamento, l.pedidos, l.pid::text as produto_id,
+      coalesce(pr.imagens[1], pai.imagens[1]) as imagem
+    from ligados l
+    left join produtos pr on pr.id = l.pid
+    left join produtos pai on pai.id = pr.pai_id
+    order by l.quantidade desc, l.faturamento desc limit 30`);
   return [...linhas];
 }
