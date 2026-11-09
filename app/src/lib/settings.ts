@@ -89,6 +89,12 @@ export const SETTINGS = {
 
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
+  "magalu.etiquetas": {
+    label: "Etiquetas pela API (liga a permissão de logística: rode antes o comando add-scope abaixo e reconecte a conta)",
+    secret: false,
+    group: "Magalu",
+    options: ["desligado", "ligado"],
+  },
 
   "impressao.custoFilamentoKg": { label: "Custo do filamento padrão (R$ por rolo de 1.000 g)", secret: false, group: "Impressão 3D: custos", placeholder: "120" },
   "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D: custos", placeholder: "95" },
