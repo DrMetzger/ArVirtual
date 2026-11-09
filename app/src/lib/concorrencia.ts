@@ -1,6 +1,6 @@
 import "server-only";
 import { afiliadosConfigurado, buscarOfertas, type Oferta } from "@/lib/afiliados";
-import { gerarComGeminiDetalhado, geminiConfigurado } from "@/lib/gemini";
+import { gerarComGemini, gerarComGeminiDetalhado, geminiConfigurado } from "@/lib/gemini";
 import { get, tokenML } from "@/lib/pesquisa-mercado";
 
 /**
@@ -198,13 +198,60 @@ export async function pesquisarConcorrencia(q: string) {
   return r;
 }
 
+const VAZIAS = new Set(["para", "com", "sem", "de", "do", "da", "dos", "das", "em", "no", "na", "e", "o", "a", "os", "as", "um", "uma", "kit", "novo", "nova", "cor", "cores", "pecas", "peca", "un", "und", "unid", "pcs"]);
+const palavras = (t: string) =>
+  [...new Set(t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9 ]/g, " ").split(/\s+/))].filter((w) => w.length > 1 && !VAZIAS.has(w));
+
+/**
+ * Só concorrente de verdade: 1) o título tem as palavras importantes da pesquisa (metade delas, no mínimo);
+ * 2) a IA confirma que é o mesmo tipo de produto (ex.: "suporte de controle de PS5", não "capa de controle").
+ */
+async function filtrarParecidos(q: string, todos: Anuncio[], erros: string[]) {
+  const chave = palavras(q);
+  const minimo = Math.max(1, Math.ceil(chave.length / 2));
+  const porPalavra = todos.filter((a) => {
+    const t = new Set(palavras(a.produto));
+    return chave.filter((w) => t.has(w) || [...t].some((x) => x.startsWith(w) || w.startsWith(x))).length >= minimo;
+  });
+  if (!porPalavra.length || !(await geminiConfigurado())) return new Set(porPalavra);
+  const titulos = [...new Set(porPalavra.map((a) => a.produto))].slice(0, 250);
+  try {
+    const r = JSON.parse(
+      await gerarComGemini(
+        [
+          {
+            role: "user",
+            text: `Estou pesquisando concorrentes para o produto: "${q}".
+Abaixo, títulos de anúncios (número | título). Marque SÓ os que são o MESMO TIPO de produto, concorrente direto que o comprador
+compararia (mesma função e mesmo uso; variações de cor, tamanho, modelo e kit contam). Exclua acessórios diferentes, peças de
+outra categoria e produtos que só compartilham palavras. Responda SOMENTE JSON: {"parecidos":[números]}
+
+${titulos.map((t, i) => `${i + 1} | ${t}`).join("\n")}`,
+          },
+        ],
+        { json: true, temperature: 0 },
+      ),
+    ) as { parecidos?: number[] };
+    const ok = new Set((r.parecidos ?? []).map((n) => titulos[Number(n) - 1]).filter(Boolean));
+    // Títulos além do limite enviado à IA ficam pelo filtro de palavras.
+    return new Set(porPalavra.filter((a) => ok.has(a.produto) || !titulos.includes(a.produto)));
+  } catch (e) {
+    erros.push(`Filtro da IA indisponível agora (${(e as Error).message}); filtrei só pelas palavras.`);
+    return new Set(porPalavra);
+  }
+}
+
 async function pesquisarAgora(q: string) {
   const erros: string[] = [];
   const [s, m, g] = await Promise.all([shopee(q, erros), mercadoLivre(q, erros), magalu(q, erros)]);
+  const parecidos = await filtrarParecidos(q, [...s, ...m, ...g], erros);
+  const separar = (lista: Anuncio[]) => ({ sim: lista.filter((a) => parecidos.has(a)), nao: lista.filter((a) => !parecidos.has(a)) });
+  const [ps, pm, pg] = [separar(s), separar(m), separar(g)];
   return {
-    shopee: s.sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
-    mercadolivre: m.sort((a, b) => a.preco - b.preco),
-    magalu: g.sort((a, b) => a.preco - b.preco),
+    shopee: ps.sim.sort((a, b) => (b.vendas ?? 0) - (a.vendas ?? 0)),
+    mercadolivre: pm.sim.sort((a, b) => a.preco - b.preco),
+    magalu: pg.sim.sort((a, b) => a.preco - b.preco),
+    descartados: [...ps.nao, ...pm.nao, ...pg.nao],
     erros,
   };
 }

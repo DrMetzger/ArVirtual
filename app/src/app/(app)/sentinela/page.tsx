@@ -133,12 +133,19 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
           {nichos.length ? (
             <div className="divide-y divide-border">
               {nichos.map((n, idx) => (
-                <div key={n.termo} className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 py-2.5 text-sm">
-                  <span className="min-w-0 flex-1 font-semibold">{n.termo}</span>
-                  <span className="text-muted">{(n.shopee?.vendas ?? 0).toLocaleString("pt-BR")} vendas</span>
-                  <span className="text-muted">{n.shopee?.lojas ?? 0} lojas</span>
-                  <span className="text-muted">{formatBRL(n.shopee?.preco_mediano || n.ml?.preco_mediano || 0)}</span>
-                  {idx < 5 ? <Badge tone="green">Entrar já</Badge> : idx < nichos.length / 2 ? <Badge tone="gold">Bom</Badge> : <Badge>Disputado</Badge>}
+                <div key={n.termo} className="grid gap-1 px-4 py-3 text-sm">
+                  <div className="flex items-start justify-between gap-3">
+                    <span className="font-semibold break-words">{n.termo}</span>
+                    {idx < 5 ? <Badge tone="green">Entrar já</Badge> : idx < nichos.length / 2 ? <Badge tone="gold">Bom</Badge> : <Badge>Disputado</Badge>}
+                  </div>
+                  <p className="text-xs text-muted">
+                    {(n.shopee?.vendas ?? 0).toLocaleString("pt-BR")} vendas · {n.shopee?.lojas ?? 0} loja(s) · preço do meio{" "}
+                    {formatBRL(n.shopee?.preco_mediano || n.ml?.preco_mediano || 0)}
+                    {n.ml ? ` · ${n.ml.vendedores.toLocaleString("pt-BR", { maximumFractionDigits: 1 })} vendedores/produto no ML` : ""}
+                  </p>
+                  <a href={`/sentinela/concorrencia?q=${encodeURIComponent(n.termo)}`} className="w-fit text-xs font-semibold text-gold hover:underline">
+                    Ver quem vende
+                  </a>
                 </div>
               ))}
             </div>
