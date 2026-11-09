@@ -917,6 +917,9 @@ export type AnaliseSentinela = {
   v?: number;
   /** O anúncio do concorrente é de peça impressa em 3D (ou plástica que se faz igual na impressora). */
   impresso3d?: boolean;
+  /** Maior medida estimada da peça (cm) e se dá para imprimir em partes que encaixam. */
+  maiorCm?: number;
+  emPartes?: boolean;
   /** Margem (%) e lucro (R$) vendendo no mesmo preço em cada canal, com as taxas de Configurações. */
   canais?: { magalu: { lucro: number; margem: number }; mercadolivre: { lucro: number; margem: number }; shopee: { lucro: number; margem: number } };
 };

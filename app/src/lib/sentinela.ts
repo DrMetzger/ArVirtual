@@ -7,7 +7,7 @@ import { gerarComGemini, gerarComGeminiDetalhado, geminiConfigurado } from "@/li
 import { custoImpressao } from "@/lib/impressao";
 import { get, produto, tokenML } from "@/lib/pesquisa-mercado";
 import { liquido } from "@/lib/precificacao";
-import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
+import { getParametrosImpressao, getParametrosPreco, getSetting } from "@/lib/settings";
 
 /**
  * Sentinela de mercado. De tempos em tempos lê, para cada termo vigiado:
@@ -20,7 +20,7 @@ import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 const TERMOS_POR_RODADA = 30;
 /** Lista geral "top performing" da Shopee: serve ao garimpo de afiliados, não ao mercado de impressão 3D. */
 export const EM_ALTA = "em alta na Shopee";
-const VERSAO_ANALISE = 2;
+const VERSAO_ANALISE = 3;
 const MAX_TERMOS_ATIVOS = 80;
 let rodando = false;
 
@@ -241,22 +241,35 @@ export async function coletarSentinela() {
 
 // ---------------------------------------------------------------------------------------------- IA
 
-const PROMPT_ANALISE = `Você é especialista em impressão 3D FDM (Bambu Lab A1 mini, mesa 18x18x18 cm, PLA/PETG) e vende peças impressas em 3D no Magalu, Mercado Livre e Shopee.
+const PROMPT_ANALISE = (maxCm: number) => `Você é especialista em impressão 3D FDM (Bambu Lab A1 mini, volume útil ${maxCm}x${maxCm}x${maxCm} cm, PLA/PETG) e vende peças impressas em 3D no Magalu, Mercado Livre e Shopee.
 Para cada produto da lista (nome e preço que o concorrente cobra), avalie o produto COMO ELE É VENDIDO, não uma versão reinventada:
 - "impresso3d": true só se o anúncio é de peça impressa em 3D (o nome cita 3D/impresso, ou é peça plástica tipicamente impressa:
   suporte, organizador, vaso, miniatura, action figure, articulado, chaveiro, topo de bolo, luminária de PLA, peça de reposição, case, encaixe).
 - "imprimivel": true só se o MESMO produto sai da A1 mini com qualidade de venda, inteiro em plástico (PLA/PETG), sem precisar de metal, madeira,
   vidro, tecido, planta artificial, glitter, LED/eletrônica, ímã, adesivo industrial, cerâmica ou espelho como parte principal.
   Na dúvida, false. Itens de ferro/aço, madeira/MDF, flores e plantas artificiais, pisca-pisca, ganchos adesivos, roupas, cosméticos,
-  eletrônicos, kits de bolinhas de vidro/plástico injetado em massa (centenas de peças) = false.
+  eletrônicos, filamento, impressora, kits de bolinhas de vidro/plástico injetado em massa (centenas de peças) = false.
+- "maiorCm": maior medida estimada da peça pronta, em cm (pelo nome e pelo tipo de produto).
+- "emPartes": true se, passando de ${maxCm} cm, a peça pode ser impressa em partes que encaixam/colam sem perder qualidade de venda.
+  Se maiorCm > ${maxCm} e não dá para fazer em partes, "imprimivel" = false.
 Para os imprimíveis, estime gramas de filamento e horas de impressão de UMA unidade, como um maker experiente faria.
 "ideia": em 1 frase, como fazer MELHOR ou MAIS BARATO que o concorrente (personalização, kit, cor, encaixe, variação). Para não imprimíveis, deixe "".
 "risco": em poucas palavras o principal risco (marca registrada/licença, peça frágil, tamanho, concorrência de chinês barato) ou "".
-Responda SOMENTE JSON: {"itens":[{"id":número,"impresso3d":bool,"imprimivel":bool,"confianca":0-100,"gramas":número,"horas":número,"ideia":"...","risco":"..."}]}`;
+Responda SOMENTE JSON: {"itens":[{"id":número,"impresso3d":bool,"imprimivel":bool,"maiorCm":número,"emPartes":bool,"confianca":0-100,"gramas":número,"horas":número,"ideia":"...","risco":"..."}]}`;
 
 /** Analisa com a IA os que mais sobem e ainda não foram analisados (ou faz mais de 14 dias). */
-export async function analisarComIa(limite = 60) {
-  if (!(await geminiConfigurado())) return 0;
+let analisando = false;
+export async function analisarComIa(limite = 120) {
+  if (analisando || !(await geminiConfigurado())) return 0;
+  analisando = true;
+  try {
+    return await analisarLote(limite);
+  } finally {
+    analisando = false;
+  }
+}
+
+async function analisarLote(limite: number) {
   const pendente = (fonte: "shopee" | "mercadolivre") =>
     and(
       eq(sentinelaItens.fonte, fonte),
@@ -276,14 +289,15 @@ export async function analisarComIa(limite = 60) {
   ]);
   const candidatos = [...daShopee_, ...doML];
   if (!candidatos.length) return 0;
-  const [pi, pp] = await Promise.all([getParametrosImpressao(), getParametrosPreco()]);
+  const [pi, pp, maxTxt] = await Promise.all([getParametrosImpressao(), getParametrosPreco(), getSetting("impressao.tamanhoMaxCm")]);
+  const maxCm = Number(maxTxt.replace(",", ".")) || 17;
   let feitos = 0;
   for (let i = 0; i < candidatos.length; i += 20) {
     const lote = candidatos.slice(i, i + 20);
     const lista = lote.map((c) => `${c.id} | ${c.nome} | R$ ${c.preco.toFixed(2)}`).join("\n");
-    let r: { itens?: { id: number; impresso3d?: boolean; imprimivel: boolean; confianca: number; gramas: number; horas: number; ideia: string; risco: string }[] };
+    let r: { itens?: { id: number; impresso3d?: boolean; maiorCm?: number; emPartes?: boolean; imprimivel: boolean; confianca: number; gramas: number; horas: number; ideia: string; risco: string }[] };
     try {
-      r = JSON.parse(await gerarComGemini([{ role: "user", text: `${PROMPT_ANALISE}\n\nProdutos (id | nome | preço):\n${lista}` }], { json: true, temperature: 0.2 }));
+      r = JSON.parse(await gerarComGemini([{ role: "user", text: `${PROMPT_ANALISE(maxCm)}\n\nProdutos (id | nome | preço):\n${lista}` }], { json: true, temperature: 0.2 }));
     } catch (e) {
       console.warn(`[sentinela] IA: ${(e as Error).message}`);
       break;
@@ -293,6 +307,9 @@ export async function analisarComIa(limite = 60) {
       if (!c) continue;
       const gramas = Math.max(0, Number(a.gramas) || 0);
       const horas = Math.max(0, Number(a.horas) || 0);
+      const maiorCm = Math.max(0, Number(a.maiorCm) || 0);
+      // Regra dura do tamanho, mesmo se a IA se distrair: maior que a mesa só vale se der para fazer em partes.
+      if (maiorCm > maxCm && !a.emPartes) a.imprimivel = false;
       const custo = a.imprimivel ? custoImpressao(gramas, horas * 60, pi).custo : 0;
       // Margem vendendo no mesmo preço em cada canal; a principal é a do Magalu (onde você mais vende).
       const noCanal = (canal: "magalu" | "mercadolivre" | "shopee") => {
@@ -304,6 +321,8 @@ export async function analisarComIa(limite = 60) {
       const analise: AnaliseSentinela = {
         v: VERSAO_ANALISE,
         impresso3d: Boolean(a.impresso3d),
+        maiorCm,
+        emPartes: Boolean(a.emPartes),
         canais,
         imprimivel: Boolean(a.imprimivel),
         confianca: Math.max(0, Math.min(100, Number(a.confianca) || 0)),
@@ -326,7 +345,15 @@ export async function analisarComIa(limite = 60) {
 /** Dados prontos para a tela e para o relatório. */
 export async function painelSentinela() {
   const desde = new Date(Date.now() - 3 * 86400_000);
-  const recentes = and(gte(sentinelaItens.vistoEm, desde));
+  // Só o que a IA aprovou como peça impressa em 3D que sai da sua impressora (tamanho incluído).
+  const da3d = and(
+    ne(sentinelaItens.termo, EM_ALTA),
+    sql`coalesce((${sentinelaItens.analise}->>'v')::int, 1) >= ${VERSAO_ANALISE}`,
+    sql`(${sentinelaItens.analise}->>'imprimivel')::boolean`,
+    sql`(${sentinelaItens.analise}->>'impresso3d')::boolean`,
+    sql`(${sentinelaItens.analise}->>'confianca')::int >= 60`,
+  );
+  const recentes = and(gte(sentinelaItens.vistoEm, desde), da3d);
   const campos = {
     id: sentinelaItens.id,
     fonte: sentinelaItens.fonte,
@@ -353,31 +380,29 @@ export async function painelSentinela() {
     db
       .select(campos)
       .from(sentinelaItens)
-      .where(
-        and(
-          recentes,
-          ne(sentinelaItens.termo, EM_ALTA),
-          sql`coalesce((${sentinelaItens.analise}->>'v')::int, 1) >= ${VERSAO_ANALISE}`,
-          sql`(${sentinelaItens.analise}->>'imprimivel')::boolean`,
-          sql`(${sentinelaItens.analise}->>'impresso3d')::boolean`,
-          sql`(${sentinelaItens.analise}->>'confianca')::int >= 75`,
-          sql`(${sentinelaItens.analise}->>'margem')::float >= 30`,
-        ),
-      )
+      .where(and(recentes, sql`(${sentinelaItens.analise}->>'confianca')::int >= 75`, sql`(${sentinelaItens.analise}->>'margem')::float >= 30`))
       .orderBy(sql`${sentinelaItens.velocidade} * 10 + least(${sentinelaItens.vendas}, 5000) / 50.0 + (${sentinelaItens.analise}->>'margem')::float / 10 desc`)
       .limit(24),
-    db.select(campos).from(sentinelaItens).where(and(gte(sentinelaItens.primeiraVez, new Date(Date.now() - 2 * 86400_000)), ne(sentinelaItens.termo, EM_ALTA))).orderBy(desc(sentinelaItens.vendas)).limit(12),
+    db.select(campos).from(sentinelaItens).where(and(gte(sentinelaItens.primeiraVez, new Date(Date.now() - 2 * 86400_000)), da3d)).orderBy(desc(sentinelaItens.vendas)).limit(12),
     db.execute<{ termo: string; fonte: string; itens: number; preco_mediano: number; vendas: number; velocidade: number; lojas: number; vendedores: number }>(sql`
       select termo, fonte, count(*)::int as itens,
         coalesce(percentile_cont(0.5) within group (order by preco), 0)::float as preco_mediano,
         coalesce(sum(vendas), 0)::int as vendas, coalesce(sum(velocidade), 0)::float as velocidade,
         count(distinct nullif(loja_id, ''))::int as lojas, coalesce(avg(vendedores), 0)::float as vendedores
       from ${sentinelaItens} where visto_em > ${desde.toISOString()}::timestamptz and termo <> ${EM_ALTA}
+        and coalesce((analise->>'v')::int, 1) >= ${VERSAO_ANALISE} and (analise->>'imprimivel')::boolean and (analise->>'impresso3d')::boolean
       group by termo, fonte order by termo`),
     db.select().from(sentinelaTermos).orderBy(desc(sentinelaTermos.ativo), asc(sentinelaTermos.termo)),
     db.select({ em: sql<Date | null>`max(${sentinelaLeituras.em})` }).from(sentinelaLeituras),
     db.query.sentinelaRelatorios.findFirst({ orderBy: desc(sentinelaRelatorios.criadoEm) }),
-    db.select({ itens: sql<number>`count(*)::int`, leituras: sql<number>`(select count(*) from ${sentinelaLeituras})::int` }).from(sentinelaItens),
+    db
+      .select({
+        itens: sql<number>`count(*)::int`,
+        leituras: sql<number>`(select count(*) from ${sentinelaLeituras})::int`,
+        aprovados: sql<number>`count(*) filter (where ${da3d})::int`,
+        naFila: sql<number>`count(*) filter (where ${sentinelaItens.termo} <> ${EM_ALTA} and ${sentinelaItens.vistoEm} > ${desde.toISOString()}::timestamptz and coalesce((${sentinelaItens.analise}->>'v')::int, 0) < ${VERSAO_ANALISE})::int`,
+      })
+      .from(sentinelaItens),
   ]);
   return { subindoShopee, subindoML, oportunidades, novos, nichos: [...nichos], termos, ultimaColeta: ultima[0]?.em ?? null, relatorio, totais: totais[0] };
 }
@@ -432,7 +457,11 @@ Na última linha, escreva exatamente: NOVOS_TERMOS: termo1; termo2; ... (até 10
 /** Rotina automática: coleta a cada 4 horas; IA analisa o que subiu; relatório 1 vez por dia. */
 let ultimaRodada = 0;
 export async function rotinaSentinela() {
-  if (Date.now() - ultimaRodada < 4 * 3600_000) return;
+  // Entre as coletas, a IA vai esvaziando a fila (a cada sincronização, de 15 em 15 min).
+  if (Date.now() - ultimaRodada < 4 * 3600_000) {
+    await analisarComIa(60).catch((e: Error) => console.warn(`[sentinela] IA: ${e.message}`));
+    return;
+  }
   ultimaRodada = Date.now();
   const r = await coletarSentinela();
   if (r.erros.length) console.warn(`[sentinela] ${r.erros.slice(0, 5).join(" | ")}`);

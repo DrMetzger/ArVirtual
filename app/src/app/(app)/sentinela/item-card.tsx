@@ -37,7 +37,7 @@ export function Veredito({ a }: { a: AnaliseSentinela | null }) {
         <Printer className="size-3.5" /> Peça 3D · custo {formatBRL(a.custo)}
       </p>
       <p className="text-muted">
-        ~{num(a.gramas)} g · {num(a.horas, 1)} h de impressão
+        {a.maiorCm ? `~${num(a.maiorCm)} cm${a.emPartes ? " (em partes)" : ""} · ` : ""}~{num(a.gramas)} g · {num(a.horas, 1)} h de impressão
       </p>
       {a.canais ? (
         <div className="grid grid-cols-3 gap-1 rounded-lg bg-surface-2 p-1.5 text-center">

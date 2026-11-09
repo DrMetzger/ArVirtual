@@ -99,6 +99,7 @@ export const SETTINGS = {
   "impressao.custoFilamentoKg": { label: "Custo do filamento padrão (R$ por rolo de 1.000 g)", secret: false, group: "Impressão 3D: custos", placeholder: "120" },
   "impressao.potenciaW": { label: "Consumo médio da impressora (W)", secret: false, group: "Impressão 3D: custos", placeholder: "95" },
   "impressao.custoKwh": { label: "Tarifa de energia (R$/kWh)", secret: false, group: "Impressão 3D: custos", placeholder: "0.95" },
+  "impressao.tamanhoMaxCm": { label: "Maior medida que a impressora faz (cm) — A1 mini: 17", secret: false, group: "Impressão 3D: custos", placeholder: "17" },
   "impressao.margem": { label: "Lucro desejado sobre o custo (%)", secret: false, group: "Precificação: geral", placeholder: "60" },
   "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
   "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
