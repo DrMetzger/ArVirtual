@@ -179,10 +179,11 @@ const desHtml = (t: string) => t.replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g
  * do produto (/product/loja/item, /opaanlp/loja/item ou nome-i.loja.item); a página pública traz o vídeo em MP4
  * (mais de uma qualidade: fica a maior), o título, a descrição e a capa. Não usa cookies.
  */
-async function produtoShopee(link: string) {
+export async function produtoShopee(link: string) {
   let url = link.trim();
   if (!/^https?:\/\//.test(url)) url = `https://${url}`;
-  const ids = (u: string) => u.match(/\/(?:product|opaanlp)\/(\d+)\/(\d+)/) ?? u.match(/-i\.(\d+)\.(\d+)/);
+  // O endereço do produto pode vir com barras codificadas (%2F) na página do link curto.
+  const ids = (u: string) => u.match(/(?:product|opaanlp)(?:\/|%2F)(\d+)(?:\/|%2F)(\d+)/i) ?? u.match(/-i\.(\d+)\.(\d+)/);
   let m = ids(url);
   if (!m) {
     const r = await fetch(url, { headers: { "User-Agent": CELULAR }, redirect: "follow", signal: AbortSignal.timeout(20_000) });

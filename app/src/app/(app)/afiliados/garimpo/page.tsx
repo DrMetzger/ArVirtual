@@ -1,5 +1,5 @@
 import { desc, gte } from "drizzle-orm";
-import { ArrowLeft, ExternalLink, Eye, EyeOff, Filter, Flame, Gem, Link2, Plus, Radar, Star, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, ExternalLink, Eye, EyeOff, Filter, Flame, Gem, Link2, Plus, Radar, Star, Trash2, Users, Video, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FotoAmpliavel } from "@/components/foto-ampliavel";
@@ -11,7 +11,7 @@ import { requireUser } from "@/lib/auth";
 import { afiliadosEstimados, EM_ALTA, termosGarimpo } from "@/lib/garimpo";
 import { formatBRL } from "@/lib/utils";
 import { AtualizarSozinho } from "../../sentinela/atualizar";
-import { adicionarTermoGarimpo, alternarTermoGarimpo, divulgarProduto, excluirTermoGarimpo, garimparAgora, garimpoEmAndamento, linkRapido } from "./actions";
+import { adicionarTermoGarimpo, alternarTermoGarimpo, baixarVideoGarimpo, divulgarProduto, excluirTermoGarimpo, garimparAgora, garimpoEmAndamento, linkRapido } from "./actions";
 
 export const metadata: Metadata = { title: "Garimpo de afiliados" };
 
@@ -111,7 +111,16 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
         }
       />
       <div className="grid gap-5">
-        {sp.ok ? <Alert tone="green">{sp.ok}</Alert> : null}
+        {sp.ok ? (
+          <Alert tone="green">
+            {sp.ok}{" "}
+            {sp.ok.includes("Galeria") ? (
+              <Link href="/videos/galeria" className="font-semibold underline">
+                Abrir a galeria
+              </Link>
+            ) : null}
+          </Alert>
+        ) : null}
         {sp.erro ? <Alert>{sp.erro}</Alert> : null}
 
         <details className="rounded-2xl border border-border bg-surface" open={Boolean(sp.termos) || !ativos.length}>
@@ -312,6 +321,11 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
                       <form action={linkRapido.bind(null, i.link, aqui)}>
                         <SubmitButton size="sm" variant="outline" className="w-full" pendingText="...">
                           <Link2 /> Só o link
+                        </SubmitButton>
+                      </form>
+                      <form action={baixarVideoGarimpo.bind(null, i.itemId, i.lojaId, aqui)}>
+                        <SubmitButton size="sm" variant="outline" className="w-full" pendingText="Procurando o vídeo...">
+                          <Video /> Baixar vídeo
                         </SubmitButton>
                       </form>
                     </div>
