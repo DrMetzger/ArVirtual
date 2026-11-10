@@ -3,6 +3,7 @@ import { afiliadosConfigurado, sincronizarComissoes } from "@/lib/afiliados";
 import { sincronizarPedidos } from "@/lib/marketplaces";
 import { reenviarNotasPendentes } from "@/lib/marketplaces/enviar-nota";
 import { rotinaSentinela } from "@/lib/sentinela";
+import { rotinaGarimpo } from "@/lib/garimpo";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -31,5 +32,7 @@ export async function POST(req: Request) {
   }
   // Sentinela de mercado: coleta a cada 4 h (o controle de intervalo fica na própria rotina).
   void rotinaSentinela().catch((e: Error) => console.warn(`[sentinela] ${e.message}`));
+  // Garimpo de afiliados (Shopee), separado do sentinela.
+  void rotinaGarimpo().catch((e: Error) => console.warn(`[garimpo] ${e.message}`));
   return Response.json(r);
 }

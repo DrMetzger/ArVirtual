@@ -990,3 +990,54 @@ export const sentinelaRelatorios = pgTable("sentinela_relatorios", {
   fontes: jsonb("fontes").$type<{ titulo: string; url: string }[]>().notNull().default([]),
   criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ---------------------------------------------------------------------------------------------
+// Garimpo de afiliados (Shopee): totalmente separado do Sentinela (que é só impressão 3D).
+
+/** O que garimpar: termos seus, buscados na Shopee como você escreveu. */
+export const garimpoTermos = pgTable("garimpo_termos", {
+  id: serial("id").primaryKey(),
+  termo: text("termo").notNull().unique(),
+  ativo: boolean("ativo").notNull().default(true),
+  ultimaColeta: timestamp("ultima_coleta", { withTimezone: true }),
+  ...timestamps,
+});
+
+export const garimpoItens = pgTable(
+  "garimpo_itens",
+  {
+    id: serial("id").primaryKey(),
+    itemId: text("item_id").notNull().unique(),
+    lojaId: text("loja_id").notNull().default(""),
+    /** Termo que trouxe o produto ou "em alta" (lista dos mais vendidos pelos afiliados agora). */
+    termo: text("termo").notNull().default(""),
+    nome: text("nome").notNull(),
+    imagem: text("imagem").notNull().default(""),
+    link: text("link").notNull().default(""),
+    loja: text("loja").notNull().default(""),
+    preco: money("preco").notNull().default(0),
+    comissao: doublePrecision("comissao").notNull().default(0),
+    vendas: integer("vendas").notNull().default(0),
+    avaliacao: doublePrecision("avaliacao").notNull().default(0),
+    velocidade: doublePrecision("velocidade").notNull().default(0),
+    extras: jsonb("extras").$type<ExtrasAfiliado>(),
+    primeiraVez: timestamp("primeira_vez", { withTimezone: true }).notNull().defaultNow(),
+    vistoEm: timestamp("visto_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("garimpo_itens_visto_idx").on(t.vistoEm)],
+);
+
+export const garimpoLeituras = pgTable(
+  "garimpo_leituras",
+  {
+    id: serial("id").primaryKey(),
+    itemId: integer("item_id")
+      .notNull()
+      .references(() => garimpoItens.id, { onDelete: "cascade" }),
+    em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+    vendas: integer("vendas").notNull().default(0),
+    preco: money("preco").notNull().default(0),
+    comissao: doublePrecision("comissao").notNull().default(0),
+  },
+  (t) => [index("garimpo_leituras_item_idx").on(t.itemId, t.em)],
+);

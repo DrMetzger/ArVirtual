@@ -5,7 +5,6 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { sentinelaTermos } from "@/db/schema";
-import { buscarOfertas, gerarLinkAfiliado, salvarOferta } from "@/lib/afiliados";
 import { requireUser } from "@/lib/auth";
 import { analisarComIa, coletarSentinela, gerarRelatorio } from "@/lib/sentinela";
 
@@ -69,32 +68,4 @@ export async function excluirTermo(id: number) {
   await db.delete(sentinelaTermos).where(eq(sentinelaTermos.id, id));
   revalidatePath("/sentinela");
   redirect("/sentinela?aba=vigiar");
-}
-
-/** Garimpo → afiliados: pega a oferta atual do produto, gera o link e salva como ideia. */
-export async function divulgarProduto(itemId: string, shopId: string, voltarPara: string) {
-  await requireUser();
-  let id = 0;
-  try {
-    const { ofertas } = await buscarOfertas({ itemId, shopId });
-    const o = ofertas.find((x) => x.itemId === itemId);
-    if (!o) throw new Error("Este produto não tem comissão de afiliado agora.");
-    id = await salvarOferta(o, "divulgando");
-  } catch (e) {
-    voltar(voltarPara, "erro", (e as Error).message);
-  }
-  revalidatePath("/afiliados");
-  redirect(`/afiliados/${id}`);
-}
-
-/** Só o link de afiliado (para copiar e postar na hora). */
-export async function linkRapido(link: string, voltarPara: string) {
-  await requireUser();
-  let curto = "";
-  try {
-    curto = await gerarLinkAfiliado(link, ["garimpo"]);
-  } catch (e) {
-    voltar(voltarPara, "erro", (e as Error).message);
-  }
-  voltar(voltarPara, "ok", `Link de afiliado: ${curto}`);
 }
