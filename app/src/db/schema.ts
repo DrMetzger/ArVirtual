@@ -445,6 +445,8 @@ export const afiliadosVideos = pgTable(
     id: serial("id").primaryKey(),
     produtoId: integer("produto_id").references(() => afiliadosProdutos.id, { onDelete: "set null" }),
     titulo: text("titulo").notNull().default(""),
+    /** Descrição do vídeo/produto de onde foi extraído (legenda do post, descrição do produto). */
+    descricao: text("descricao").notNull().default(""),
     /** De onde veio: vídeo próprio, do anúncio do vendedor, de criador que autorizou ou outro. */
     origem: text("origem", { enum: ["proprio", "anuncio", "criador", "outro"] }).notNull().default("proprio"),
     urlOrigem: text("url_origem").notNull().default(""),

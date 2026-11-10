@@ -34,7 +34,7 @@ import {
   Music2,
   BarChart3,
   Wrench,
-  Smartphone, Gem, Radar } from "lucide-react";
+  Smartphone, Film, Gem, Radar } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -130,6 +130,7 @@ const NAV: (Item | Grupo)[] = [
     itens: [
       { href: "/assistente", label: "Assistente IA", icon: Sparkles },
       { href: "/videos", label: "Conversor de vídeo", icon: Clapperboard },
+      { href: "/videos/galeria", label: "Galeria de vídeos", icon: Film },
     ],
   },
 ];

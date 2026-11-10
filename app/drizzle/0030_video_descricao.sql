@@ -1,0 +1,1 @@
+ALTER TABLE "afiliados_videos" ADD COLUMN "descricao" text DEFAULT '' NOT NULL;

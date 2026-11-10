@@ -150,7 +150,9 @@ async function postThreads(url: string) {
   // Capa: a primeira imagem do post (perto do vídeo).
   const capa = html.slice(perto.pos, perto.pos + 20_000).match(/"image_versions2":\{"candidates":\[\{[^}]*?"url":"([^"]+)"/)?.[1]
     ?? html.slice(Math.max(0, perto.pos - 20_000), perto.pos).match(/"image_versions2":\{"candidates":\[\{[^}]*?"url":"([^"]+)"/)?.[1];
+  const legenda = html.slice(Math.max(0, posCodigo - 30_000), posCodigo + 30_000).match(/"caption":\{"text":"((?:[^"\\]|\\.)*)"/)?.[1];
   return {
+    descricao: legenda ? (JSON.parse(`"${legenda}"`) as string).slice(0, 3000) : "",
     endereco,
     titulo: `Threads ${perfil ? `${perfil} · ` : ""}${codigo}`,
     video: melhor.url,
@@ -165,9 +167,56 @@ async function baixarThreads(url: string, base: string) {
   if (Number(res.headers.get("content-length") ?? 0) > MAX_VIDEO_AFILIADO) throw new Error("max-filesize");
   const arquivo = `${base}.mp4`;
   await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(`${PASTA_AFILIADOS}/${arquivo}`));
-  return { arquivo, titulo: post.titulo };
+  return { arquivo, titulo: post.titulo, descricao: post.descricao };
 }
 
+
+const CELULAR = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
+const desHtml = (t: string) => t.replace(/&quot;/g, '"').replace(/&#x27;|&#39;/g, "'").replace(/&amp;/g, "&").replace(/&lt;/g, "<").replace(/&gt;/g, ">");
+
+/**
+ * Vídeo do produto da Shopee (o yt-dlp não entende página de produto). O link curto (s.shopee.com.br) leva à página
+ * do produto (/product/loja/item, /opaanlp/loja/item ou nome-i.loja.item); a página pública traz o vídeo em MP4
+ * (mais de uma qualidade: fica a maior), o título, a descrição e a capa. Não usa cookies.
+ */
+async function produtoShopee(link: string) {
+  let url = link.trim();
+  if (!/^https?:\/\//.test(url)) url = `https://${url}`;
+  const ids = (u: string) => u.match(/\/(?:product|opaanlp)\/(\d+)\/(\d+)/) ?? u.match(/-i\.(\d+)\.(\d+)/);
+  let m = ids(url);
+  if (!m) {
+    const r = await fetch(url, { headers: { "User-Agent": CELULAR }, redirect: "follow", signal: AbortSignal.timeout(20_000) });
+    m = ids(r.url) ?? ids(await r.text().catch(() => ""));
+  }
+  if (!m) throw new Error("Shopee: não achei o produto nesse link. Use o link do produto (compartilhar › copiar link).");
+  const [, loja, item] = m;
+  const endereco = `https://shopee.com.br/product/${loja}/${item}`;
+  const html = await (await fetch(endereco, { headers: { "User-Agent": CELULAR, "Accept-Language": "pt-BR" }, signal: AbortSignal.timeout(30_000) })).text();
+  const { urls, titulo, descricao, capa } = lerPaginaShopee(html);
+  if (!urls.length) throw new Error("There is no video in this post");
+  // Maior arquivo = maior qualidade.
+  const tamanhos = await Promise.all(
+    urls.slice(0, 6).map(async (u) => {
+      const r = await fetch(u, { method: "HEAD", headers: { "User-Agent": CELULAR }, signal: AbortSignal.timeout(15_000) }).catch(() => null);
+      return { u, n: r?.ok && /video/.test(r.headers.get("content-type") ?? "") ? Number(r.headers.get("content-length") ?? 0) : -1 };
+    }),
+  );
+  const melhor = tamanhos.filter((t) => t.n >= 0).sort((a, b) => b.n - a.n)[0];
+  if (!melhor) throw new Error("O vídeo do produto não abriu na Shopee agora. Tente de novo em instantes.");
+  return { endereco, titulo, descricao, capa, video: melhor.u };
+}
+
+/** Da página pública do produto: endereços dos MP4 (todas as qualidades), título, descrição e capa. */
+export function lerPaginaShopee(html: string) {
+  const meta = (p: string) => desHtml(html.match(new RegExp(`property="og:${p}" content="([^"]*)"`))?.[1] ?? "");
+  const urls = [...new Set((html.match(/https:\\?\/\\?\/[^"\s]+?\.vod\.susercontent\.com[^"\s]+?\.mp4/g) ?? []).map((u) => u.replace(/\\\//g, "/")))];
+  return {
+    urls,
+    titulo: meta("title").replace(/\s*\|\s*Shopee Brasil\s*$/i, "").slice(0, 200),
+    descricao: meta("description").replace(/^Compre .+? na Shopee Brasil!\s*/i, "").slice(0, 3000),
+    capa: meta("image"),
+  };
+}
 
 /**
  * Acha o vídeo do link sem baixar (para a tela mostrar "é este?"): endereço real, título, capa, duração e, quando dá,
@@ -179,6 +228,10 @@ export async function previaVideo(link: string): Promise<PreviaVideo> {
   try {
     if (rede === "Threads") {
       const p = await postThreads(link);
+      return { ...base, url: p.endereco, titulo: p.titulo, capa: p.capa, video: p.video };
+    }
+    if (rede === "Shopee") {
+      const p = await produtoShopee(link);
       return { ...base, url: p.endereco, titulo: p.titulo, capa: p.capa, video: p.video };
     }
     const cookies = await arquivoCookies().catch(() => null);
@@ -211,13 +264,28 @@ export async function baixarVideo(videoId: number, url: string) {
   const base = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}`;
   const cookies = await arquivoCookies().catch(() => null);
   try {
+    if (redeDoLink(url) === "Shopee") {
+      const p = await produtoShopee(url);
+      const res = await fetch(p.video, { headers: { "User-Agent": CELULAR }, signal: AbortSignal.timeout(10 * 60_000) });
+      if (!res.ok || !res.body) throw new Error(`A Shopee não entregou o vídeo (${res.status}).`);
+      if (Number(res.headers.get("content-length") ?? 0) > MAX_VIDEO_AFILIADO) throw new Error("max-filesize");
+      const arquivo = `${base}.mp4`;
+      const caminho = `${PASTA_AFILIADOS}/${arquivo}`;
+      await pipeline(Readable.fromWeb(res.body as WebReadableStream), createWriteStream(caminho));
+      await compatibilizar(caminho);
+      await db
+        .update(afiliadosVideos)
+        .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", titulo: p.titulo, descricao: p.descricao })
+        .where(eq(afiliadosVideos.id, videoId));
+      return;
+    }
     if (redeDoLink(url) === "Threads") {
-      const { arquivo, titulo } = await baixarThreads(url, base);
+      const { arquivo, titulo, descricao } = await baixarThreads(url, base);
       const caminho = `${PASTA_AFILIADOS}/${arquivo}`;
       await compatibilizar(caminho);
       await db
         .update(afiliadosVideos)
-        .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", titulo })
+        .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", titulo, descricao })
         .where(eq(afiliadosVideos.id, videoId));
       return;
     }
@@ -239,7 +307,7 @@ export async function baixarVideo(videoId: number, url: string) {
         "-o",
         `${PASTA_AFILIADOS}/${base}.%(ext)s`,
         "--print",
-        "after_move:%(title)s",
+        "after_move:%(.{title,description})j",
         ...(cookies ? ["--cookies", cookies] : []),
         url,
       ],
@@ -249,10 +317,17 @@ export async function baixarVideo(videoId: number, url: string) {
     if (!arquivo) throw new Error("O vídeo não foi baixado (formato não suportado ou acima de 300 MB).");
     const caminho = `${PASTA_AFILIADOS}/${arquivo}`;
     if (arquivo.endsWith(".mp4")) await compatibilizar(caminho);
-    const titulo = info.trim().split("\n").pop()?.slice(0, 200) ?? "";
+    let meta: { title?: string; description?: string } = {};
+    try {
+      meta = JSON.parse(info.trim().split("\n").pop() ?? "{}");
+    } catch {
+      // saída fora do formato: segue sem título
+    }
+    const titulo = (meta.title ?? "").slice(0, 200);
+    const descricao = (meta.description ?? "").slice(0, 3000);
     await db
       .update(afiliadosVideos)
-      .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", ...(titulo ? { titulo } : {}) })
+      .set({ arquivo, tamanho: (await stat(caminho)).size, duracaoS: await duracaoVideo(caminho), status: "bruto", erro: "", ...(titulo ? { titulo } : {}), ...(descricao ? { descricao } : {}) })
       .where(eq(afiliadosVideos.id, videoId));
   } catch (e) {
     for (const f of (await readdir(PASTA_AFILIADOS).catch(() => [])).filter((x) => x.startsWith(`${base}.`))) {

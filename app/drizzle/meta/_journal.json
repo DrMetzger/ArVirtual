@@ -211,6 +211,13 @@
       "when": 1794331494484,
       "tag": "0029_garimpo",
       "breakpoints": true
+    },
+    {
+      "idx": 30,
+      "version": "7",
+      "when": 1794345690792,
+      "tag": "0030_video_descricao",
+      "breakpoints": true
     }
   ]
 }
