@@ -310,7 +310,7 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
 
   return (
     <>
-      <AtualizarSozinho ativo={Boolean(trabalho)} />
+      <AtualizarSozinho ativo={Boolean(trabalho)} verificar={trabalhoEmAndamento} />
       <PageHeader
         title="Sentinela de mercado"
         description="Peças 3D que vendem, quem disputa e quanto sobra para você."

@@ -149,13 +149,6 @@ async function recalcularVelocidade(ids: number[]) {
 async function coletarShopee(termos: string[], erros: string[]) {
   if (!(await afiliadosConfigurado())) return [];
   const ids: number[] = [];
-  // Lista pronta da Shopee: o que os afiliados estão vendendo agora (todas as categorias).
-  for (let pagina = 1; pagina <= 3; pagina++) {
-    const r = await buscarOfertas({ lista: 2, pagina, limite: 50 }).catch((e: Error) => (erros.push(`Shopee top: ${e.message}`), null));
-    if (!r) break;
-    ids.push(...(await gravar(r.ofertas.map((o) => daShopee(o, EM_ALTA)))));
-    if (!r.temMais) break;
-  }
   for (const termo of termos) {
     // Mais vendidos primeiro; se a Shopee recusar a ordenação, cai para a relevância.
     // Foco no mercado de peças impressas em 3D: o termo vai com "3d" na busca.

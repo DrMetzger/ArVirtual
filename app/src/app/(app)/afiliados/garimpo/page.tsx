@@ -1,22 +1,23 @@
-import { and, desc, eq, gte } from "drizzle-orm";
-import { ArrowLeft, Filter, Gem, Link2, Plus, Radar, X } from "lucide-react";
+import { desc, gte } from "drizzle-orm";
+import { ArrowLeft, ExternalLink, Eye, EyeOff, Filter, Flame, Gem, Link2, Plus, Radar, Star, Trash2, Users, X } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader, Select } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { afiliadosProdutos, sentinelaItens } from "@/db/schema";
+import { afiliadosProdutos, garimpoItens } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
+import { afiliadosEstimados, EM_ALTA, termosGarimpo } from "@/lib/garimpo";
 import { formatBRL } from "@/lib/utils";
-import { coletarAgora, divulgarProduto, linkRapido, trabalhoEmAndamento } from "../../sentinela/actions";
 import { AtualizarSozinho } from "../../sentinela/atualizar";
-import { ItemCard, type ItemSentinela } from "../../sentinela/item-card";
+import { adicionarTermoGarimpo, alternarTermoGarimpo, divulgarProduto, excluirTermoGarimpo, garimparAgora, garimpoEmAndamento, linkRapido } from "./actions";
 
 export const metadata: Metadata = { title: "Garimpo de afiliados" };
 
 const ORDENS = {
   garimpo: "Garimpo (melhor no geral)",
-  concorrencia: "Menos concorrência",
+  afiliados: "Menos afiliados",
   nova: "Oferta mais nova",
   ganho: "Maior ganho por venda",
   comissao: "Maior comissão (%)",
@@ -24,98 +25,45 @@ const ORDENS = {
   vendas: "Mais vendidos",
 } as const;
 type Ordem = keyof typeof ORDENS;
+type Params = Partial<Record<"ok" | "erro" | "ordem" | "q" | "termo" | "min" | "ganho" | "precoMin" | "precoMax" | "vendas" | "nota" | "nova" | "afil" | "extra" | "loja" | "todos" | "termos", string>>;
 
-type Params = {
-  ok?: string;
-  erro?: string;
-  ordem?: string;
-  q?: string;
-  termo?: string;
-  min?: string;
-  ganho?: string;
-  precoMin?: string;
-  precoMax?: string;
-  vendas?: string;
-  nota?: string;
-  nova?: string;
-  conc?: string;
-  extra?: string;
-  loja?: string;
-  todos?: string;
-};
-
-/** Chave de "produto parecido": as 3 primeiras palavras relevantes do nome. */
-const chave = (nome: string) =>
-  nome
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
-    .replace(/[^a-z0-9 ]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w.length > 2 && !["kit", "com", "para", "de", "unid", "pcs", "und"].includes(w))
-    .slice(0, 3)
-    .join(" ");
 const semAcento = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
 const n = (v: string | undefined) => (v && Number.isFinite(Number(v.replace(",", "."))) ? Number(v.replace(",", ".")) : undefined);
+const num = (v: number, casas = 0) => v.toLocaleString("pt-BR", { maximumFractionDigits: casas });
 
 export default async function GarimpoPage({ searchParams }: { searchParams: Promise<Params> }) {
   await requireUser();
   const sp = await searchParams;
   const ordem = (sp.ordem && sp.ordem in ORDENS ? sp.ordem : "garimpo") as Ordem;
-  const f = {
-    min: n(sp.min) ?? 10,
-    ganho: n(sp.ganho),
-    precoMin: n(sp.precoMin),
-    precoMax: n(sp.precoMax),
-    vendas: n(sp.vendas),
-    nota: n(sp.nota),
-    nova: n(sp.nova),
-    conc: n(sp.conc),
-  };
+  const f = { min: n(sp.min) ?? 10, ganho: n(sp.ganho), precoMin: n(sp.precoMin), precoMax: n(sp.precoMax), vendas: n(sp.vendas), nota: n(sp.nota), nova: n(sp.nova), afil: n(sp.afil) };
   const [itens, termos, jaTenho, trabalho] = await Promise.all([
-    db
-      .select()
-      .from(sentinelaItens)
-      .where(and(eq(sentinelaItens.fonte, "shopee"), gte(sentinelaItens.vistoEm, new Date(Date.now() - 3 * 86400_000))))
-      .orderBy(desc(sentinelaItens.vendas))
-      .limit(5000),
-    db.selectDistinct({ termo: sentinelaItens.termo }).from(sentinelaItens).where(eq(sentinelaItens.fonte, "shopee")).orderBy(sentinelaItens.termo),
+    db.select().from(garimpoItens).where(gte(garimpoItens.vistoEm, new Date(Date.now() - 3 * 86400_000))).orderBy(desc(garimpoItens.vendas)).limit(6000),
+    termosGarimpo(),
     db.select({ itemId: afiliadosProdutos.itemId }).from(afiliadosProdutos),
-    trabalhoEmAndamento(),
+    garimpoEmAndamento(),
   ]);
   const meus = new Set(jaTenho.map((x) => x.itemId));
-  // Lojas diferentes vendendo um produto de nome parecido, entre tudo o que as sentinelas viram.
-  const lojasPorChave = new Map<string, Set<string>>();
-  for (const i of itens) {
-    const k = chave(i.nome);
-    if (!lojasPorChave.has(k)) lojasPorChave.set(k, new Set());
-    lojasPorChave.get(k)!.add(i.lojaId);
-  }
   const busca = sp.q ? semAcento(sp.q).split(/\s+/).filter(Boolean) : [];
   const agora = Date.now();
-  const todos = itens.map((i) => {
-    const lojas = lojasPorChave.get(chave(i.nome))?.size ?? 1;
-    const diasOferta = i.extras?.ofertaDesde ? Math.max(0, (agora - new Date(i.extras.ofertaDesde).getTime()) / 86400_000) : null;
-    const ganho = i.preco * i.comissao;
-    const giro = i.velocidade * 30 + Math.sqrt(i.vendas);
-    // A Shopee não diz quantos afiliados divulgam o produto. Estimativa: quanto mais vendido, mais antiga a oferta
-    // e mais lojas parecidas, mais afiliados já estão nele.
-    const pressao = lojas * (1 + (diasOferta ?? 60) / 30) * (1 + Math.log10(1 + i.vendas) / 2);
-    const nivel = pressao < 3 ? "baixa" : pressao < 8 ? "média" : "alta";
-    return { ...i, lojas, diasOferta, ganho, giro, pressao, nivel, score: (ganho * giro) / pressao };
-  });
-  const lista = todos
+  const lista = itens
+    .map((i) => {
+      const dias = i.extras?.ofertaDesde ? Math.max(0, (agora - new Date(i.extras.ofertaDesde).getTime()) / 86400_000) : null;
+      const ganho = i.preco * i.comissao;
+      const af = afiliadosEstimados(i);
+      const giro = i.velocidade * 30 + Math.sqrt(i.vendas);
+      return { ...i, dias, ganho, af, score: (ganho * giro) / ((af.de + af.ate) / 2) };
+    })
     .filter(
       (i) =>
-        (sp.todos || !meus.has(i.idExterno)) &&
+        (sp.todos || !meus.has(i.itemId)) &&
         i.comissao * 100 >= f.min &&
         (f.ganho == null || i.ganho >= f.ganho) &&
         (f.precoMin == null || i.preco >= f.precoMin) &&
         (f.precoMax == null || i.preco <= f.precoMax) &&
         (f.vendas == null || i.vendas >= f.vendas) &&
         (f.nota == null || i.avaliacao >= f.nota) &&
-        (f.nova == null || (i.diasOferta != null && i.diasOferta <= f.nova)) &&
-        (f.conc == null || i.lojas <= f.conc) &&
+        (f.nova == null || (i.dias != null && i.dias <= f.nova)) &&
+        (f.afil == null || i.af.ate <= f.afil) &&
         (!sp.extra || (i.extras?.comissaoVendedor ?? 0) > 0) &&
         (!sp.loja || (i.extras?.tiposLoja?.length ?? 0) > 0) &&
         (!sp.termo || i.termo === sp.termo) &&
@@ -123,10 +71,10 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
     )
     .sort((a, b) => {
       switch (ordem) {
-        case "concorrencia":
-          return a.pressao - b.pressao || b.ganho - a.ganho;
+        case "afiliados":
+          return a.af.ate - b.af.ate || b.ganho - a.ganho;
         case "nova":
-          return (a.diasOferta ?? 9999) - (b.diasOferta ?? 9999);
+          return (a.dias ?? 9999) - (b.dias ?? 9999);
         case "ganho":
           return b.ganho - a.ganho;
         case "comissao":
@@ -140,51 +88,77 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
       }
     });
   const mostrados = lista.slice(0, 80);
-  const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && !["ok", "erro"].includes(k)) as [string, string][]).toString();
+  const qs = new URLSearchParams(Object.entries(sp).filter(([k, v]) => v && !["ok", "erro", "termos"].includes(k)) as [string, string][]).toString();
   const aqui = `/afiliados/garimpo${qs ? `?${qs}` : ""}`;
-  const filtrosAtivos = Object.entries(sp).filter(([k, v]) => v && !["ok", "erro", "ordem"].includes(k)).length;
+  const filtrosAtivos = Object.entries(sp).filter(([k, v]) => v && !["ok", "erro", "ordem", "termos"].includes(k)).length;
+  const ativos = termos.filter((t) => t.ativo);
 
   return (
     <>
-      <AtualizarSozinho ativo={Boolean(trabalho)} />
+      <AtualizarSozinho ativo={Boolean(trabalho)} verificar={garimpoEmAndamento} />
       <Link href="/afiliados" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-gold">
         <ArrowLeft className="size-4" /> Afiliados
       </Link>
       <PageHeader
         title="Garimpo automático"
-        description="As sentinelas leem a Shopee a cada 4 h. Aqui ficam os produtos que pagam bem, vendem e têm pouca gente divulgando. Os que você já divulga não aparecem."
+        description="Shopee: produtos que pagam bem, vendem e têm poucos afiliados. Atualiza sozinho a cada 4 h."
         actions={
-          <form action={coletarAgora}>
+          <form action={garimparAgora}>
             <SubmitButton variant="gold" pendingText="Garimpando..." disabled={Boolean(trabalho)}>
               <Radar /> Garimpar agora
             </SubmitButton>
           </form>
         }
       />
-      <div className="grid gap-6">
+      <div className="grid gap-5">
         {sp.ok ? <Alert tone="green">{sp.ok}</Alert> : null}
         {sp.erro ? <Alert>{sp.erro}</Alert> : null}
-        {trabalho ? <Alert tone="gold">Garimpando a Shopee agora… a página atualiza sozinha.</Alert> : null}
 
-        <Card>
-          <CardHeader
-            title={
-              <span className="inline-flex items-center gap-2">
-                <Filter className="size-4 text-gold" /> Filtros
-              </span>
-            }
-            action={
-              filtrosAtivos ? (
-                <Link href="/afiliados/garimpo" className={buttonClass("ghost", "sm")}>
-                  <X /> Limpar ({filtrosAtivos})
-                </Link>
-              ) : null
-            }
-          />
-          <form className="grid grid-cols-2 gap-3 p-5 sm:grid-cols-3 lg:grid-cols-6">
+        <details className="rounded-2xl border border-border bg-surface" open={Boolean(sp.termos) || !ativos.length}>
+          <summary className="cursor-pointer px-5 py-4 font-semibold">
+            O que garimpar ({ativos.length} termo{ativos.length === 1 ? "" : "s"} seus + os mais vendidos pelos afiliados agora)
+          </summary>
+          <div className="grid gap-3 border-t border-border p-5">
+            <form action={adicionarTermoGarimpo} className="flex flex-wrap gap-2">
+              <Input name="termo" placeholder="Ex.: air fryer, organizador de cozinha, kit maquiagem (vírgula separa vários)" className="min-w-0 flex-1" />
+              <SubmitButton pendingText="Adicionando...">
+                <Plus /> Garimpar este
+              </SubmitButton>
+            </form>
+            <div className="flex flex-wrap gap-2">
+              {termos.map((t) => (
+                <span key={t.id} className={`inline-flex items-center gap-1 rounded-full border py-1 pr-1 pl-3 text-sm ${t.ativo ? "border-border bg-surface-2" : "border-dashed border-border text-muted"}`}>
+                  {t.termo}
+                  <form action={alternarTermoGarimpo.bind(null, t.id, !t.ativo)}>
+                    <button type="submit" className="rounded-full p-1 text-muted hover:text-gold" title={t.ativo ? "Pausar" : "Garimpar de novo"}>
+                      {t.ativo ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                    </button>
+                  </form>
+                  <form action={excluirTermoGarimpo.bind(null, t.id)}>
+                    <button type="submit" className="rounded-full p-1 text-muted hover:text-red" title="Excluir">
+                      <Trash2 className="size-3.5" />
+                    </button>
+                  </form>
+                </span>
+              ))}
+              {!termos.length ? <p className="text-sm text-muted">Sem termos ainda: por enquanto o garimpo usa só a lista dos mais vendidos pelos afiliados.</p> : null}
+            </div>
+          </div>
+        </details>
+
+        <details className="rounded-2xl border border-border bg-surface" open={filtrosAtivos > 0}>
+          <summary className="flex cursor-pointer items-center gap-2 px-5 py-4 font-semibold">
+            <Filter className="size-4 text-gold" /> Filtros{filtrosAtivos ? ` (${filtrosAtivos})` : ""}
+            {filtrosAtivos ? (
+              <Link href="/afiliados/garimpo" className="ml-auto inline-flex items-center gap-1 text-sm font-normal text-muted hover:text-gold">
+                <X className="size-4" /> limpar
+              </Link>
+            ) : null}
+          </summary>
+          <form className="grid grid-cols-2 gap-3 border-t border-border p-5 sm:grid-cols-3 lg:grid-cols-6">
             <label className="col-span-2 grid gap-1 text-xs font-semibold text-muted uppercase sm:col-span-3 lg:col-span-2">
               Buscar no nome
-              <Input name="q" defaultValue={sp.q ?? ""} placeholder="ex.: natal, organizador, fone" />
+              <Input name="q" defaultValue={sp.q ?? ""} placeholder="ex.: natal, fone" />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
               Ordenar
@@ -197,31 +171,32 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
               </Select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Nicho
+              Termo
               <Select name="termo" defaultValue={sp.termo ?? ""}>
                 <option value="">Todos</option>
+                <option value={EM_ALTA}>Em alta entre afiliados</option>
                 {termos.map((t) => (
-                  <option key={t.termo} value={t.termo}>
+                  <option key={t.id} value={t.termo}>
                     {t.termo}
                   </option>
                 ))}
               </Select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Concorrência
-              <Select name="conc" defaultValue={sp.conc ?? ""}>
+              Afiliados (estim.)
+              <Select name="afil" defaultValue={sp.afil ?? ""}>
                 <option value="">Qualquer</option>
-                <option value="1">Só 1 loja (exclusivo)</option>
-                <option value="2">Até 2 lojas parecidas</option>
-                <option value="3">Até 3</option>
                 <option value="5">Até 5</option>
+                <option value="10">Até 10</option>
+                <option value="25">Até 25</option>
+                <option value="50">Até 50</option>
               </Select>
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
               Oferta nova
               <Select name="nova" defaultValue={sp.nova ?? ""}>
                 <option value="">Qualquer</option>
-                <option value="3">Começou há até 3 dias</option>
+                <option value="3">Até 3 dias</option>
                 <option value="7">Até 7 dias</option>
                 <option value="15">Até 15 dias</option>
                 <option value="30">Até 30 dias</option>
@@ -232,23 +207,23 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
               <Input name="min" inputMode="decimal" defaultValue={sp.min ?? "10"} />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Ganho mín. (R$/venda)
-              <Input name="ganho" inputMode="decimal" defaultValue={sp.ganho ?? ""} placeholder="ex.: 5" />
+              Ganho mín. (R$)
+              <Input name="ganho" inputMode="decimal" defaultValue={sp.ganho ?? ""} placeholder="por venda" />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Preço mín. (R$)
+              Preço mín.
               <Input name="precoMin" inputMode="decimal" defaultValue={sp.precoMin ?? ""} />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Preço máx. (R$)
+              Preço máx.
               <Input name="precoMax" inputMode="decimal" defaultValue={sp.precoMax ?? ""} />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
               Vendas mín.
-              <Input name="vendas" inputMode="numeric" defaultValue={sp.vendas ?? ""} placeholder="ex.: 100" />
+              <Input name="vendas" inputMode="numeric" defaultValue={sp.vendas ?? ""} />
             </label>
             <label className="grid gap-1 text-xs font-semibold text-muted uppercase">
-              Avaliação mín.
+              Avaliação
               <Select name="nota" defaultValue={sp.nota ?? ""}>
                 <option value="">Qualquer</option>
                 <option value="4.5">4,5+</option>
@@ -256,65 +231,80 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
                 <option value="4.9">4,9+</option>
               </Select>
             </label>
-            <div className="col-span-2 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm sm:col-span-3 lg:col-span-4">
+            <div className="col-span-2 flex flex-wrap gap-x-4 gap-y-2 text-sm sm:col-span-3 lg:col-span-4">
               <label className="inline-flex items-center gap-2">
-                <input type="checkbox" name="extra" value="1" defaultChecked={Boolean(sp.extra)} className="size-4 accent-[var(--color-gold)]" /> Só com comissão extra do vendedor
+                <input type="checkbox" name="extra" value="1" defaultChecked={Boolean(sp.extra)} className="size-4" /> Comissão extra do vendedor
               </label>
               <label className="inline-flex items-center gap-2">
-                <input type="checkbox" name="loja" value="1" defaultChecked={Boolean(sp.loja)} className="size-4 accent-[var(--color-gold)]" /> Só Shopee Mall / loja indicada
+                <input type="checkbox" name="loja" value="1" defaultChecked={Boolean(sp.loja)} className="size-4" /> Shopee Mall / indicada
               </label>
               <label className="inline-flex items-center gap-2">
-                <input type="checkbox" name="todos" value="1" defaultChecked={Boolean(sp.todos)} className="size-4 accent-[var(--color-gold)]" /> Mostrar os que já divulgo
+                <input type="checkbox" name="todos" value="1" defaultChecked={Boolean(sp.todos)} className="size-4" /> Mostrar os que já divulgo
               </label>
             </div>
-            <div className="col-span-2 flex items-end justify-end sm:col-span-3 lg:col-span-2">
+            <div className="col-span-2 flex items-end sm:col-span-3 lg:col-span-2">
               <button type="submit" className={buttonClass("primary", "md", "w-full")}>
-                <Filter /> Aplicar filtros
+                <Filter /> Aplicar
               </button>
             </div>
           </form>
-        </Card>
-
-        <Alert tone="blue">
-          A Shopee não informa quantos afiliados divulgam cada produto: esse número não existe na API (conferido em todos os campos). A{" "}
-          <b>concorrência estimada</b> junta três sinais que a API dá: quantas lojas vendem produto parecido, há quantos dias a oferta de comissão existe
-          (oferta nova = pouca gente sabendo) e quanto já vendeu (muito vendido = muito afiliado em cima).
-        </Alert>
+        </details>
 
         <Card>
           <CardHeader
             title={
               <span className="inline-flex items-center gap-2">
                 <Gem className="size-5 text-gold" /> {lista.length} achado(s)
-                {lista.length > mostrados.length ? <span className="text-sm font-normal text-muted">(mostrando os {mostrados.length} primeiros)</span> : null}
               </span>
             }
+            description="Afiliados = estimativa (a Shopee não informa esse número em lugar nenhum): vendas, idade da oferta e comissão."
           />
           {mostrados.length ? (
             <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
               {mostrados.map((i) => (
-                <ItemCard
-                  key={i.id}
-                  i={i as ItemSentinela}
-                  semIa
-                  acao={
-                    <div className="grid gap-1.5">
-                      <div className="flex flex-wrap gap-1 text-[11px]">
-                        <Badge tone="green">ganha {formatBRL(i.ganho)}/venda</Badge>
-                        <Badge tone={i.nivel === "baixa" ? "green" : i.nivel === "média" ? "gold" : "red"} title={`${i.lojas} loja(s) parecida(s)`}>
-                          concorrência {i.nivel}
-                        </Badge>
-                        {i.diasOferta != null ? (
-                          <Badge tone={i.diasOferta <= 7 ? "green" : "neutral"}>{i.diasOferta < 1 ? "oferta de hoje" : `oferta há ${Math.round(i.diasOferta)} dia(s)`}</Badge>
-                        ) : null}
-                        {i.extras?.comissaoVendedor ? <Badge tone="gold">+{(i.extras.comissaoVendedor * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% do vendedor</Badge> : null}
-                        {i.extras?.comissaoNovo && i.extras.comissaoNovo > i.comissao ? (
-                          <Badge tone="blue">{(i.extras.comissaoNovo * 100).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}% cliente novo</Badge>
-                        ) : null}
-                        {i.extras?.tiposLoja?.length ? <Badge>{i.extras.tiposLoja[0]}</Badge> : null}
-                        {i.avaliacao ? <Badge>★ {i.avaliacao.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</Badge> : null}
+                <div key={i.id} className="flex min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-surface">
+                  <div className="relative">
+                    <FotoAmpliavel src={i.imagem} alt={i.nome} className="aspect-square w-full rounded-none" />
+                    {i.velocidade >= 1 ? (
+                      <Badge tone="red" className="pointer-events-none absolute top-2 right-2 bg-red text-white">
+                        <Flame className="size-3" /> {num(i.velocidade, 1)}/dia
+                      </Badge>
+                    ) : null}
+                  </div>
+                  <div className="grid flex-1 content-start gap-2 p-3">
+                    <a href={i.link} target="_blank" rel="noreferrer" className="line-clamp-2 text-sm font-semibold hover:text-gold">
+                      {i.nome} <ExternalLink className="inline size-3 text-muted" />
+                    </a>
+                    <p className="text-xs text-muted">
+                      <span className="text-base font-extrabold text-foreground">{formatBRL(i.preco)}</span> · {num(i.vendas)} vendas
+                      {i.avaliacao ? (
+                        <>
+                          {" "}
+                          · <Star className="inline size-3" /> {num(i.avaliacao, 1)}
+                        </>
+                      ) : null}
+                    </p>
+                    <div className="grid gap-1.5 rounded-lg bg-surface-2 p-2 text-xs">
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2">
+                        <span className="text-muted">Comissão</span>
+                        <span>
+                          <b className="text-gold">{num(i.comissao * 100, 1)}%</b> <span className="text-muted">· {formatBRL(i.ganho)}/venda</span>
+                        </span>
                       </div>
-                      <form action={divulgarProduto.bind(null, i.idExterno, i.lojaId, aqui)}>
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-2" title="Estimativa: a Shopee não informa quantos afiliados divulgam o produto">
+                        <span className="text-muted">Afiliados (estim.)</span>
+                        <b className={`inline-flex items-center gap-1 ${i.af.nivel === "baixa" ? "text-green" : i.af.nivel === "média" ? "text-gold" : "text-red"}`}>
+                          <Users className="size-3" /> ≈ {i.af.de}–{i.af.ate}
+                        </b>
+                      </div>
+                    </div>
+                    <div className="flex flex-wrap gap-1 text-[11px]">
+                      {i.dias != null ? <Badge tone={i.dias <= 7 ? "green" : "neutral"}>{i.dias < 1 ? "oferta de hoje" : `oferta há ${Math.round(i.dias)} d`}</Badge> : null}
+                      {i.extras?.comissaoVendedor ? <Badge tone="gold">+{num(i.extras.comissaoVendedor * 100, 1)}% vendedor</Badge> : null}
+                      {i.extras?.tiposLoja?.length ? <Badge>{i.extras.tiposLoja[0]}</Badge> : null}
+                    </div>
+                    <div className="mt-auto grid gap-1.5 pt-1">
+                      <form action={divulgarProduto.bind(null, i.itemId, i.lojaId, aqui)}>
                         <SubmitButton size="sm" className="w-full" pendingText="Gerando link...">
                           <Plus /> Divulgar
                         </SubmitButton>
@@ -325,12 +315,12 @@ export default async function GarimpoPage({ searchParams }: { searchParams: Prom
                         </SubmitButton>
                       </form>
                     </div>
-                  }
-                />
+                  </div>
+                </div>
               ))}
             </div>
           ) : (
-            <EmptyState icon={<Gem />} title="Nada com esses filtros" description="Afrouxe algum filtro ou clique em Garimpar agora." />
+            <EmptyState icon={<Gem />} title={itens.length ? "Nada com esses filtros" : "Nada garimpado ainda"} description={itens.length ? "Afrouxe algum filtro." : "Clique em Garimpar agora."} />
           )}
         </Card>
       </div>

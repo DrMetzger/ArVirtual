@@ -204,6 +204,13 @@
       "when": 1794260494342,
       "tag": "0028_sentinela_extras",
       "breakpoints": true
+    },
+    {
+      "idx": 29,
+      "version": "7",
+      "when": 1794331494484,
+      "tag": "0029_garimpo",
+      "breakpoints": true
     }
   ]
 }
