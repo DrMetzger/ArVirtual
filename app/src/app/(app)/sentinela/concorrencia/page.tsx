@@ -25,6 +25,10 @@ function CartaoResumo({ canal, nome, r, rotuloVendas }: { canal: "shopee" | "mer
           <span className="text-right font-bold">{num(r.vendedores)}</span>
           <span className="text-muted">Anúncios</span>
           <span className="text-right font-semibold">{num(r.anuncios)}</span>
+          <span className="text-muted">Anúncios do líder</span>
+          <span className="text-right font-semibold">{num(r.anunciosDoLider)}</span>
+          <span className="text-muted">Média por vendedor</span>
+          <span className="text-right font-semibold">{r.mediaPorVendedor.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</span>
           <span className="text-muted">Menor preço</span>
           <span className="text-right font-semibold text-green">{formatBRL(r.min)}</span>
           <span className="text-muted">Preço do meio</span>

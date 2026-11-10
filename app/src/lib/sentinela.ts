@@ -507,3 +507,60 @@ export async function campeoesMagalu() {
     order by l.quantidade desc, l.faturamento desc limit 30`);
   return [...linhas];
 }
+
+const palavrasDe = (t: string) =>
+  t
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[^a-z0-9 ]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2 && w !== "3d");
+
+/**
+ * Quantidade de anúncios: os seus por plataforma (e os produtos ainda sem anúncio em cada uma) e, por nicho,
+ * quantos anúncios os líderes têm (pelo que as sentinelas viram na Shopee) contra quantos você tem.
+ * As plataformas não informam o total de anúncios de um concorrente; a conta é dentro do nicho.
+ */
+export async function estatisticaAnuncios() {
+  const canais = ["magalu", "mercadolivre", "shopee"] as const;
+  const [porStatus, produtosAtivos, publicados, lojas] = await Promise.all([
+    db.execute<{ marketplace: string; status: string; n: number }>(sql`select marketplace, status, count(*)::int as n from anuncios group by 1, 2`),
+    db.execute<{ id: string; nome: string; imagem: string | null }>(
+      sql`select id::text, nome, imagens[1] as imagem from produtos where ativo and pai_id is null order by nome`,
+    ),
+    // Produto (ou o pai da variação) com anúncio publicado em cada canal.
+    db.execute<{ marketplace: string; produto: string }>(sql`
+      select distinct a.marketplace, coalesce(p.pai_id, p.id)::text as produto
+      from anuncios a join produtos p on p.id = a.produto_id where a.status = 'publicado'`),
+    db.execute<{ termo: string; loja_id: string; loja: string; anuncios: number; vendas: number }>(sql`
+      select termo, loja_id, max(loja) as loja, count(*)::int as anuncios, coalesce(sum(vendas), 0)::int as vendas
+      from ${sentinelaItens}
+      where fonte = 'shopee' and termo <> ${EM_ALTA} and loja_id <> '' and visto_em > now() - interval '7 days'
+      group by 1, 2`),
+  ]);
+  const anunciados = new Map<string, Set<string>>(canais.map((c) => [c, new Set()]));
+  for (const p of publicados) anunciados.get(p.marketplace)?.add(p.produto);
+  const plataformas = canais.map((c) => {
+    const st = (s: string) => [...porStatus].filter((x) => x.marketplace === c && x.status === s).reduce((a, x) => a + x.n, 0);
+    const sem = [...produtosAtivos].filter((p) => !anunciados.get(c)!.has(p.id));
+    return { canal: c, ativos: st("publicado"), pausados: st("pausado"), encerrados: st("encerrado"), comErro: st("erro"), produtos: produtosAtivos.length, semAnuncio: sem };
+  });
+
+  // Seus produtos anunciados (em qualquer canal) que batem com as palavras do nicho.
+  const meus = [...produtosAtivos].map((p) => ({ ...p, palavras: new Set(palavrasDe(p.nome)), canais: canais.filter((c) => anunciados.get(c)!.has(p.id)) }));
+  const porTermo = new Map<string, (typeof lojas)[number][]>();
+  for (const l of lojas) porTermo.set(l.termo, [...(porTermo.get(l.termo) ?? []), l]);
+  const nichos = [...porTermo.entries()]
+    .map(([termo, ls]) => {
+      const lideres = [...ls].sort((a, b) => b.vendas - a.vendas).slice(0, 5);
+      const media = lideres.length ? lideres.reduce((s, l) => s + l.anuncios, 0) / lideres.length : 0;
+      const chave = palavrasDe(termo);
+      const seus = meus.filter((p) => chave.length && chave.every((w) => [...p.palavras].some((x) => x.startsWith(w.slice(0, 5)))));
+      const porCanal = Object.fromEntries(canais.map((c) => [c, seus.filter((p) => p.canais.includes(c)).length])) as Record<(typeof canais)[number], number>;
+      const meta = Math.max(1, Math.ceil(media));
+      return { termo, lideres, media, maior: lideres[0] ?? null, seus: seus.length, porCanal, meta, falta: Math.max(0, meta - Math.min(...Object.values(porCanal))) };
+    })
+    .sort((a, b) => b.falta - a.falta || b.media - a.media);
+  return { plataformas, nichos };
+}
