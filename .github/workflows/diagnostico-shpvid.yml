@@ -15,35 +15,19 @@ jobs:
           sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
           cd /opt/arvirtual-app
           docker compose exec -T app node --input-type=module <<'JS'
-          import postgres from "postgres";
-          import { createDecipheriv, createHash } from "node:crypto";
-          const sql = postgres(process.env.DATABASE_URL);
-          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
-          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
-          const [ck] = await sql`select valor, secreto from configuracoes where chave = 'videos.cookies'`;
-          const txt = ck ? (ck.secreto ? dec(ck.valor) : ck.valor) : "";
-          const linhas = txt.split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t")).filter((c) => c.length >= 7);
-          const shp = linhas.filter((c) => /shopee/.test(c[0]));
-          console.log("COOKIES dominios", [...new Set(linhas.map((c) => c[0]))].join(" "), "| shopee nomes:", shp.map((c) => c[5]).join(","));
-          // Valores limpos (sem quebra de linha/controle) e NUNCA impressos.
-          const cookie = shp.map((c) => `${c[5].trim()}=${c[6].trim()}`).filter((x) => /^[\x21-\x7e]+$/.test(x.replace("=", ""))).join("; ");
           const UA = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
-          const shop = "1038979631", item = "22897894589";
-          for (const [rot, url] of [
-            ["item/get", `https://shopee.com.br/api/v4/item/get?itemid=${item}&shopid=${shop}`],
-            ["pdp/get_pc", `https://shopee.com.br/api/v4/pdp/get_pc?item_id=${item}&shop_id=${shop}`],
-            ["pdp/get_rw", `https://shopee.com.br/api/v4/pdp/get_rw?item_id=${item}&shop_id=${shop}`],
-            ["pagina", `https://shopee.com.br/product/${shop}/${item}`],
-            ["pagina mobile", `https://shopee.com.br/opaanlp/${shop}/${item}?__mobile__=1`],
-          ]) {
-            for (const com of [false, true]) {
-              if (com && !cookie) continue;
-              const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "*/*", Referer: "https://shopee.com.br/", "X-Requested-With": "XMLHttpRequest", ...(com ? { Cookie: cookie } : {}) }, redirect: "follow" }).catch((e) => ({ status: "ERRO_REDE(" + e.name + ")", text: async () => "" }));
-              const t = await r.text();
-              const mp4 = [...new Set(t.match(/https?:\\?\/\\?\/[^"'\s]+?\.mp4[^"'\s]*/g) ?? [])].slice(0, 3);
-              console.log("TESTE", rot, com ? "com cookies" : "sem cookies", r.status, "tam", t.length, "video_info", /video_info/.test(t), "mp4", mp4.length, mp4.map((u) => u.replace(/\\\//g, "/").slice(0, 90)).join(" | "), "erro", (t.match(/"error":\s*(\d+)/) ?? [])[1] ?? "");
-            }
-          }
-          await sql.end();
+          const r0 = await fetch("https://s.shopee.com.br/", { redirect: "manual", headers: { "User-Agent": UA } }).catch(() => null);
+          console.log("curto raiz", r0?.status);
+          const t = await (await fetch("https://shopee.com.br/product/1038979631/22897894589", { headers: { "User-Agent": UA } })).text();
+          let i = t.indexOf("video_info");
+          console.log("VIDEO_INFO", i, t.slice(Math.max(0, i - 50), i + 1800).replace(/\s+/g, " "));
+          const j = t.indexOf("video_info", i + 3000);
+          console.log("VIDEO_INFO 2", j, j > 0 ? t.slice(j - 50, j + 600).replace(/\s+/g, " ") : "");
+          console.log("TITLE", (t.match(/<title[^>]*>([^<]+)/) ?? [])[1]);
+          console.log("OG", (t.match(/<meta[^>]+og:(?:title|description|image)[^>]+>/g) ?? []).slice(0, 4).join(" "));
+          console.log("DESC", (t.match(/"description":"([^"]{0,300})/) ?? [])[1]);
+          const v = (t.match(/https:\\?\/\\?\/[^"]+?vod\.susercontent\.com[^"]+/g) ?? []).map((u) => u.replace(/\\\//g, "/"));
+          console.log("URLS", [...new Set(v)].slice(0, 8).join("\n"));
+          for (const u of [...new Set(v)].slice(0, 3)) { const r = await fetch(u, { method: "HEAD", headers: { "User-Agent": UA } }).catch(() => null); console.log("HEAD", r?.status, r?.headers.get("content-type"), r?.headers.get("content-length"), u.slice(0, 100)); }
           JS
           REMOTO
