@@ -1,0 +1,48 @@
+name: Diagnóstico vídeo de produto da Shopee (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-shpvid.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: De onde sai o vídeo da Shopee
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const [ck] = await sql`select valor, secreto from configuracoes where chave = 'videos.cookies'`;
+          const txt = ck ? (ck.secreto ? dec(ck.valor) : ck.valor) : "";
+          const linhas = txt.split("\n").filter((l) => l && !l.startsWith("#")).map((l) => l.split("\t")).filter((c) => c.length >= 7);
+          const shp = linhas.filter((c) => /shopee/.test(c[0]));
+          console.log("COOKIES dominios", [...new Set(linhas.map((c) => c[0]))].join(" "), "| shopee nomes:", shp.map((c) => c[5]).join(","));
+          const cookie = shp.map((c) => `${c[5]}=${c[6]}`).join("; ");
+          const UA = "Mozilla/5.0 (Linux; Android 14; SM-S918B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Mobile Safari/537.36";
+          const shop = "1038979631", item = "22897894589";
+          for (const [rot, url] of [
+            ["item/get", `https://shopee.com.br/api/v4/item/get?itemid=${item}&shopid=${shop}`],
+            ["pdp/get_pc", `https://shopee.com.br/api/v4/pdp/get_pc?item_id=${item}&shop_id=${shop}`],
+            ["pdp/get_rw", `https://shopee.com.br/api/v4/pdp/get_rw?item_id=${item}&shop_id=${shop}`],
+            ["pagina", `https://shopee.com.br/product/${shop}/${item}`],
+            ["pagina mobile", `https://shopee.com.br/opaanlp/${shop}/${item}?__mobile__=1`],
+          ]) {
+            for (const com of [false, true]) {
+              if (com && !cookie) continue;
+              const r = await fetch(url, { headers: { "User-Agent": UA, Accept: "*/*", Referer: "https://shopee.com.br/", "X-Requested-With": "XMLHttpRequest", ...(com ? { Cookie: cookie } : {}) }, redirect: "follow" }).catch((e) => ({ status: "ERR " + e.message, text: async () => "" }));
+              const t = await r.text();
+              const mp4 = [...new Set(t.match(/https?:\\?\/\\?\/[^"'\s]+?\.mp4[^"'\s]*/g) ?? [])].slice(0, 3);
+              console.log("TESTE", rot, com ? "com cookies" : "sem cookies", r.status, "tam", t.length, "video_info", /video_info/.test(t), "mp4", mp4.length, mp4.map((u) => u.replace(/\\\//g, "/").slice(0, 90)).join(" | "), "erro", (t.match(/"error":\s*(\d+)/) ?? [])[1] ?? "", t.slice(0, 120).replace(/\s+/g, " "));
+            }
+          }
+          await sql.end();
+          JS
+          REMOTO
