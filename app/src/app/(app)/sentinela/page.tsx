@@ -7,7 +7,7 @@ import { MarcaIcone } from "@/components/marca";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { requireUser } from "@/lib/auth";
-import { campeoesMagalu, painelSentinela } from "@/lib/sentinela";
+import { campeoesMagalu, estatisticaAnuncios, painelSentinela } from "@/lib/sentinela";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { Markdown } from "../assistente/markdown";
 import { adicionarTermo, alternarTermo, coletarAgora, excluirTermo, relatorioAgora, trabalhoEmAndamento } from "./actions";
@@ -16,6 +16,7 @@ import { ItemCard, type ItemSentinela } from "./item-card";
 
 export const metadata: Metadata = { title: "Sentinela de mercado" };
 
+const NOME_CANAL = { magalu: "Magalu", mercadolivre: "Mercado Livre", shopee: "Shopee" } as const;
 const ORIGEM = { padrao: "padrão", ia: "IA", tendencia: "em alta no ML", usuario: "você" } as const;
 
 function Grade({ itens, vazio }: { itens: ItemSentinela[]; vazio: string }) {
@@ -33,7 +34,7 @@ const Selo = ({ icone, children }: { icone: React.ReactNode; children: React.Rea
 export default async function SentinelaPage({ searchParams }: { searchParams: Promise<{ erro?: string; aba?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  const [p, trabalho, magalu] = await Promise.all([painelSentinela(), trabalhoEmAndamento(), campeoesMagalu()]);
+  const [p, trabalho, magalu, est] = await Promise.all([painelSentinela(), trabalhoEmAndamento(), campeoesMagalu(), estatisticaAnuncios()]);
   const ativos = p.termos.filter((t) => t.ativo);
   const sugeridos = p.termos.filter((t) => !t.ativo);
   const nichos = Object.values(
@@ -94,6 +95,81 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
             <p className="p-5 text-sm text-muted">Nenhum pedido do Magalu nos últimos 60 dias.</p>
           )}
         </Card>
+      ),
+    },
+    {
+      id: "anuncios",
+      rotulo: <>📦 Anúncios</>,
+      conteudo: (
+        <div className="grid gap-4">
+          <div className="grid gap-3 sm:grid-cols-3">
+            {est.plataformas.map((pl) => (
+              <Card key={pl.canal} className="grid content-start gap-2 p-4">
+                <div className="flex items-center gap-2">
+                  <MarcaIcone canal={pl.canal} className="size-7" />
+                  <span className="font-semibold">{NOME_CANAL[pl.canal]}</span>
+                </div>
+                <p>
+                  <span className="text-3xl font-extrabold">{pl.ativos}</span> <span className="text-sm text-muted">anúncios ativos</span>
+                </p>
+                <p className="text-xs text-muted">
+                  {pl.pausados} pausado(s) · {pl.encerrados} encerrado(s){pl.comErro ? ` · ${pl.comErro} com erro` : ""}
+                </p>
+                {pl.semAnuncio.length ? (
+                  <details className="rounded-lg bg-surface-2 p-2 text-sm">
+                    <summary className="cursor-pointer font-semibold text-gold">
+                      {pl.semAnuncio.length} de {pl.produtos} produto(s) seus ainda sem anúncio aqui
+                    </summary>
+                    <div className="mt-2 grid gap-1">
+                      {pl.semAnuncio.slice(0, 30).map((pr) => (
+                        <Link key={pr.id} href={`/produtos/${pr.id}`} className="truncate text-xs hover:text-gold">
+                          • {pr.nome}
+                        </Link>
+                      ))}
+                    </div>
+                  </details>
+                ) : (
+                  <p className="text-xs font-semibold text-green">Todos os seus produtos estão anunciados aqui.</p>
+                )}
+              </Card>
+            ))}
+          </div>
+          <Card>
+            <CardHeader
+              title="Anúncios por nicho: você x líderes"
+              description="Quantos anúncios os 5 lojistas que mais vendem têm em cada nicho (Shopee, pelo que as sentinelas viram) e quantos você tem. A meta é chegar na média deles em cada plataforma."
+            />
+            {est.nichos.length ? (
+              <div className="divide-y divide-border">
+                {est.nichos.map((n) => (
+                  <div key={n.termo} className="grid gap-1.5 px-4 py-3 text-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <span className="font-semibold break-words">{n.termo}</span>
+                      <Badge tone={n.falta ? "gold" : "green"}>{n.falta ? `meta: ${n.meta} anúncio(s)` : "meta batida"}</Badge>
+                    </div>
+                    <p className="text-xs text-muted">
+                      Líderes têm em média <b className="text-foreground">{n.media.toLocaleString("pt-BR", { maximumFractionDigits: 1 })}</b> anúncio(s) neste nicho
+                      {n.maior ? ` · o maior (${n.maior.loja || "loja"}) tem ${n.maior.anuncios}, com ${n.maior.vendas.toLocaleString("pt-BR")} vendas` : ""}
+                    </p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {(["magalu", "mercadolivre", "shopee"] as const).map((c) => {
+                        const tem = n.porCanal[c];
+                        return (
+                          <span key={c} className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${tem >= n.meta ? "bg-green/12 text-green" : "bg-red/12 text-red"}`}>
+                            <MarcaIcone canal={c} className="size-4" /> {tem}/{n.meta}
+                            {tem < n.meta ? ` · faltam ${n.meta - tem}` : ""}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="p-5 text-sm text-muted">As sentinelas ainda não leram lojas suficientes nos nichos.</p>
+            )}
+          </Card>
+        </div>
       ),
     },
     {

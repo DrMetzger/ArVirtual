@@ -31,7 +31,7 @@ export type Anuncio = {
   premium?: boolean;
 };
 
-export type Resumo = { anuncios: number; vendedores: number; min: number; mediana: number; max: number; vendas: number };
+export type Resumo = { anuncios: number; vendedores: number; min: number; mediana: number; max: number; vendas: number; anunciosDoLider: number; mediaPorVendedor: number };
 
 const mediana = (xs: number[]) => {
   const s = [...xs].sort((a, b) => a - b);
@@ -41,6 +41,8 @@ const mediana = (xs: number[]) => {
 };
 export function resumir(lista: Anuncio[], somarVendas: boolean): Resumo {
   const precos = lista.map((a) => a.preco).filter((p) => p > 0);
+  const porVendedor: Record<string, number> = {};
+  for (const a of lista) porVendedor[a.vendedorId] = (porVendedor[a.vendedorId] ?? 0) + 1;
   return {
     anuncios: lista.length,
     vendedores: new Set(lista.map((a) => a.vendedorId)).size,
@@ -48,6 +50,9 @@ export function resumir(lista: Anuncio[], somarVendas: boolean): Resumo {
     mediana: mediana(precos),
     max: precos.length ? Math.max(...precos) : 0,
     vendas: somarVendas ? lista.reduce((s, a) => s + (a.vendas ?? 0), 0) : 0,
+    // Quem tem mais anúncios deste produto e a média por vendedor: quantos anúncios você precisa para disputar.
+    anunciosDoLider: Math.max(0, ...Object.values(porVendedor)),
+    mediaPorVendedor: lista.length ? lista.length / Math.max(1, Object.keys(porVendedor).length) : 0,
   };
 }
 
