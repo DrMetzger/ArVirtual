@@ -1043,3 +1043,16 @@ export const garimpoLeituras = pgTable(
   },
   (t) => [index("garimpo_leituras_item_idx").on(t.itemId, t.em)],
 );
+
+/** Anúncios contados direto em cada plataforma (pela API), por conta: o que o algoritmo de cada uma enxerga. */
+export const anunciosPlataforma = pgTable("anuncios_plataforma", {
+  contaId: integer("conta_id")
+    .primaryKey()
+    .references(() => contasMarketplace.id, { onDelete: "cascade" }),
+  marketplace: text("marketplace").notNull(),
+  ativos: integer("ativos").notNull().default(0),
+  pausados: integer("pausados").notNull().default(0),
+  outros: integer("outros").notNull().default(0),
+  erro: text("erro").notNull().default(""),
+  em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
+});
