@@ -14,7 +14,7 @@ jobs:
           sudo apt-get install -y -qq sshpass >/dev/null
           sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
           cd /opt/arvirtual-app
-          docker compose logs --since 30h app 2>&1 | grep -iE "\[push\]|\[sync|shopee|fcm|firebase" | grep -viE "cookie|token=|secret" | tail -25 | cut -c1-220
+          docker compose logs --since 1h app 2>&1 | grep -iE "\[push\]|\[sync|shopee|fcm|firebase" | grep -viE "cookie|token=|secret" | tail -25 | cut -c1-220
           docker compose exec -T app node --input-type=module <<'JS'
           import postgres from "postgres";
           const sql = postgres(process.env.DATABASE_URL);
