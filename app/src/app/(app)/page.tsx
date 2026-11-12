@@ -9,6 +9,9 @@ import { afiliadosComissoes, clientes, contasMarketplace, MARKETPLACES, notas, p
 import { analisarVendas } from "@/lib/analise-vendas";
 import { situacaoPedido } from "@/lib/marketplaces/situacao";
 import { estatisticaAnuncios } from "@/lib/sentinela";
+import { anunciosPorPlataforma } from "@/lib/contagem-anuncios";
+import { recontarAnuncios } from "./actions-dashboard";
+import { SubmitButton } from "@/components/ui/client";
 import { requireUser } from "@/lib/auth";
 import { diasParaVencer } from "@/lib/fiscal/certificado";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
@@ -83,7 +86,7 @@ export default async function Dashboard() {
     ]),
   ]);
 
-  const [analise, estAnuncios, metas, recentes, comissoes, oportunidades] = await Promise.all([
+  const [analise, estAnuncios, metas, recentes, comissoes, oportunidades, naPlataforma] = await Promise.all([
     analisarVendas("30d").catch(() => null),
     estatisticaAnuncios().catch(() => null),
     getSettings(["meta.anuncios.magalu", "meta.anuncios.mercadolivre", "meta.anuncios.shopee"]),
@@ -110,14 +113,29 @@ export default async function Dashboard() {
       )
       .orderBy(desc(sentinelaItens.velocidade), desc(sentinelaItens.vendas))
       .limit(4),
+    anunciosPorPlataforma().catch(() => new Map()),
   ]);
   const aEnviar = recentes.filter((p) => situacaoPedido(p.marketplace, p.status) === "pago");
   const META_PADRAO = { magalu: 30, mercadolivre: 30, shopee: 40 } as const;
   const termometro = (["magalu", "mercadolivre", "shopee"] as const).map((c) => {
     const pl = estAnuncios?.plataformas.find((x) => x.canal === c);
     const meta = Number(metas[`meta.anuncios.${c}`]) || META_PADRAO[c];
-    const ativos = pl?.ativos ?? 0;
-    return { canal: c, ativos, meta, falta: Math.max(0, meta - ativos), pct: Math.min(100, (ativos / meta) * 100), prontos: pl?.semAnuncio ?? [] };
+    // O que vale é o que está NA plataforma (contado lá pela API); sem contagem ainda, usa o que o ERP sabe.
+    const real = naPlataforma.get(c);
+    const ativos = real ? real.ativos : (pl?.ativos ?? 0);
+    return {
+      canal: c,
+      ativos,
+      pausados: real?.pausados ?? pl?.pausados ?? 0,
+      noErp: pl?.ativos ?? 0,
+      contadoEm: real?.em ?? null,
+      erro: real?.erro ?? "",
+      daPlataforma: Boolean(real),
+      meta,
+      falta: Math.max(0, meta - ativos),
+      pct: Math.min(100, (ativos / meta) * 100),
+      prontos: pl?.semAnuncio ?? [],
+    };
   });
   const variacao = analise && analise.totaisAntes.faturamento ? ((analise.totais.faturamento - analise.totaisAntes.faturamento) / analise.totaisAntes.faturamento) * 100 : null;
 
@@ -214,12 +232,19 @@ export default async function Dashboard() {
 
       <Card className="mb-6">
         <CardHeader
+          action={
+            <form action={recontarAnuncios}>
+              <SubmitButton size="sm" variant="outline" pendingText="Contando nas plataformas...">
+                Recontar agora
+              </SubmitButton>
+            </form>
+          }
           title={
             <span className="inline-flex items-center gap-2">
               <Gauge className="size-5 text-gold" /> Termômetro da loja: anúncios ativos x meta
             </span>
           }
-          description="Loja com poucos anúncios não ganha tração no algoritmo. As plataformas não publicam o número: Magalu indicou 30; na Shopee as lojas que mais vendem têm 40 a 50; no ML não há número oficial. Ajuste em Configurações › Metas da loja."
+          description="Anúncios ativos contados direto em cada plataforma (todas as contas), a cada 6 h. Loja com poucos anúncios não ganha tração no algoritmo. As plataformas não publicam o número: Magalu indicou 30; na Shopee as lojas que mais vendem têm 40 a 50; no ML não há número oficial. Ajuste em Configurações › Metas da loja."
         />
         <div className="grid gap-4 p-5 lg:grid-cols-3">
           {termometro.map((t) => (
@@ -232,8 +257,13 @@ export default async function Dashboard() {
               </div>
               <p>
                 <span className="text-3xl font-extrabold">{t.ativos}</span>
-                <span className="text-sm text-muted"> / {t.meta} anúncios ativos</span>
+                <span className="text-sm text-muted"> / {t.meta} anúncios ativos na plataforma</span>
               </p>
+              <p className="text-xs text-muted">
+                {t.daPlataforma ? `contados no ${MARKETPLACE_INFO[t.canal].nome}${t.contadoEm ? ` em ${formatDate(t.contadoEm)}` : ""}` : "ainda não contados na plataforma (número do ERP)"}
+                {t.pausados ? ` · ${t.pausados} pausado(s)` : ""} · {t.noErp} ligado(s) a produtos do ERP
+              </p>
+              {t.erro ? <p className="text-xs text-red">Última contagem falhou: {t.erro}</p> : null}
               <div className="h-2.5 overflow-hidden rounded-full bg-surface-2">
                 <div className={`h-full rounded-full ${t.pct >= 100 ? "bg-green" : t.pct >= 60 ? "bg-gold" : "bg-red"}`} style={{ width: `${Math.max(3, t.pct)}%` }} />
               </div>

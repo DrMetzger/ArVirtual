@@ -4,6 +4,7 @@ import { sincronizarPedidos } from "@/lib/marketplaces";
 import { reenviarNotasPendentes } from "@/lib/marketplaces/enviar-nota";
 import { rotinaSentinela } from "@/lib/sentinela";
 import { rotinaGarimpo } from "@/lib/garimpo";
+import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -34,5 +35,7 @@ export async function POST(req: Request) {
   void rotinaSentinela().catch((e: Error) => console.warn(`[sentinela] ${e.message}`));
   // Garimpo de afiliados (Shopee), separado do sentinela.
   void rotinaGarimpo().catch((e: Error) => console.warn(`[garimpo] ${e.message}`));
+  // Quantos anúncios cada plataforma enxerga (contados lá, pela API), a cada 6 h.
+  void rotinaContagemAnuncios().catch((e: Error) => console.warn(`[contagem-anuncios] ${e.message}`));
   return Response.json(r);
 }

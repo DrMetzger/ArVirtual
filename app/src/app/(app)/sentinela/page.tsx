@@ -8,6 +8,7 @@ import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState, Input, PageHea
 import { SubmitButton } from "@/components/ui/client";
 import { requireUser } from "@/lib/auth";
 import { campeoesMagalu, estatisticaAnuncios, painelSentinela } from "@/lib/sentinela";
+import { anunciosPorPlataforma } from "@/lib/contagem-anuncios";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { Markdown } from "../assistente/markdown";
 import { adicionarTermo, alternarTermo, coletarAgora, excluirTermo, relatorioAgora, trabalhoEmAndamento } from "./actions";
@@ -34,7 +35,7 @@ const Selo = ({ icone, children }: { icone: React.ReactNode; children: React.Rea
 export default async function SentinelaPage({ searchParams }: { searchParams: Promise<{ erro?: string; aba?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  const [p, trabalho, magalu, est] = await Promise.all([painelSentinela(), trabalhoEmAndamento(), campeoesMagalu(), estatisticaAnuncios()]);
+  const [p, trabalho, magalu, est, naPlataforma] = await Promise.all([painelSentinela(), trabalhoEmAndamento(), campeoesMagalu(), estatisticaAnuncios(), anunciosPorPlataforma().catch(() => new Map())]);
   const ativos = p.termos.filter((t) => t.ativo);
   const sugeridos = p.termos.filter((t) => !t.ativo);
   const nichos = Object.values(
@@ -110,10 +111,12 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
                   <span className="font-semibold">{NOME_CANAL[pl.canal]}</span>
                 </div>
                 <p>
-                  <span className="text-3xl font-extrabold">{pl.ativos}</span> <span className="text-sm text-muted">anúncios ativos</span>
+                  <span className="text-3xl font-extrabold">{naPlataforma.get(pl.canal)?.ativos ?? pl.ativos}</span>{" "}
+                  <span className="text-sm text-muted">anúncios ativos na plataforma</span>
                 </p>
                 <p className="text-xs text-muted">
-                  {pl.pausados} pausado(s) · {pl.encerrados} encerrado(s){pl.comErro ? ` · ${pl.comErro} com erro` : ""}
+                  {naPlataforma.get(pl.canal) ? `${naPlataforma.get(pl.canal)!.pausados} pausado(s) lá · ` : "ainda não contados na plataforma · "}
+                  {pl.ativos} ligado(s) a produtos do ERP{pl.comErro ? ` · ${pl.comErro} com erro de publicação` : ""}
                 </p>
                 {pl.semAnuncio.length ? (
                   <details className="rounded-lg bg-surface-2 p-2 text-sm">
