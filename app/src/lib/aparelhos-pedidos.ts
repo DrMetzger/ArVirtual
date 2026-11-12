@@ -1,10 +1,15 @@
 import "server-only";
+import { EventEmitter } from "node:events";
 import { and, desc, gt, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { pedidosMarketplace } from "@/db/schema";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { situacaoPedido } from "@/lib/marketplaces/situacao";
 import { formatBRL } from "@/lib/utils";
+
+/** Avisa quem está esperando (celulares conectados) que a sincronização acabou de gravar pedidos. */
+const g = globalThis as unknown as { avisosPedidos?: EventEmitter };
+export const avisosPedidos = (g.avisosPedidos ??= new EventEmitter().setMaxListeners(200));
 
 /**
  * Pedidos que entraram no ERP depois de `desde` (para a notificação no celular). Só compras recentes:

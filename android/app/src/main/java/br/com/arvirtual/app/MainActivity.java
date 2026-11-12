@@ -175,7 +175,27 @@ public class MainActivity extends Activity {
         VerificarPedidos.agendar(this);
         // Push na hora (Firebase): registra este celular no ERP.
         Push.registrar(this);
+        // Conexão permanente com o ERP: aviso de pedido no instante em que entra (sem Firebase).
+        ConexaoPedidos.iniciar(this);
         pedirPermissoes();
+        pedirSemEconomiaDeBateria();
+    }
+
+    /**
+     * Pede (uma vez) para o Android não congelar o app na economia de bateria: sem isso, com a tela desligada,
+     * alguns celulares cortam a internet do app e o aviso atrasa.
+     */
+    private void pedirSemEconomiaDeBateria() {
+        if (Build.VERSION.SDK_INT < 23) return;
+        try {
+            android.os.PowerManager pm = (android.os.PowerManager) getSystemService(POWER_SERVICE);
+            if (pm == null || pm.isIgnoringBatteryOptimizations(getPackageName())) return;
+            if (Aparelho.prefs(this).getBoolean("pediuBateria", false)) return;
+            Aparelho.prefs(this).edit().putBoolean("pediuBateria", true).apply();
+            startActivity(new Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:" + getPackageName())));
+        } catch (Exception ignorado) {
+            // aparelho sem essa tela: segue com a verificação periódica
+        }
     }
 
     /** Notificações (Android 13+) e localização (para Configurações › Aparelhos). Pergunta uma vez; dá para mudar depois no Android. */

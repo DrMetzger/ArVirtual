@@ -3,7 +3,7 @@ import { createSign } from "node:crypto";
 import { and, eq, ne } from "drizzle-orm";
 import { db } from "@/db";
 import { aparelhos } from "@/db/schema";
-import { pedidosNovos } from "@/lib/aparelhos-pedidos";
+import { avisosPedidos, pedidosNovos } from "@/lib/aparelhos-pedidos";
 import { getSettings } from "@/lib/settings";
 
 /**
@@ -92,6 +92,8 @@ let desde = new Date();
 export async function avisarPedidosNovos() {
   const novos = await pedidosNovos(desde);
   const inicio = new Date();
+  // Celulares conectados ao ERP (sem Firebase) recebem na hora.
+  if (novos.length) avisosPedidos.emit("novos");
   for (const p of novos.reverse()) {
     if (avisados.has(p.id)) continue;
     avisados.add(p.id);

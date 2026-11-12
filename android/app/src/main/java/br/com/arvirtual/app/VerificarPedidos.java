@@ -71,16 +71,25 @@ public class VerificarPedidos extends JobService {
     }
 
     static void verificar(Context ctx) throws Exception {
+        verificar(ctx, false);
+    }
+
+    /**
+     * Pergunta ao ERP se entraram pedidos novos. Com {@code esperar}, o ERP segura a resposta até ~45 s e responde no
+     * mesmo segundo em que um pedido entra (é o que o serviço de conexão usa, sem Firebase).
+     */
+    static synchronized void verificar(Context ctx, boolean esperar) throws Exception {
         long desde = Aparelho.prefs(ctx).getLong("desde", 0);
         NotificationManager nm = (NotificationManager) ctx.getSystemService(NOTIFICATION_SERVICE);
         boolean podeNotificar = Build.VERSION.SDK_INT < 24 || nm.areNotificationsEnabled();
         JSONObject corpo = Aparelho.info(ctx, null, podeNotificar);
         corpo.put("desde", desde);
+        if (esperar) corpo.put("esperar", true);
 
         HttpURLConnection con = (HttpURLConnection) new URL(URL_NOVIDADES).openConnection();
         con.setRequestMethod("POST");
         con.setConnectTimeout(20000);
-        con.setReadTimeout(30000);
+        con.setReadTimeout(esperar ? 75000 : 30000);
         con.setDoOutput(true);
         con.setRequestProperty("Content-Type", "application/json");
         con.setRequestProperty("User-Agent", "ArVirtualApp/" + BuildConfig.VERSION_NAME + " aparelho/" + Aparelho.id(ctx));

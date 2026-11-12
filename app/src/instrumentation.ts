@@ -15,4 +15,13 @@ export async function register() {
   // Primeira rodada 1 minuto depois de subir; sempre só o que mudou desde a última (o histórico entra ao conectar a conta).
   setTimeout(sincronizar, 60_000);
   setInterval(() => sincronizar(), INTERVALO_MS);
+  // Pedido novo entra no ERP em até 2 minutos (só a busca de pedidos; o resto continua de 15 em 15).
+  const urlPedidos = `http://127.0.0.1:${process.env.PORT ?? 3000}/api/interno/pedidos`;
+  setInterval(
+    () =>
+      fetch(urlPedidos, { method: "POST", headers: { "x-chave-interna": chaveInterna() }, signal: AbortSignal.timeout(5 * 60_000) }).catch((e: Error) =>
+        console.warn(`[pedidos] busca rápida falhou: ${e.message}`),
+      ),
+    2 * 60_000,
+  );
 }
