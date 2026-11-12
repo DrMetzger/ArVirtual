@@ -57,7 +57,7 @@ type ResultadoSync = { conta: string; marketplace: Marketplace; pedidos: number;
 
 export type OpcoesSync =
   /** Automática (a cada 15 min, ao subir e nos avisos do marketplace): só o que mudou desde a última rodada de cada conta. */
-  | { tipo: "novidades"; marketplace?: Marketplace }
+  | { tipo: "novidades"; marketplace?: Marketplace; /** Busca rápida (2 em 2 min): sem reconferir os pagos/enviados antigos. */ rapido?: boolean }
   /** Manual: pedidos comprados no período, nas contas escolhidas (todas, se vazio). */
   | { tipo: "periodo"; desde: Date; ate?: Date; contas?: number[] };
 
@@ -100,7 +100,7 @@ async function sincronizar(opcoes: OpcoesSync): Promise<ResultadoSync> {
         : opcoes.desde;
       const inicio = new Date();
       // Pedidos pagos/enviados dos últimos 120 dias: reconferidos a cada rodada até chegarem a entregue.
-      const reconferir = novidades
+      const reconferir = novidades && !(opcoes.tipo === "novidades" && opcoes.rapido)
         ? (
             await db
               .select({ idExterno: pedidosMarketplace.idExterno, status: pedidosMarketplace.status })
