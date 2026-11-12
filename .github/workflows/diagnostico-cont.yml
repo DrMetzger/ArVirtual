@@ -1,0 +1,25 @@
+name: Diagnóstico contagem de anúncios (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-cont.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Contagem nas plataformas
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose logs --since 15m app 2>&1 | grep -i "contagem-anuncios" | tail -5 | cut -c1-250
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          console.log("CONTAGEM", JSON.stringify(await sql`select a.marketplace, c.nome, a.ativos, a.pausados, a.outros, a.erro, a.em from anuncios_plataforma a join contas_marketplace c on c.id = a.conta_id order by 1`));
+          console.log("ERP", JSON.stringify(await sql`select marketplace, count(*) filter (where status = 'publicado')::int as publicados from anuncios group by 1`));
+          await sql.end();
+          JS
+          REMOTO
