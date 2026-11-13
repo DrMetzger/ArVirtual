@@ -5,11 +5,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import bcrypt from "bcryptjs";
 import { and, eq, isNotNull, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { aparelhos, certificadoDigital, contasEmail, empresa, notas, usuarios } from "@/db/schema";
 import { requireAdmin, requireUser } from "@/lib/auth";
 import { esquecerBloqueio } from "@/lib/aparelhos";
+import { pedirAvisoTeste } from "@/lib/aparelhos-pedidos";
 import { encrypt } from "@/lib/crypto";
 import { lerCertificado } from "@/lib/fiscal/certificado";
 import { certificateFromPfx } from "@/lib/nfe/sefaz";
@@ -364,4 +366,12 @@ export async function removerAparelho(id: string) {
   await db.delete(aparelhos).where(and(eq(aparelhos.id, id), eq(aparelhos.bloqueado, false)));
   esquecerBloqueio(id);
   revalidatePath("/configuracoes");
+}
+
+/** Manda um aviso de pedido de teste para o celular (chega pelo mesmo caminho dos pedidos de verdade). */
+export async function enviarAvisoTeste(id: string) {
+  await requireAdmin();
+  pedirAvisoTeste(id);
+  revalidatePath("/configuracoes");
+  redirect(`/configuracoes?aba=aparelhos&teste=${encodeURIComponent(id)}`);
 }

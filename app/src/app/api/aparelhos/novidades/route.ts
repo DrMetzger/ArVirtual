@@ -1,6 +1,6 @@
 import { cookies, headers } from "next/headers";
 import { aparelhoBloqueado, registrarAparelho, type InfoAparelho } from "@/lib/aparelhos";
-import { avisosPedidos, pedidosNovos } from "@/lib/aparelhos-pedidos";
+import { avisosPedidos, pedidosNovos, retirarAvisoTeste } from "@/lib/aparelhos-pedidos";
 import { SESSION_COOKIE, verifySession } from "@/lib/session";
 
 /**
@@ -19,7 +19,12 @@ export async function POST(req: Request) {
   await registrarAparelho(info, sessao, ip).catch(() => undefined);
   const inicio = Number(desde) > 0 ? new Date(Math.max(Number(desde), Date.now() - 2 * 86400_000)) : new Date();
   const agora = Date.now();
-  let pedidos = await pedidosNovos(inicio);
+  // Pedidos novos + aviso de teste deste celular (Configurações › Aparelhos), se houver.
+  const buscar = async () => {
+    const teste = retirarAvisoTeste(corpo.id);
+    return [...(teste ? [teste] : []), ...(await pedidosNovos(inicio))];
+  };
+  let pedidos: { id: string | number; titulo: string; texto: string; link: string }[] = await buscar();
   // App conectado (serviço do celular): segura a resposta até 45 s e responde no mesmo segundo em que entra pedido.
   if (esperar && Number(desde) > 0 && !pedidos.length) {
     const fim = Date.now() + 45_000;
@@ -33,7 +38,7 @@ export async function POST(req: Request) {
         }
         avisosPedidos.once("novos", fim0);
       });
-      pedidos = await pedidosNovos(inicio);
+      pedidos = await buscar();
     }
   }
   return Response.json({ agora: pedidos.length ? Date.now() : agora, pedidos });

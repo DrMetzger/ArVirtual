@@ -22,9 +22,13 @@ public class ConexaoPedidos extends Service {
     private static final int ID_FIXA = 4242;
     private volatile boolean rodando;
     private Thread laco;
+    /** Já ligado neste processo: abrir o app de novo não recria a notificação fixa (nem faz ela reaparecer). */
+    private static volatile boolean ativo;
+    private boolean emPrimeiroPlano;
 
     /** Liga o serviço (chamado ao abrir o app e quando o celular reinicia). */
     static void iniciar(Context ctx) {
+        if (ativo) return;
         try {
             Intent i = new Intent(ctx, ConexaoPedidos.class);
             if (Build.VERSION.SDK_INT >= 26) ctx.startForegroundService(i);
@@ -48,6 +52,7 @@ public class ConexaoPedidos extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (emPrimeiroPlano && laco != null && laco.isAlive()) return START_STICKY;
         Intent abrir = new Intent(this, MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         PendingIntent toque = PendingIntent.getActivity(this, 0, abrir, PendingIntent.FLAG_IMMUTABLE);
         Notification.Builder n = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CANAL_CONEXAO) : new Notification.Builder(this);
@@ -56,12 +61,16 @@ public class ConexaoPedidos extends Service {
                 .setContentTitle("ArVirtual conectado")
                 .setContentText("Avisos de pedido ligados")
                 .setOngoing(true)
+                .setOnlyAlertOnce(true)
                 .setShowWhen(false)
                 .setContentIntent(toque);
         if (Build.VERSION.SDK_INT < 26) n.setPriority(Notification.PRIORITY_MIN);
+        if (Build.VERSION.SDK_INT >= 31) n.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_DEFERRED);
         try {
             if (Build.VERSION.SDK_INT >= 34) startForeground(ID_FIXA, n.build(), ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
             else startForeground(ID_FIXA, n.build());
+            emPrimeiroPlano = true;
+            ativo = true;
         } catch (Exception e) {
             stopSelf();
             return START_NOT_STICKY;
@@ -106,6 +115,8 @@ public class ConexaoPedidos extends Service {
     @Override
     public void onDestroy() {
         rodando = false;
+        ativo = false;
+        emPrimeiroPlano = false;
         if (laco != null) laco.interrupt();
         super.onDestroy();
     }

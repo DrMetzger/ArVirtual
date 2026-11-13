@@ -29,9 +29,10 @@ const ABAS = [
   { id: "aparelhos", label: "Aparelhos" },
 ] as const;
 
-export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ aba?: string }> }) {
+export default async function ConfiguracoesPage({ searchParams }: { searchParams: Promise<{ aba?: string; teste?: string }> }) {
   const me = await requireUser();
-  const abaParam = (await searchParams).aba;
+  const sp = await searchParams;
+  const abaParam = sp.aba;
   const aba = ABAS.some((a) => a.id === abaParam) ? abaParam : "empresa";
   const admin = me.papel === "admin";
   const h = await headers();
@@ -151,7 +152,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         />
       ) : null}
 
-      {aba === "aparelhos" ? <AparelhosAba admin={admin} /> : null}
+      {aba === "aparelhos" ? <AparelhosAba admin={admin} teste={sp.teste} /> : null}
 
       {aba === "usuarios" ? (
         <UsuariosAba meuId={me.sub} admin={admin} />
