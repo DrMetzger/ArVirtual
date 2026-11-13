@@ -19,10 +19,11 @@ jobs:
           docker compose exec -T app node --input-type=module <<'JS'
           import postgres from "postgres";
           const sql = postgres(process.env.DATABASE_URL);
-          console.log("AGORA", new Date().toISOString());
-          console.log("APARELHOS", JSON.stringify(await sql`select left(id, 6) as id, modelo, versao_app, notificacoes, ultimo_acesso from aparelhos order by ultimo_acesso desc nulls last limit 4`));
-          console.log("CONTAS", JSON.stringify(await sql`select marketplace, ultima_sincronizacao from contas_marketplace order by 1`));
-          console.log("PEDIDOS 24h", JSON.stringify(await sql`select marketplace, id_externo, status, data, criado_em from pedidos_marketplace where criado_em > now() - interval '24 hours' order by criado_em desc limit 8`));
+          for (let i = 0; i < 9; i++) {
+            const [a] = await sql`select ultimo_acesso, bateria, carregando from aparelhos where id like '1a230f%'`;
+            console.log("AMOSTRA", new Date().toISOString().slice(11, 19), "ultimo contato", a.ultimo_acesso.toISOString().slice(11, 19), "ha", Math.round((Date.now() - a.ultimo_acesso.getTime()) / 1000), "s", "bateria", a.bateria, a.carregando ? "carregando" : "");
+            await new Promise((r) => setTimeout(r, 30000));
+          }
           await sql.end();
           JS
           REMOTO
