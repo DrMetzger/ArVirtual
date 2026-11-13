@@ -1,0 +1,28 @@
+name: Diagnóstico avisos no celular (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-aviso.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Conexão do celular e pedidos
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose logs --since 3h app 2>&1 | grep -iE "\[pedidos\]|\[push\]|novidades|busca rápida" | tail -10 | cut -c1-200
+          docker compose logs --since 3h app 2>&1 | grep -c "POST /api/aparelhos/novidades" || true
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          const sql = postgres(process.env.DATABASE_URL);
+          console.log("AGORA", new Date().toISOString());
+          console.log("APARELHOS", JSON.stringify(await sql`select left(id, 6) as id, modelo, versao_app, notificacoes, ultimo_acesso from aparelhos order by ultimo_acesso desc nulls last limit 4`));
+          console.log("CONTAS", JSON.stringify(await sql`select marketplace, ultima_sincronizacao from contas_marketplace order by 1`));
+          console.log("PEDIDOS 24h", JSON.stringify(await sql`select marketplace, id_externo, status, data, criado_em from pedidos_marketplace where criado_em > now() - interval '24 hours' order by criado_em desc limit 8`));
+          await sql.end();
+          JS
+          REMOTO
