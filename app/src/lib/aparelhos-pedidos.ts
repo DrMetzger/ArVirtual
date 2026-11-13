@@ -11,6 +11,25 @@ import { formatBRL } from "@/lib/utils";
 const g = globalThis as unknown as { avisosPedidos?: EventEmitter };
 export const avisosPedidos = (g.avisosPedidos ??= new EventEmitter().setMaxListeners(200));
 
+/** Aviso de teste pedido em Configurações › Aparelhos: vai junto na próxima resposta para aquele celular. */
+type Aviso = { id: string; titulo: string; texto: string; link: string };
+const gt2 = globalThis as unknown as { avisosTeste?: Map<string, Aviso> };
+const avisosTeste = (gt2.avisosTeste ??= new Map());
+export function pedirAvisoTeste(aparelhoId: string) {
+  avisosTeste.set(aparelhoId, {
+    id: `teste-${Date.now()}`,
+    titulo: "Teste de aviso · ArVirtual",
+    texto: `Se você está vendo isto com o app fechado, os avisos de pedido estão funcionando (${new Date().toLocaleTimeString("pt-BR", { timeZone: "America/Sao_Paulo" })}).`,
+    link: "/pedidos",
+  });
+  avisosPedidos.emit("novos");
+}
+export function retirarAvisoTeste(aparelhoId: string) {
+  const a = avisosTeste.get(aparelhoId);
+  if (a) avisosTeste.delete(aparelhoId);
+  return a;
+}
+
 /**
  * Pedidos que entraram no ERP depois de `desde` (para a notificação no celular). Só compras recentes:
  * o histórico importado ao conectar uma conta não vira enxurrada de avisos.

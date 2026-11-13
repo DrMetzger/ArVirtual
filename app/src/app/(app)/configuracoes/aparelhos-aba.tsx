@@ -1,11 +1,11 @@
 import { desc } from "drizzle-orm";
-import { BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, MapPin, ShieldBan, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
+import { BatteryCharging, BatteryFull, BatteryLow, BatteryMedium, BellRing, MapPin, ShieldBan, ShieldCheck, Smartphone, Trash2 } from "lucide-react";
 import { Alert, Badge, buttonClass, Card, CardHeader, EmptyState } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
 import { aparelhos } from "@/db/schema";
 import { cn, formatDate } from "@/lib/utils";
-import { bloquearAparelho, removerAparelho } from "./actions";
+import { bloquearAparelho, enviarAvisoTeste, removerAparelho } from "./actions";
 
 const ha = (d: Date) => {
   const min = Math.round((Date.now() - d.getTime()) / 60_000);
@@ -26,7 +26,7 @@ function Bateria({ nivel, carregando }: { nivel: number | null; carregando: bool
 }
 
 /** Configurações › Aparelhos: celulares com o app, onde estão, bateria, e bloquear/liberar o acesso. */
-export async function AparelhosAba({ admin }: { admin: boolean }) {
+export async function AparelhosAba({ admin, teste }: { admin: boolean; teste?: string }) {
   const lista = await db.select().from(aparelhos).orderBy(desc(aparelhos.ultimoAcesso));
   return (
     <Card>
@@ -64,6 +64,13 @@ export async function AparelhosAba({ admin }: { admin: boolean }) {
                       {a.ip ? ` · IP ${a.ip}` : ""}
                       {a.notificacoes ? " · notificações ligadas" : " · notificações desligadas"}
                     </p>
+                    {/* O serviço do app fala com o ERP a cada ~45 s, mesmo com o app fechado. */}
+                    {Date.now() - (a.ultimoAcesso?.getTime() ?? 0) < 120_000 ? (
+                      <p className="text-xs font-semibold text-green">● Conectado agora: avisos de pedido chegam na hora</p>
+                    ) : (
+                      <p className="text-xs font-semibold text-gold">○ Sem conexão agora (app desatualizado, celular desligado ou sem internet)</p>
+                    )}
+                    {teste === a.id ? <p className="text-xs font-semibold text-green">Aviso de teste enviado: deve chegar no celular em segundos, mesmo com o app fechado.</p> : null}
                     {a.bloqueado && a.bloqueadoEm ? (
                       <p className="text-xs text-red">
                         Bloqueado {formatDate(a.bloqueadoEm)}
@@ -90,6 +97,13 @@ export async function AparelhosAba({ admin }: { admin: boolean }) {
                 </div>
                 {admin ? (
                   <div className="flex flex-wrap gap-2 md:justify-end">
+                    {!a.bloqueado ? (
+                      <form action={enviarAvisoTeste.bind(null, a.id)}>
+                        <SubmitButton variant="outline" size="sm" pendingText="Enviando...">
+                          <BellRing /> Enviar aviso de teste
+                        </SubmitButton>
+                      </form>
+                    ) : null}
                     <form action={bloquearAparelho.bind(null, a.id, !a.bloqueado)}>
                       <SubmitButton variant={a.bloqueado ? "primary" : "outline"} size="sm" pendingText="Salvando..." className={a.bloqueado ? "" : "hover:border-red hover:text-red"}>
                         {a.bloqueado ? (
