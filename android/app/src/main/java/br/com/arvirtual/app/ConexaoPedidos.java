@@ -18,7 +18,8 @@ import android.os.PowerManager;
  * O Android exige uma notificação fixa enquanto o serviço roda ("ArVirtual conectado"), no canal silencioso.
  */
 public class ConexaoPedidos extends Service {
-    static final String CANAL_CONEXAO = "conexao";
+    /** Canal oculto (importância nenhuma): o Android exige a notificação do serviço, mas ela não aparece na barra. */
+    static final String CANAL_CONEXAO = "conexao-oculta";
     private static final int ID_FIXA = 4242;
     private volatile boolean rodando;
     private Thread laco;
@@ -42,10 +43,15 @@ public class ConexaoPedidos extends Service {
     public void onCreate() {
         super.onCreate();
         if (Build.VERSION.SDK_INT >= 26) {
-            NotificationChannel c = new NotificationChannel(CANAL_CONEXAO, "Conexão com o ERP", NotificationManager.IMPORTANCE_MIN);
-            c.setDescription("Mantém o app ligado ao ERP para avisar os pedidos na hora");
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            // Canal antigo (aparecia "ArVirtual conectado" na barra): sai de vez.
+            nm.deleteNotificationChannel("conexao");
+            NotificationChannel c = new NotificationChannel(CANAL_CONEXAO, "Conexão com o ERP (oculta)", NotificationManager.IMPORTANCE_NONE);
+            c.setDescription("Mantém o app ligado ao ERP para avisar os pedidos na hora. Não aparece na barra.");
             c.setShowBadge(false);
-            ((NotificationManager) getSystemService(NOTIFICATION_SERVICE)).createNotificationChannel(c);
+            c.setSound(null, null);
+            c.enableVibration(false);
+            nm.createNotificationChannel(c);
         }
         VerificarPedidos.criarCanal(this);
     }
@@ -58,8 +64,7 @@ public class ConexaoPedidos extends Service {
         Notification.Builder n = Build.VERSION.SDK_INT >= 26 ? new Notification.Builder(this, CANAL_CONEXAO) : new Notification.Builder(this);
         n.setSmallIcon(R.drawable.ic_notificacao)
                 .setColor(0xFFE6C158)
-                .setContentTitle("ArVirtual conectado")
-                .setContentText("Avisos de pedido ligados")
+                .setContentTitle("ArVirtual")
                 .setOngoing(true)
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
