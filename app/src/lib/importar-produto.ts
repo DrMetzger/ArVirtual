@@ -9,6 +9,7 @@ import { buscarOfertas, idsDoLink } from "@/lib/afiliados";
 import { gerarComGemini } from "@/lib/gemini";
 import { adapter, contaComToken } from "@/lib/marketplaces";
 import type { DadosImportados } from "@/lib/marketplaces/types";
+import { categoriaDoProduto } from "@/lib/categorias";
 import { cadastroPelaIA } from "@/lib/produto-ia";
 import { MAX_VIDEO, UPLOAD_DIR } from "@/lib/uploads";
 
@@ -235,6 +236,7 @@ export async function* importarProduto(
       mensagem: "Criado pelo importador (anúncio de origem)",
     });
   }
+  await categoriaDoProduto(p!.id, titulo, descricao);
   if (!ncm) avisos.push("Escolha o NCM do produto (nenhum NCM cadastrado combinou).");
   avisos.push("Confira custo, filamento e estoque antes de anunciar.");
   yield { etapa: "Pronto", pct: 100, detalhe: titulo };

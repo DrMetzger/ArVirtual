@@ -232,6 +232,13 @@
       "when": 1794838681094,
       "tag": "0032_raiox",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1794844934888,
+      "tag": "0033_categorias",
+      "breakpoints": true
     }
   ]
 }

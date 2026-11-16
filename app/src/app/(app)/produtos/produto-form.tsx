@@ -39,12 +39,14 @@ export function ProdutoForm({
   precos,
   filamentos = [],
   variacoes = [],
+  categorias = [],
 }: {
   produto?: Produto;
   parametros: ParametrosImpressao;
   precos: ParametrosPreco;
   filamentos?: FilamentoOpt[];
   variacoes?: VariacaoInicial[];
+  categorias?: { id: number; nome: string }[];
 }) {
   const [temVariacoes, setTemVariacoes] = useState(produto?.temVariacoes ?? false);
   const [sku, setSku] = useState(produto?.sku ?? "");
@@ -136,6 +138,16 @@ export function ProdutoForm({
             </Field>
             <Field label="Nome do produto" className="sm:col-span-4">
               <Input name="nome" value={nome} onChange={(e) => setNome(e.target.value)} required />
+            </Field>
+            <Field label="Categoria" className="sm:col-span-6" hint="Separa o produto nas grades e no site. Gerencie em Cadastros › Categorias.">
+              <Select name="categoriaId" defaultValue={produto?.categoriaId ?? ""}>
+                <option value="">Sem categoria</option>
+                {categorias.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome}
+                  </option>
+                ))}
+              </Select>
             </Field>
             {ia ? (
               <div className="sm:col-span-6">

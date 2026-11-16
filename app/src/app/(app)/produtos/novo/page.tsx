@@ -5,6 +5,7 @@ import { requireUser } from "@/lib/auth";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 import { ProdutoForm } from "../produto-form";
+import { listaCategorias } from "@/lib/categorias";
 
 export const metadata: Metadata = { title: "Novo produto" };
 
@@ -16,7 +17,7 @@ export default async function NovoProdutoPage() {
       <div className="mb-6">
         <ImportarLink />
       </div>
-      <ProdutoForm parametros={await getParametrosImpressao()} precos={await getParametrosPreco()} filamentos={await listaFilamentos()} />
+      <ProdutoForm categorias={await listaCategorias()} parametros={await getParametrosImpressao()} precos={await getParametrosPreco()} filamentos={await listaFilamentos()} />
     </>
   );
 }

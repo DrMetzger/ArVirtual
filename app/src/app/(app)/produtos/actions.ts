@@ -38,6 +38,7 @@ const ProdutoSchema = z.object({
   filamentoG: z.coerce.number().int().min(0).default(0),
   tempoImpressaoMin: z.coerce.number().int().min(0).default(0),
   filamentoId: z.preprocess((v) => (v ? Number(v) : null), z.number().int().nullable()),
+  categoriaId: z.preprocess((v) => (v ? Number(v) : null), z.number().int().nullable()),
 });
 
 const VariacaoSchema = z.object({
@@ -251,6 +252,7 @@ async function salvarVariacoes(
         Object.entries(pai.precosCanal ?? {}).map(([k, val]) => [k, Math.round(((val as number) + (v.preco ? v.preco - (pai.preco ?? 0) : 0)) * 100) / 100]),
       ),
       paiId,
+      categoriaId: pai.categoriaId ?? null,
       atributos,
       ativo: Boolean(pai.ativo) && v.ativo,
     };
