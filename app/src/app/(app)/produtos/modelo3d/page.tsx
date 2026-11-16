@@ -7,6 +7,7 @@ import { listaFilamentos } from "@/lib/filamentos";
 import { listaImpressoras } from "@/lib/impressoras";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 import { ImportarModelo } from "./importar";
+import { estadoCadastro } from "@/lib/cadastro-modelos";
 
 export const metadata: Metadata = { title: "Importar modelo 3D" };
 
@@ -28,6 +29,7 @@ export default async function Modelo3dPage({ searchParams }: { searchParams: Pro
         filamentos={fils}
         parametros={pi}
         precos={pp}
+        andamento={estadoCadastro()}
         linkInicial={link && /^https:\/\//.test(link) ? link.slice(0, 500) : ""}
       />
     </>

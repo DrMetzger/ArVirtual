@@ -76,6 +76,12 @@ export const SETTINGS = {
   "meta.anuncios.magalu": { label: "Magalu: anúncios ativos para a loja ganhar tração (o Magalu indicou 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.mercadolivre": { label: "Mercado Livre: anúncios ativos (sem número oficial; referência 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.shopee": { label: "Shopee: anúncios ativos (lojas que mais vendem: 40 a 50)", secret: false, group: "Metas da loja", placeholder: "40" },
+  "modelos3d.cadastrarSozinho": {
+    label: "Cadastrar sozinho, como produto, os modelos 3D do Plano da IA que a licença deixa vender (anunciar continua com você)",
+    secret: false,
+    group: "Impressora 3D",
+    options: ["sim", "nao"],
+  },
   "thingiverse.token": { label: "App Token (thingiverse.com › Apps › Create an App)", secret: true, group: "Thingiverse" },
   "cults.usuario": { label: "Usuário (apelido) do Cults", secret: false, group: "Cults" },
   "cults.chave": { label: "Chave da API (cults3d.com › Configurações › API)", secret: true, group: "Cults" },
