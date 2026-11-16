@@ -6,10 +6,13 @@ import { requireUser } from "@/lib/auth";
 import { coletarRaioX } from "@/lib/raiox";
 import { estadoTrazer, trazerGrupos } from "@/lib/trazer-anuncios";
 
-/** Para o aviso no canto da tela: devolve null quando terminou. */
+/** Progresso do trabalho (quadro ao vivo na tela); null se nunca rodou. */
 export async function trazerEmAndamento() {
+  await requireUser();
   const e = estadoTrazer();
-  return e && !e.fim ? { feitos: e.feitos, total: e.total } : null;
+  return e
+    ? { rodando: !e.fim, feitos: e.feitos, total: e.total, atual: e.atual, criados: e.criados.slice(-12), ligados: e.ligados, erros: e.erros.slice(-10) }
+    : null;
 }
 
 export async function trazerSelecionados(form: FormData) {

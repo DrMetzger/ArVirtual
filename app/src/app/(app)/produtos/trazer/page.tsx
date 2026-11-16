@@ -1,4 +1,4 @@
-import { ArrowLeft, Download, Link2, Loader2, PackagePlus, RefreshCw } from "lucide-react";
+import { ArrowLeft, Download, Link2, PackagePlus, RefreshCw } from "lucide-react";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { FotoAmpliavel } from "@/components/foto-ampliavel";
@@ -8,8 +8,8 @@ import { SubmitButton } from "@/components/ui/client";
 import { requireUser } from "@/lib/auth";
 import { estadoTrazer, gruposParaTrazer } from "@/lib/trazer-anuncios";
 import { formatBRL } from "@/lib/utils";
-import { AtualizarSozinho } from "../../sentinela/atualizar";
-import { relerAnuncios, trazerEmAndamento, trazerSelecionados } from "./actions";
+import { ProgressoTrazer } from "./progresso";
+import { relerAnuncios, trazerSelecionados } from "./actions";
 
 export const metadata: Metadata = { title: "Trazer anúncios dos marketplaces" };
 
@@ -23,7 +23,6 @@ export default async function TrazerPage({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      <AtualizarSozinho ativo={rodando} verificar={trazerEmAndamento} />
       <Link href="/produtos" className="mb-3 inline-flex items-center gap-1 text-sm text-muted hover:text-gold">
         <ArrowLeft className="size-4" /> Produtos
       </Link>
@@ -42,29 +41,9 @@ export default async function TrazerPage({ searchParams }: { searchParams: Promi
         {sp.erro ? <Alert>{sp.erro}</Alert> : null}
         {sp.lendo ? <Alert tone="blue">Lendo todos os anúncios das plataformas em segundo plano. Em alguns minutos, recarregue esta página.</Alert> : null}
         {est ? (
-          <Alert tone={rodando ? "gold" : est.erros.length ? "red" : "green"}>
-            <div className="grid gap-1">
-              <p className="inline-flex items-center gap-2 font-semibold">
-                {rodando ? <Loader2 className="size-4 animate-spin" /> : null}
-                {rodando ? `Trazendo ${est.feitos} de ${est.total}…` : `Pronto: ${est.criados.length} produto(s) criado(s), ${est.ligados} anúncio(s) ligado(s).`}
-              </p>
-              {rodando && est.atual ? <p className="text-xs">Agora: {est.atual}</p> : null}
-              {est.criados.length ? (
-                <p className="text-xs">
-                  Criados:{" "}
-                  {est.criados.slice(-12).map((c, i) => (
-                    <span key={c.id}>
-                      {i ? " · " : ""}
-                      <Link href={`/produtos/${c.id}`} className="underline">
-                        {c.nome}
-                      </Link>
-                    </span>
-                  ))}
-                </p>
-              ) : null}
-              {est.erros.length ? <p className="text-xs">Não deu: {est.erros.join(" | ")}</p> : null}
-            </div>
-          </Alert>
+          <ProgressoTrazer
+            inicial={{ rodando, feitos: est.feitos, total: est.total, atual: est.atual, criados: est.criados.slice(-12), ligados: est.ligados, erros: est.erros.slice(-10) }}
+          />
         ) : null}
 
         {!grupos.length ? (
@@ -74,7 +53,7 @@ export default async function TrazerPage({ searchParams }: { searchParams: Promi
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm text-muted">
                 <b className="text-foreground">{novos.length}</b> produto(s) novo(s) para criar e <b className="text-foreground">{ligar.length}</b> anúncio(s) que só precisam ser ligados.
-                Cada produto novo leva ~30 s (fotos, vídeo, descrição e NCM).
+                Cada produto novo leva alguns segundos (fotos, vídeo, descrição, NCM e categoria).
               </p>
               <SubmitButton variant="gold" pendingText="Começando..." disabled={rodando}>
                 <Download /> Trazer os marcados
