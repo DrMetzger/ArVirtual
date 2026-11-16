@@ -15,8 +15,8 @@ const hojeIso = () => new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_
 /** Prazo (dias) até o marketplace liberar o dinheiro da venda; Configurações › Precificação. */
 async function prazoRecebimento(canal: PedidoMarketplace["marketplace"]) {
   if (canal === "loja") return 0;
-  const s = await getSettings(["mercadolivre.prazo", "shopee.prazo", "magalu.prazo", "tiktok.prazo"]);
-  const padrao = { mercadolivre: 30, shopee: 15, magalu: 30, tiktok: 15 }[canal];
+  const s = await getSettings(["mercadolivre.prazo", "shopee.prazo", "magalu.prazo"]);
+  const padrao = { mercadolivre: 30, shopee: 15, magalu: 30 }[canal];
   const v = Number(s[`${canal}.prazo`]);
   return s[`${canal}.prazo`] && Number.isFinite(v) ? v : padrao;
 }

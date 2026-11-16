@@ -39,18 +39,6 @@ const MAPA: Record<CanalVenda, Record<string, Situacao>> = {
     CANCELLED: "cancelado",
     TO_RETURN: "cancelado",
   },
-  tiktok: {
-    UNPAID: "aguardando",
-    ON_HOLD: "pago",
-    AWAITING_SHIPMENT: "pago",
-    PARTIALLY_SHIPPING: "pago",
-    AWAITING_COLLECTION: "pago",
-    IN_TRANSIT: "enviado",
-    DELIVERED: "entregue",
-    COMPLETED: "entregue",
-    CANCELLED: "cancelado",
-    CANCEL: "cancelado",
-  },
   magalu: {
     new: "aguardando",
     created: "aguardando",

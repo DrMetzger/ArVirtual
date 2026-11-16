@@ -80,7 +80,6 @@ const NAV: (Item | Grupo)[] = [
       { href: "/marketplaces/mercadolivre", label: "Mercado Livre", icon: Store, imagem: "/marcas/mercadolivre-icone.png" },
       { href: "/marketplaces/shopee", label: "Shopee", icon: Store, imagem: "/marcas/shopee-icone.png" },
       { href: "/marketplaces/magalu", label: "Magalu", icon: Store, imagem: "/marcas/magalu-icone.png" },
-      { href: "/marketplaces/tiktok", label: "TikTok Shop", icon: Store, imagem: "/marcas/tiktok-icone.png" },
       { href: "/marketplaces/anuncios", label: "Vincular anúncios", icon: Link2 },
     ],
   },

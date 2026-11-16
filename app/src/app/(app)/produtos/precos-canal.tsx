@@ -39,7 +39,7 @@ export function PrecosCanal({
     Object.entries(precosCanal).map(([k, v]) => [k, parseDecimal(v)]),
   );
   const linhas = precosPorCanal(custo, base, parametros, numeros);
-  const ordem: CanalPreco[] = ["mercadolivre", "shopee", "magalu", "tiktok", "loja"];
+  const ordem: CanalPreco[] = ["mercadolivre", "shopee", "magalu", "loja"];
   const normalizar = (v: string) =>
     v.trim() ? formatValor(parseDecimal(v)) : "";
 

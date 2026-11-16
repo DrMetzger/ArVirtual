@@ -22,7 +22,6 @@ const PAINEL: Record<Marketplace, string> = {
   mercadolivre: "https://www.mercadolivre.com.br/anuncios/lista",
   shopee: "https://seller.shopee.com.br",
   magalu: "https://seller.magalu.com",
-  tiktok: "https://seller-br.tiktok.com",
 };
 
 const SITUACAO = {

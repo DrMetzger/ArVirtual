@@ -10,14 +10,12 @@ import { situacaoPedido } from "./situacao";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
 import { shopee } from "./shopee";
-import { tiktok } from "./tiktok";
 import type { ContaComToken, EntregaPedido, MarketplaceAdapter } from "./types";
 
 export const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   mercadolivre: mercadoLivre,
   shopee,
   magalu,
-  tiktok,
 };
 
 export function adapter(id: string): MarketplaceAdapter {
@@ -177,7 +175,6 @@ export const MARKETPLACE_INFO: Record<Marketplace, { nome: string; cor: string; 
   mercadolivre: { nome: "Mercado Livre", cor: "var(--mp-mercadolivre)", portal: "https://developers.mercadolivre.com.br/devcenter" },
   shopee: { nome: "Shopee", cor: "var(--mp-shopee)", portal: "https://open.shopee.com/" },
   magalu: { nome: "Magalu", cor: "var(--mp-magalu)", portal: "https://developers.magalu.com/" },
-  tiktok: { nome: "TikTok Shop", cor: "var(--mp-tiktok)", portal: "https://partner.tiktokshop.com/" },
 };
 
 const mascarado = (v: string | undefined | null) => Boolean(v && v.includes("*"));
