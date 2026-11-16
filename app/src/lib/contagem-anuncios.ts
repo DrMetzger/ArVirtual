@@ -10,8 +10,9 @@ import { adapter, contaComToken } from "@/lib/marketplaces";
  */
 let rodando = false;
 export async function contarAnunciosPlataformas() {
-  if (rodando) return;
+  if (rodando) return false;
   rodando = true;
+  let falhou = false;
   try {
     const contas = await db.select().from(contasMarketplace);
     for (const c of contas) {
@@ -29,6 +30,7 @@ export async function contarAnunciosPlataformas() {
         // Só anota o erro em contagem que já existe (sem contagem boa, o dashboard segue com o número do ERP).
         await db.update(anunciosPlataforma).set({ erro: valores.erro }).where(eq(anunciosPlataforma.contaId, c.id));
         console.warn(`[contagem-anuncios] ${c.marketplace} ${c.nome}: ${valores.erro}`);
+        falhou = true;
         continue;
       }
       await db
@@ -36,6 +38,7 @@ export async function contarAnunciosPlataformas() {
         .values({ contaId: c.id, marketplace: c.marketplace, ...valores, em: new Date() })
         .onConflictDoUpdate({ target: anunciosPlataforma.contaId, set: { ...valores, erro: "", em: new Date() } });
     }
+    return falhou;
   } finally {
     rodando = false;
   }
@@ -55,5 +58,7 @@ let ultima = 0;
 export async function rotinaContagemAnuncios() {
   if (Date.now() - ultima < 6 * 3600_000) return;
   ultima = Date.now();
-  await contarAnunciosPlataformas();
+  const falhou = await contarAnunciosPlataformas();
+  // A plataforma recusou agora (o ML faz isso de vez em quando): tenta de novo em 30 min, não em 6 h.
+  if (falhou) ultima = Date.now() - 6 * 3600_000 + 30 * 60_000;
 }

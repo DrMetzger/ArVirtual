@@ -1056,3 +1056,39 @@ export const anunciosPlataforma = pgTable("anuncios_plataforma", {
   erro: text("erro").notNull().default(""),
   em: timestamp("em", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * Raio-X dos anúncios: TODOS os anúncios de cada plataforma (não só os ligados ao ERP) com visitas, vendas,
+ * qualidade (ML) e o que melhorar. Lido a cada 6 h; o diagnóstico e o ganho potencial são calculados na tela.
+ */
+export type QualidadeML = { nota: number; nivel: string; acoes: string[] };
+export const raioxAnuncios = pgTable(
+  "raiox_anuncios",
+  {
+    contaId: integer("conta_id")
+      .notNull()
+      .references(() => contasMarketplace.id, { onDelete: "cascade" }),
+    marketplace: text("marketplace").notNull(),
+    idExterno: text("id_externo").notNull(),
+    titulo: text("titulo").notNull().default(""),
+    imagem: text("imagem").notNull().default(""),
+    link: text("link").notNull().default(""),
+    preco: money("preco").notNull().default(0),
+    status: text("status").notNull().default(""),
+    /** Visitas no período (`periodo`: "30d" no ML; "total" na Shopee, que só informa desde a publicação). */
+    visitas: integer("visitas"),
+    periodo: text("periodo").notNull().default(""),
+    /** Vendas (unidades) e faturamento: dos pedidos do ERP nos últimos 30 dias; vendasTotal = o que a plataforma informa. */
+    vendas30: integer("vendas30").notNull().default(0),
+    faturamento30: money("faturamento30").notNull().default(0),
+    vendasTotal: integer("vendas_total"),
+    fotos: integer("fotos"),
+    premium: boolean("premium"),
+    freteGratis: boolean("frete_gratis"),
+    qualidade: jsonb("qualidade").$type<QualidadeML>(),
+    /** Plano da IA para o anúncio (gerado quando você pede). */
+    planoIa: text("plano_ia").notNull().default(""),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("raiox_anuncios_idx").on(t.contaId, t.idExterno)],
+);

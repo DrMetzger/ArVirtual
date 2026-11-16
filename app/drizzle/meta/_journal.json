@@ -225,6 +225,13 @@
       "when": 1794497608787,
       "tag": "0031_anuncios_plataforma",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1794838681094,
+      "tag": "0032_raiox",
+      "breakpoints": true
     }
   ]
 }

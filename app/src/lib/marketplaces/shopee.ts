@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import sharp from "sharp";
 import { getSettings } from "@/lib/settings";
 import { UPLOAD_DIR } from "@/lib/uploads";
-import { aplicarCampos, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type DadosRaioX, type MarketplaceAdapter, type Tokens } from "./types";
 
 // Shopee Open Platform v2: https://open.shopee.com/documents
 // Toda chamada é assinada com HMAC-SHA256(partner_key, partner_id + path + timestamp [+ access_token + shop_id]).
@@ -485,6 +485,25 @@ export const shopee: MarketplaceAdapter = {
         // Não veio na resposta ou DELETED/BANNED = não existe mais; UNLIST = pausado.
         out[id] = !st || st === "DELETED" || st === "BANNED" ? "encerrado" : st === "UNLIST" ? "pausado" : "publicado";
       }
+    }
+    return out;
+  },
+
+  async raiox(conta, ids) {
+    // Shopee: visualizações e vendas totais desde a publicação (a API não dá por período) e a quantidade de fotos.
+    const out: Record<string, DadosRaioX> = {};
+    for (let i = 0; i < ids.length; i += 50) {
+      const lote = ids.slice(i, i + 50).join(",");
+      const [extra, base] = await Promise.all([
+        shopCall<ShopeeBase & { response?: { item_list?: { item_id: number; views?: number; sale?: number }[] } }>(conta, "/api/v2/product/get_item_extra_info", {
+          query: { item_id_list: lote },
+        }).catch(() => null),
+        shopCall<ShopeeBase & { response?: { item_list?: { item_id: number; image?: { image_url_list?: string[] } }[] } }>(conta, "/api/v2/product/get_item_base_info", {
+          query: { item_id_list: lote },
+        }).catch(() => null),
+      ]);
+      for (const it of extra?.response?.item_list ?? []) out[String(it.item_id)] = { visitas: Number(it.views) || 0, periodo: "total", vendasTotal: Number(it.sale) || 0 };
+      for (const it of base?.response?.item_list ?? []) out[String(it.item_id)] = { ...out[String(it.item_id)], fotos: it.image?.image_url_list?.length };
     }
     return out;
   },

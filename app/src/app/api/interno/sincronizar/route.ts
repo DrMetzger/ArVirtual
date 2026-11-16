@@ -5,6 +5,7 @@ import { reenviarNotasPendentes } from "@/lib/marketplaces/enviar-nota";
 import { rotinaSentinela } from "@/lib/sentinela";
 import { rotinaGarimpo } from "@/lib/garimpo";
 import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
+import { rotinaRaioX } from "@/lib/raiox";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -37,5 +38,7 @@ export async function POST(req: Request) {
   void rotinaGarimpo().catch((e: Error) => console.warn(`[garimpo] ${e.message}`));
   // Quantos anúncios cada plataforma enxerga (contados lá, pela API), a cada 6 h.
   void rotinaContagemAnuncios().catch((e: Error) => console.warn(`[contagem-anuncios] ${e.message}`));
+  // Raio-X dos anúncios (visitas, vendas, qualidade) a cada 6 h.
+  void rotinaRaioX().catch((e: Error) => console.warn(`[raio-x] ${e.message}`));
   return Response.json(r);
 }

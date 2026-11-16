@@ -1,9 +1,10 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
-import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type DadosRaioX, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
-const API = "https://api.mercadolibre.com";
+// ML_API_URL só para testes locais (servidor falso).
+const API = process.env.ML_API_URL || "https://api.mercadolibre.com";
 
 async function credenciais() {
   const s = await getSettings(["mercadolivre.clientId", "mercadolivre.clientSecret"]);
@@ -90,8 +91,13 @@ async function detalhesItens(conta: ContaComToken, ids: string[]) {
   };
   const lista: AnuncioExterno[] = [];
   for (let i = 0; i < ids.length; i += 20) {
-    const q = new URLSearchParams({ ids: ids.slice(i, i + 20).join(","), attributes: "id,title,price,permalink,status,thumbnail,seller_custom_field,attributes" });
-    const r = await api<{ code: number; body: Item }[]>(`/items?${q}`, conta.accessToken);
+    const lote = ids.slice(i, i + 20).join(",");
+    const q = new URLSearchParams({ ids: lote, attributes: "id,title,price,permalink,status,thumbnail,seller_custom_field,attributes" });
+    // O ML às vezes recusa o "attributes" (403 ResourceDeprecated): pede o anúncio completo.
+    const r = await api<{ code: number; body: Item }[]>(`/items?${q}`, conta.accessToken).catch((e) => {
+      if (!recusado(e)) throw e;
+      return api<{ code: number; body: Item }[]>(`/items?${new URLSearchParams({ ids: lote })}`, conta.accessToken);
+    });
     for (const { code, body: it } of r) {
       if (code !== 200 || it.status === "closed") continue;
       lista.push({
@@ -360,6 +366,41 @@ export const mercadoLivre: MarketplaceAdapter = {
         if (code === 404 || body?.status === "closed" || body?.status === "inactive") out[id] = "encerrado";
         else if (code === 200) out[id] = body.status === "paused" ? "pausado" : "publicado";
       });
+    }
+    return out;
+  },
+
+  async raiox(conta, ids) {
+    type Item = { id: string; pictures?: unknown[]; listing_type_id?: string; shipping?: { free_shipping?: boolean }; sold_quantity?: number };
+    type Regra = { status?: string; wordings?: { title?: string } };
+    type Perf = { score?: number; level?: string; buckets?: { variables?: { status?: string; rules?: Regra[] }[] }[] };
+    const NIVEL: Record<string, string> = { good: "bom", professional: "profissional", standard: "padrão", basic: "básico", bad: "ruim" };
+    const out: Record<string, DadosRaioX> = {};
+    for (const id of ids) {
+      const [item, visitas, perf] = await Promise.all([
+        api<Item>(`/items/${encodeURIComponent(id)}`, conta.accessToken).catch(() => null),
+        api<{ total_visits?: number }>(`/items/${encodeURIComponent(id)}/visits/time_window?last=30&unit=day`, conta.accessToken).catch(() => null),
+        api<Perf>(`/item/${encodeURIComponent(id)}/performance`, conta.accessToken).catch(() => null),
+      ]);
+      // Ações que o próprio ML pede para o anúncio subir de nível (as que ainda não foram cumpridas).
+      const acoes = [
+        ...new Set(
+          (perf?.buckets ?? [])
+            .flatMap((b) => b.variables ?? [])
+            .flatMap((v) => v.rules ?? [])
+            .filter((r) => r.status && r.status !== "COMPLETED" && r.wordings?.title)
+            .map((r) => r.wordings!.title!),
+        ),
+      ];
+      out[id] = {
+        visitas: visitas?.total_visits,
+        periodo: "30d",
+        vendasTotal: item?.sold_quantity,
+        fotos: item?.pictures?.length,
+        premium: item?.listing_type_id ? item.listing_type_id === "gold_pro" : undefined,
+        freteGratis: item?.shipping ? Boolean(item.shipping.free_shipping) : undefined,
+        qualidade: perf && typeof perf.score === "number" ? { nota: Math.round(perf.score), nivel: NIVEL[perf.level ?? ""] ?? perf.level ?? "", acoes } : undefined,
+      };
     }
     return out;
   },
