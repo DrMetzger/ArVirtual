@@ -19,5 +19,10 @@ jobs:
           echo "== log (filtrado, sem urls)"
           docker compose logs --since 4h app 2>&1 | grep -iE "trazer|import|gemini|warn|erro|error|timeout|abort" | sed -E 's#https?://[^ ]+#<url>#g' | cut -c1-220 | tail -60
           echo "== produtos criados nas últimas 4h"
-          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select count(*) from produtos where criado_em > now() - interval '4 hours'" </dev/null 2>&1 | tail -2
+          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select to_char(criado_em at time zone 'America/Sao_Paulo','HH24:MI:SS'), left(nome,50), sku, coalesce(array_length(imagens,1),0) from produtos where criado_em > now() - interval '5 hours' order by criado_em" </dev/null 2>&1 | tail -40
+          echo "== hora agora"; date -u
+          echo "== anuncios ligados recentes"
+          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select marketplace, count(*), to_char(max(criado_em) at time zone 'America/Sao_Paulo','HH24:MI') from anuncios where criado_em > now() - interval '5 hours' group by 1" </dev/null 2>&1
+          echo "== reinícios do app"
+          docker compose ps app --format '{{.Status}}' </dev/null
           REMOTO
