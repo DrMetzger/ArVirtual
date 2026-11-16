@@ -1,0 +1,40 @@
+name: Diagnóstico ML anúncios e qualidade (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-mlq.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Endpoints do ML
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module <<'JS'
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const [c] = await sql`select id_externo, access_token_enc from contas_marketplace where marketplace = 'mercadolivre' limit 1`;
+          const tk = dec(c.access_token_enc);
+          const g = async (p) => { const r = await fetch("https://api.mercadolibre.com" + p, { headers: { Authorization: `Bearer ${tk}` } }); const t = await r.text(); let j = null; try { j = JSON.parse(t); } catch {} return [r.status, j]; };
+          const resumo = (j) => JSON.stringify(j?.error ? { error: j.error, message: j.message } : j).slice(0, 700);
+          let [s, j] = await g(`/users/${c.id_externo}/items/search?search_type=scan&limit=50`); console.log("SCAN", s, j?.error ?? "", (j?.results ?? []).length);
+          [s, j] = await g(`/users/${c.id_externo}/items/search?limit=50&offset=0`); console.log("OFFSET", s, j?.error ?? "", (j?.results ?? []).length, "total", j?.paging?.total);
+          const ids = (j?.results ?? []).slice(0, 3);
+          [s, j] = await g(`/items?ids=${ids.join(",")}&attributes=id,title,status`); console.log("MULTI com attributes", s, Array.isArray(j) ? "ok " + j.length : resumo(j));
+          [s, j] = await g(`/items?ids=${ids.join(",")}`); console.log("MULTI sem attributes", s, Array.isArray(j) ? "ok " + j.map((x) => x.code).join(",") + " chaves " + Object.keys(j[0]?.body ?? {}).length : resumo(j));
+          [s, j] = await g(`/items/${ids[0]}`); console.log("ITEM unico", s, j?.error ?? "", "fotos", j?.pictures?.length, "titulo", (j?.title ?? "").length, "health", j?.health, "tags", JSON.stringify(j?.tags));
+          [s, j] = await g(`/item/${ids[0]}/performance`); console.log("PERFORMANCE", s, resumo(j));
+          [s, j] = await g(`/reputation/items/${ids[0]}/purchase_experience/integrators`); console.log("EXPERIENCIA", s, resumo(j));
+          [s, j] = await g(`/visits/items?ids=${ids.join(",")}`); console.log("VISITAS", s, resumo(j));
+          [s, j] = await g(`/items/${ids[0]}/visits/time_window?last=30&unit=day`); console.log("VISITAS 30d", s, j?.total_visits ?? resumo(j));
+          [s, j] = await g(`/sites/MLB/health_levels`); console.log("NIVEIS", s, resumo(j));
+          await sql.end();
+          JS
+          REMOTO
