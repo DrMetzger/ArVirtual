@@ -192,6 +192,8 @@ export type Impressora = typeof impressoras.$inferSelect;
 export type OrigemModelo3d = {
   fonte: "makerworld" | "printables" | "thingiverse" | "cults" | "arquivo";
   link: string;
+  /** "makerworld:22508": impede cadastrar o mesmo modelo duas vezes. */
+  chave?: string;
   autor: string;
   licenca: string;
   /** true = licença permite vender as impressões; false = não comercial; null = conferir. */

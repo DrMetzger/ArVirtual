@@ -12,6 +12,7 @@ import { anunciosPorPlataforma } from "@/lib/contagem-anuncios";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { Markdown } from "../assistente/markdown";
 import { PlanoAcoes } from "./plano";
+import { estadoCadastro } from "@/lib/cadastro-modelos";
 import { adicionarTermo, alternarTermo, coletarAgora, excluirTermo, relatorioAgora, trabalhoEmAndamento } from "./actions";
 import { AtualizarSozinho } from "./atualizar";
 import { ItemCard, type ItemSentinela } from "./item-card";
@@ -250,7 +251,7 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
           />
           {p.relatorio ? (
             <div className="grid gap-4 p-5">
-              <PlanoAcoes relatorioId={p.relatorio.id} plano={p.relatorio.plano ?? null} />
+              <PlanoAcoes relatorioId={p.relatorio.id} plano={p.relatorio.plano ?? null} andamento={estadoCadastro()} />
               <SecoesPlano texto={p.relatorio.texto} semFazer={Boolean(p.relatorio.plano?.length)} />
             </div>
           ) : (

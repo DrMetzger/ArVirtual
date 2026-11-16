@@ -1,5 +1,6 @@
 import "server-only";
 import { buscarModelos } from "@/lib/modelos3d";
+import { cadastrarVarios } from "@/lib/cadastro-modelos";
 import { maiorMedidaCm } from "@/lib/impressoras";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
@@ -464,6 +465,7 @@ Na última linha, escreva exatamente: NOVOS_TERMOS: termo1; termo2; ... (até 10
     .insert(sentinelaRelatorios)
     .values({ texto: corpo, plano: plano.length ? await comModelos(plano) : null })
     .returning();
+  if (r?.plano) await cadastrarSozinho(r.plano);
   return r!;
 }
 
@@ -514,7 +516,15 @@ export async function estruturarPlano(relatorioId: number) {
   if (!itens.length) throw new Error("A IA não conseguiu separar os itens do plano. Gere um plano novo.");
   const plano = await comModelos(itens);
   await db.update(sentinelaRelatorios).set({ plano }).where(eq(sentinelaRelatorios.id, relatorioId));
+  await cadastrarSozinho(plano);
   return plano;
+}
+
+/** Plano novo: os modelos que a licença deixa vender viram produto sozinhos (Configurações › Impressora 3D desliga). */
+async function cadastrarSozinho(plano: ItemPlano[]) {
+  if ((await getSetting("modelos3d.cadastrarSozinho")) === "nao") return;
+  const vendaveis = plano.flatMap((i) => i.modelos).filter((m) => m.comercial === true);
+  if (vendaveis.length) cadastrarVarios(vendaveis.map((m) => ({ link: m.link, titulo: m.titulo })), process.env.APP_URL ?? "");
 }
 
 /** Rotina automática: coleta a cada 4 horas; IA analisa o que subiu; relatório 1 vez por dia. */

@@ -10,37 +10,18 @@ import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { custoComposicao, type ParametrosImpressao } from "@/lib/impressao";
 import type { FilamentoModelo, Modelo3d, Perfil } from "@/lib/modelos3d";
 import { precosPorCanal, type ParametrosPreco } from "@/lib/precificacao";
+import { maisParecido, tempoPeloPeso } from "@/lib/cores-filamento";
 import { cn, formatBRL } from "@/lib/utils";
-import { cadastrarModelo, lerModelo } from "./actions";
+import { buscarNosSites, cadastrarModelo, lerModelo } from "./actions";
+import { BotaoCadastrarTudo, CartaoModelo, ProgressoCadastro } from "@/components/modelos-achados";
+import type { ModeloAchado } from "@/db/schema";
+import type { EstadoCadastro } from "@/lib/cadastro-modelos";
 
 type Filamento = { id: number; material: string; cor: string; marca: string; custoKg: number; saldoG: number; corHex: string };
 type Linha = { cor: string; tipo: string; filamentoId: number | null; gramas: number };
 
 const FONTES: Record<string, string> = { makerworld: "MakerWorld (Bambu)", printables: "Printables", thingiverse: "Thingiverse", cults: "Cults", arquivo: "Arquivo enviado" };
 const NOMES_CANAL: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee", magalu: "Magalu", loja: "Sincrolab (loja)" };
-
-function rgb(hex: string): [number, number, number] {
-  const h = hex.replace("#", "").slice(0, 6).padEnd(6, "0");
-  const c = (i: number) => parseInt(h.slice(i, i + 2), 16) || 0;
-  return [c(0), c(2), c(4)];
-}
-/** Filamento do estoque mais parecido com a cor (e o material) do modelo. */
-function maisParecido(f: FilamentoModelo, fils: Filamento[]) {
-  const [r, g, b] = rgb(f.cor);
-  const tipo = f.tipo.toUpperCase().split(/\s/)[0] ?? "PLA";
-  let melhor: Filamento | null = null;
-  let menor = Infinity;
-  for (const x of fils) {
-    const [r2, g2, b2] = rgb(x.corHex);
-    // Distância de cor com peso perceptivo + penalidade para material diferente.
-    const d = Math.sqrt(2 * (r - r2) ** 2 + 4 * (g - g2) ** 2 + 3 * (b - b2) ** 2) + (x.material.toUpperCase().startsWith(tipo) ? 0 : 400);
-    if (d < menor) {
-      menor = d;
-      melhor = x;
-    }
-  }
-  return melhor?.id ?? null;
-}
 
 function linhasDo(perfil: Perfil | null, modelo: Modelo3d, fils: Filamento[]): Linha[] {
   if (perfil?.filamentos.length) return perfil.filamentos.map((f) => ({ cor: f.cor, tipo: f.tipo, gramas: f.gramas, filamentoId: maisParecido(f, fils) }));
@@ -56,13 +37,20 @@ export function ImportarModelo({
   parametros,
   precos,
   linkInicial = "",
+  andamento = null,
 }: {
   impressoras: { id: number; nome: string; potenciaW: number }[];
   filamentos: Filamento[];
   parametros: ParametrosImpressao;
   precos: ParametrosPreco;
   linkInicial?: string;
+  andamento?: EstadoCadastro | null;
 }) {
+  const [termo, setTermo] = useState("");
+  const [achados, setAchados] = useState<ModeloAchado[] | null>(null);
+  const [erroBusca, setErroBusca] = useState<string | null>(null);
+  const [buscando, iniciarBusca] = useTransition();
+  const [vigiar, setVigiar] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   // Veio do Plano da IA com o link: já lê o modelo sozinho.
   useEffect(() => {
@@ -90,7 +78,7 @@ export function ImportarModelo({
     if (!m) return;
     setLinhas(linhasDo(perfil, m, filamentos));
     // Sem tempo informado: estimativa de ~4 min por grama (bico 0,4, camada 0,2), marcada na tela.
-    setTempoMin(perfil?.tempoMin || Math.round((perfil?.pesoG || m.pesoEstimadoG || 0) * 4));
+    setTempoMin(perfil?.tempoMin || tempoPeloPeso(perfil?.pesoG || m.pesoEstimadoG || 0));
   }, [m, perfil, filamentos]);
 
   const encaixes = m ? (leitura?.encaixes?.[perfilId ?? "base"] ?? []) : [];
@@ -117,6 +105,44 @@ export function ImportarModelo({
 
   return (
     <div className="grid gap-5">
+      <Card>
+        <CardHeader
+          title="Procurar nos sites"
+          description="Procura no MakerWorld (Bambu) e no Printables. Os que a licença deixa vender aparecem primeiro; o Cadastrar tudo cadastra todos eles de uma vez."
+        />
+        <form
+          className="flex gap-2 px-5"
+          onSubmit={(ev) => {
+            ev.preventDefault();
+            iniciarBusca(async () => {
+              setErroBusca(null);
+              const r = await buscarNosSites(termo);
+              setAchados(r.modelos ?? []);
+              if (r.erro) setErroBusca(r.erro);
+            });
+          }}
+        >
+          <Input value={termo} onChange={(ev) => setTermo(ev.target.value)} placeholder="Ex.: suporte controle ps5, dragao articulado, porta canetas" className="min-w-0 flex-1" aria-label="Procurar modelo" />
+          <Button type="submit" disabled={buscando}>
+            <Search /> {buscando ? "Procurando..." : "Procurar"}
+          </Button>
+        </form>
+        <div className="grid gap-3 p-5">
+          {erroBusca ? <p className="text-sm text-red">{erroBusca}</p> : null}
+          {achados?.length ? (
+            <>
+              <BotaoCadastrarTudo modelos={achados} aoIniciar={() => setVigiar((v) => v + 1)} />
+              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
+                {achados.map((x) => (
+                  <CartaoModelo key={x.link} m={x} />
+                ))}
+              </div>
+            </>
+          ) : null}
+          <ProgressoCadastro inicial={andamento} vigiar={vigiar} />
+        </div>
+      </Card>
+
       <Card>
         <div className="flex flex-wrap gap-1 border-b border-border p-2">
           {(
@@ -219,6 +245,15 @@ export function ImportarModelo({
                   <Alert tone="gold">Não identifiquei a licença: confira no site se o autor permite vender as impressões antes de anunciar.</Alert>
                 ) : m.licenca.includes("BY") ? (
                   <p className="text-xs text-muted">A licença pede crédito ao autor: o nome dele fica guardado no produto.</p>
+                ) : null}
+                {leitura?.jaCadastrado ? (
+                  <Alert tone="blue">
+                    Este modelo já está cadastrado:{" "}
+                    <a href={`/produtos/${leitura.jaCadastrado.id}`} className="font-semibold underline">
+                      {leitura.jaCadastrado.nome}
+                    </a>
+                    . Não vou criar outro igual.
+                  </Alert>
                 ) : null}
                 {m.avisos.map((a) => (
                   <p key={a} className="inline-flex items-start gap-1.5 text-xs text-muted">
@@ -339,7 +374,7 @@ export function ImportarModelo({
 
           <div className="grid gap-2">
             {msg ? <Alert>{msg}</Alert> : null}
-            <Button type="button" variant="gold" size="lg" disabled={salvando || (m.comercial === false && !licenca)} onClick={cadastrar} className="justify-self-start">
+            <Button type="button" variant="gold" size="lg" disabled={salvando || Boolean(leitura?.jaCadastrado) || (m.comercial === false && !licenca)} onClick={cadastrar} className="justify-self-start">
               <Sparkles /> {salvando ? "Cadastrando (fotos, descrição, NCM e categoria)..." : "Cadastrar produto no site"}
             </Button>
             <p className="text-xs text-muted">Depois, no produto, você escolhe em quais plataformas anunciar (os preços de cada uma já vão preenchidos).</p>
