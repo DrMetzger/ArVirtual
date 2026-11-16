@@ -10,14 +10,12 @@ import { situacaoPedido } from "./situacao";
 import { magalu } from "./magalu";
 import { mercadoLivre } from "./mercadolivre";
 import { shopee } from "./shopee";
-import { tiktok } from "./tiktok";
 import type { ContaComToken, EntregaPedido, MarketplaceAdapter } from "./types";
 
 export const ADAPTERS: Record<Marketplace, MarketplaceAdapter> = {
   mercadolivre: mercadoLivre,
   shopee,
   magalu,
-  tiktok,
 };
 
 export function adapter(id: string): MarketplaceAdapter {
