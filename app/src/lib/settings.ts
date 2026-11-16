@@ -90,6 +90,9 @@ export const SETTINGS = {
   "meta.anuncios.magalu": { label: "Magalu: anúncios ativos para a loja ganhar tração (o Magalu indicou 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.mercadolivre": { label: "Mercado Livre: anúncios ativos (sem número oficial; referência 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.shopee": { label: "Shopee: anúncios ativos (lojas que mais vendem: 40 a 50)", secret: false, group: "Metas da loja", placeholder: "40" },
+  "tiktok.appKey": { label: "App Key", secret: false, group: "TikTok Shop" },
+  "tiktok.appSecret": { label: "App Secret", secret: true, group: "TikTok Shop" },
+  "tiktok.serviceId": { label: "Service ID (página do app no Partner Center)", secret: false, group: "TikTok Shop" },
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
   "magalu.etiquetas": {

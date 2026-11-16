@@ -369,7 +369,7 @@ export const ufIcms = pgTable("uf_icms", {
 
 // ---------- Marketplaces ----------
 // Ordem fixa usada em gráficos e listas.
-export const MARKETPLACES = ["mercadolivre", "magalu", "shopee"] as const;
+export const MARKETPLACES = ["mercadolivre", "magalu", "shopee", "tiktok"] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
 /** Canais de venda dos pedidos: os marketplaces e a loja própria (Sincrolab, pedido manual). */
 export const CANAIS_VENDA = [...MARKETPLACES, "loja"] as const;
