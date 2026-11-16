@@ -68,6 +68,8 @@ const ROTULOS: Record<string, string> = {
   automatico: "Automático (grátis a partir do limite)",
   sempre: "Sempre grátis",
   nunca: "Nunca (comprador paga)",
+  cpf: "Pessoa física (CPF)",
+  cnpj: "Empresa (CNPJ)",
 };
 
 // ---------- Empresa ----------

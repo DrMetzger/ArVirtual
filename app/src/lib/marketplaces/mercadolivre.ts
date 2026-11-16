@@ -170,6 +170,24 @@ export const mercadoLivre: MarketplaceAdapter = {
     );
   },
 
+  async tarifa(conta, termo) {
+    const [sug] = await api<{ category_id: string; category_name?: string }[]>(
+      `/sites/MLB/domain_discovery/search?limit=1&q=${encodeURIComponent(termo)}`,
+      conta.accessToken,
+    );
+    if (!sug?.category_id) return null;
+    // Preço de R$ 100: acima da faixa de custo fixo, sobra só a porcentagem da categoria.
+    const precos = await api<{ listing_type_id: string; sale_fee_details?: { percentage_fee?: number } }[]>(
+      `/sites/MLB/listing_prices?price=100&category_id=${sug.category_id}`,
+      conta.accessToken,
+    );
+    const pct = (tipo: string) => Number(precos.find((p) => p.listing_type_id === tipo)?.sale_fee_details?.percentage_fee ?? 0);
+    const cat = await api<{ name?: string; path_from_root?: { name: string }[] }>(`/categories/${sug.category_id}`, conta.accessToken).catch(() => null);
+    const caminho = cat?.path_from_root?.map((c) => c.name).slice(-2).join(" > ") || cat?.name || sug.category_name || sug.category_id;
+    if (!pct("gold_special") && !pct("gold_pro")) return null;
+    return { categoriaId: sug.category_id, categoria: caminho, classico: pct("gold_special"), premium: pct("gold_pro") };
+  },
+
   async publicar(conta, produto, anuncio) {
     let categoria = anuncio.categoria;
     if (!categoria) {

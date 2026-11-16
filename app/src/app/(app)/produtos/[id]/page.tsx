@@ -18,6 +18,7 @@ import { Anunciar } from "../anunciar";
 import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
 import { listaCategorias } from "@/lib/categorias";
+import { ajustesPorCategoria } from "@/lib/taxas";
 
 export default async function ProdutoPage({
   params,
@@ -98,7 +99,7 @@ export default async function ProdutoPage({
         ) : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}
         <ProdutoForm
-          categorias={await listaCategorias()}
+          categorias={await listaCategorias()} ajustes={await ajustesPorCategoria()}
           key={[...produto.imagens, ...produto.videos, ...variacoes.map((v) => `${v.id}${v.estoque}`)].join("|")}
           variacoes={variacoes.map((v) => ({
             id: v.id, sku: v.sku, cor: v.cor, material: v.material, filamentoId: v.filamentoId, preco: v.preco, gtin: v.gtin, estoque: v.estoque, ativo: v.ativo,

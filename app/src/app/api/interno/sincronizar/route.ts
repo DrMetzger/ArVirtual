@@ -6,6 +6,7 @@ import { rotinaSentinela } from "@/lib/sentinela";
 import { rotinaGarimpo } from "@/lib/garimpo";
 import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
 import { rotinaRaioX } from "@/lib/raiox";
+import { rotinaTaxas } from "@/lib/taxas";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -40,5 +41,6 @@ export async function POST(req: Request) {
   void rotinaContagemAnuncios().catch((e: Error) => console.warn(`[contagem-anuncios] ${e.message}`));
   // Raio-X dos anúncios (visitas, vendas, qualidade) a cada 6 h.
   void rotinaRaioX().catch((e: Error) => console.warn(`[raio-x] ${e.message}`));
+  void rotinaTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
   return Response.json(r);
 }

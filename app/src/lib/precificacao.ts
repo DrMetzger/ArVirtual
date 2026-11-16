@@ -9,7 +9,13 @@ import { round2 } from "./utils";
 export type Faixa = { ate: number; comissao: number; fixa: number }; // ate = Infinity na última faixa
 export type CanalPreco = "mercadolivre" | "shopee" | "magalu" | "loja";
 /** freteAcima: o frete pago pelo vendedor só entra quando a venda chega nesse valor (0 = sempre). */
-export type TaxasCanal = { faixas: Faixa[]; campanha: number; frete: number; freteAcima?: number };
+/**
+ * fixaMaxPct: a taxa fixa nunca passa desse % do preço (Shopee: abaixo de R$ 9 a taxa é metade do preço).
+ * adicional: R$ por item somado à taxa fixa (Shopee CPF com mais de 450 pedidos em 90 dias: R$ 3).
+ */
+export type TaxasCanal = { faixas: Faixa[]; campanha: number; frete: number; freteAcima?: number; fixaMaxPct?: number; adicional?: number };
+/** Taxa da categoria do produto em cada plataforma (troca a comissão e, se informada, a taxa fixa das faixas). */
+export type AjusteCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu", { comissao: number; fixa?: number; categoria?: string }>>;
 export type ParametrosPreco = {
   imposto: number; // % sobre a venda (Simples Nacional)
   embalagem: number; // R$ por pedido
@@ -39,10 +45,32 @@ export const FAIXAS_PREMIUM_ML = "78.99:19%+6.5; *:19%";
 export const FAIXAS_PADRAO: Record<Exclude<CanalPreco, "loja">, string> = {
   // Clássico: comissão média; abaixo de R$ 79 há custo fixo por unidade. Confira na central do vendedor.
   mercadolivre: "78.99:14%+6.5; *:14%",
-  // Tabela da Shopee desde 01/10/2026.
+  // Política de comissão da Shopee (18/09/2026); a comissão já inclui a taxa de transação.
   shopee: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26",
-  magalu: "*:16%+5",
+  // Contrato do Magalu: 18% na maioria das categorias + R$ 5 por item a partir de R$ 10.
+  magalu: "9.99:18%; *:18%+5",
 };
+
+/** Aplica a taxa da categoria do produto: comissão da categoria em todas as faixas; taxa fixa onde a faixa cobra. */
+export function comCategoria(p: ParametrosPreco, ajuste?: AjusteCategoria | null): ParametrosPreco {
+  if (!ajuste) return p;
+  const canais = { ...p.canais };
+  for (const [canal, a] of Object.entries(ajuste) as [keyof AjusteCategoria, NonNullable<AjusteCategoria[keyof AjusteCategoria]>][]) {
+    if (!a || !canais[canal]) continue;
+    // Shopee cobra por faixa de preço (comissão diferente em cada faixa): ali a categoria não muda nada.
+    if (canal === "shopee") continue;
+    canais[canal] = {
+      ...canais[canal],
+      faixas: canais[canal].faixas.map((f) => ({ ...f, comissao: a.comissao, fixa: a.fixa !== undefined && f.fixa > 0 ? a.fixa : f.fixa })),
+    };
+  }
+  return { ...p, canais };
+}
+
+/** Taxa fixa efetiva de uma faixa num preço de venda (limite em % do preço e adicional por item). */
+function fixaEm(f: Faixa, t: TaxasCanal, venda: number) {
+  return Math.min(f.fixa, t.fixaMaxPct ? (venda * t.fixaMaxPct) / 100 : Infinity) + (t.adicional ?? 0);
+}
 
 export type ResultadoCanal = {
   canal: CanalPreco;
@@ -63,7 +91,7 @@ export function liquido(preco: number, custo: number, t: TaxasCanal, p: Parametr
   const venda = preco * (1 - t.campanha / 100);
   const f = faixaDe(t.faixas, venda);
   const frete = venda >= (t.freteAcima ?? 0) ? t.frete : 0;
-  const taxas = venda * (f.comissao / 100) + f.fixa + frete;
+  const taxas = venda * (f.comissao / 100) + fixaEm(f, t, venda) + frete;
   const imposto = venda * (p.imposto / 100);
   const recebe = venda - taxas - imposto - p.embalagem;
   const lucro = recebe - custo;
@@ -78,8 +106,9 @@ function precoPara(alvo: number, t: TaxasCanal, p: ParametrosPreco) {
     const fator = 1 - f.comissao / 100 - p.imposto / 100;
     if (fator > 0) {
       // Sem frete grátis abaixo do limite: tenta primeiro sem o frete; se o preço passar do limite, inclui.
-      const semFrete = (alvo + f.fixa + p.embalagem) / fator;
-      const venda = t.frete && semFrete < (t.freteAcima ?? 0) ? semFrete : (alvo + f.fixa + t.frete + p.embalagem) / fator;
+      const fixa = f.fixa + (t.adicional ?? 0);
+      const semFrete = (alvo + fixa + p.embalagem) / fator;
+      const venda = t.frete && semFrete < (t.freteAcima ?? 0) ? semFrete : (alvo + fixa + t.frete + p.embalagem) / fator;
       if (venda > anterior && venda <= f.ate) return round2(venda / (1 - t.campanha / 100));
       // Caiu abaixo da faixa (a taxa fixa da faixa anterior era maior): o início desta faixa já serve.
       if (venda <= anterior && liquido((anterior + 0.01) / (1 - t.campanha / 100), 0, t, p).recebe >= alvo) {

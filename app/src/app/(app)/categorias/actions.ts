@@ -6,6 +6,7 @@ import { db } from "@/db";
 import { categorias } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { categorizarSemCategoria } from "@/lib/categorias";
+import { rotinaTaxas } from "@/lib/taxas";
 
 const atualizar = () => {
   revalidatePath("/categorias");
@@ -18,6 +19,8 @@ export async function criarCategoria(form: FormData) {
   if (!nome) return;
   const [m] = await db.select({ m: sql<number>`coalesce(max(${categorias.ordem}), 0)::int` }).from(categorias);
   await db.insert(categorias).values({ nome, ordem: (m?.m ?? 0) + 1 }).onConflictDoNothing();
+  // Categoria nova já ganha a taxa de cada plataforma (contrato + API do ML), sem esperar a rotina.
+  void rotinaTaxas().catch(() => undefined);
   atualizar();
 }
 

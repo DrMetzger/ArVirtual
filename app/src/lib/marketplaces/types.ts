@@ -209,6 +209,8 @@ export interface MarketplaceAdapter {
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */
   porSku?(conta: ContaComToken, skus: string[]): Promise<AnuncioExterno[]>;
+  /** Comissão da categoria da plataforma para um produto (termo de busca) — Mercado Livre: domain_discovery + listing_prices. */
+  tarifa?(conta: ContaComToken, termo: string): Promise<TarifaCategoria | null>;
   /**
    * Troca, num anúncio que já existe, só o que vier em `mudancas`. Cada campo vai separado: o que a plataforma
    * recusar volta como falha (com o motivo) e não impede os outros.
@@ -244,3 +246,5 @@ export async function lerResposta<T>(res: Response, origem: string): Promise<T> 
   }
   return body as T;
 }
+
+export type TarifaCategoria = { categoriaId: string; categoria: string; classico: number; premium: number };
