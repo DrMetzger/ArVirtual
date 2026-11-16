@@ -26,7 +26,7 @@ export async function atualizarRaioX() {
   redirect("/marketplaces/raio-x");
 }
 
-const NOMES: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee", magalu: "Magalu" };
+const NOMES: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee", magalu: "Magalu", tiktok: "TikTok Shop" };
 
 /** Plano da IA para um anúncio: título novo, ordem das ações e o porquê, com os números do raio-x. */
 export async function planoIaAnuncio(contaId: number, idExterno: string, voltar: string) {

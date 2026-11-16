@@ -325,7 +325,7 @@ export const tiktok: MarketplaceAdapter = {
 /** Cadastra no TikTok o endereço que recebe os avisos de pedido (pedido novo e cada mudança de situação). */
 export async function registrarAvisos(conta: ContaComToken) {
   const base = process.env.APP_URL;
-  if (!base?.startsWith("https://")) return;
+  if (!base) return;
   await chamar(conta, "/event/202309/webhooks", {
     method: "PUT",
     body: { address: `${base}/api/marketplaces/tiktok/notificacoes`, event_type: "ORDER_STATUS_CHANGE" },
