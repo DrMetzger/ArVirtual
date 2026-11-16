@@ -89,7 +89,7 @@ function ItemCard({ item, indice, relatorioId, aoIniciar }: { item: ItemPlano; i
             ))}
           </div>
         ) : (
-          <p className="text-sm text-muted">Nenhum modelo encontrado com &quot;{item.busca}&quot;. Tente outro termo abaixo (em inglês acha mais).</p>
+          <p className="text-sm text-muted">Nenhum modelo encontrado com &quot;{item.busca}&quot;. Tente outras palavras abaixo.</p>
         )}
         <form
           className="flex gap-2"
