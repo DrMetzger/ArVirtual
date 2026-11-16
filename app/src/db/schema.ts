@@ -191,7 +191,7 @@ export type TaxaCategoria = {
   /** "contrato", "api" ou "manual" (manual não é sobrescrito pela automação). */
   origem: "contrato" | "api" | "manual";
 };
-export type TaxasDaCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu", TaxaCategoria>>;
+export type TaxasDaCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu" | "tiktok", TaxaCategoria>>;
 
 /** Contrato/tabela de taxas de cada plataforma, destrinchado pela IA. */
 export type ContratoExtraido = {
@@ -254,7 +254,7 @@ export const produtos = pgTable(
     /** Atributos da variação, ex.: { Cor: "Preto", Material: "PLA" }. */
     atributos: jsonb("atributos").$type<Record<string, string>>().notNull().default({}),
     /** Preço de venda por canal (vazio = usa o preço de venda). */
-    precosCanal: jsonb("precos_canal").$type<Partial<Record<"mercadolivre" | "shopee" | "magalu" | "loja", number>>>().notNull().default({}),
+    precosCanal: jsonb("precos_canal").$type<Partial<Record<"mercadolivre" | "shopee" | "magalu" | "tiktok" | "loja", number>>>().notNull().default({}),
     ativo: boolean("ativo").notNull().default(true),
     ...timestamps,
   },
@@ -369,7 +369,7 @@ export const ufIcms = pgTable("uf_icms", {
 
 // ---------- Marketplaces ----------
 // Ordem fixa usada em gráficos e listas.
-export const MARKETPLACES = ["mercadolivre", "magalu", "shopee"] as const;
+export const MARKETPLACES = ["mercadolivre", "magalu", "shopee", "tiktok"] as const;
 export type Marketplace = (typeof MARKETPLACES)[number];
 /** Canais de venda dos pedidos: os marketplaces e a loja própria (Sincrolab, pedido manual). */
 export const CANAIS_VENDA = [...MARKETPLACES, "loja"] as const;

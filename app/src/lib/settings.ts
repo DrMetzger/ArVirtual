@@ -89,7 +89,11 @@ export const SETTINGS = {
 
   "meta.anuncios.magalu": { label: "Magalu: anúncios ativos para a loja ganhar tração (o Magalu indicou 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.mercadolivre": { label: "Mercado Livre: anúncios ativos (sem número oficial; referência 30)", secret: false, group: "Metas da loja", placeholder: "30" },
+  "meta.anuncios.tiktok": { label: "TikTok Shop: anúncios ativos (referência 30)", secret: false, group: "Metas da loja", placeholder: "30" },
   "meta.anuncios.shopee": { label: "Shopee: anúncios ativos (lojas que mais vendem: 40 a 50)", secret: false, group: "Metas da loja", placeholder: "40" },
+  "tiktok.appKey": { label: "App Key", secret: false, group: "TikTok Shop" },
+  "tiktok.appSecret": { label: "App Secret", secret: true, group: "TikTok Shop" },
+  "tiktok.serviceId": { label: "Service ID (página do app no Partner Center)", secret: false, group: "TikTok Shop" },
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
   "magalu.etiquetas": {
@@ -125,6 +129,10 @@ export const SETTINGS = {
   "magalu.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Magalu", placeholder: "10" },
   "magalu.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Magalu", placeholder: "0" },
   "magalu.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: Magalu", placeholder: "30" },
+  "tiktok.faixas": { label: "Comissão e taxa fixa por faixa de preço (vazio = tabela oficial)", secret: false, group: "Precificação: TikTok Shop", placeholder: "49.99:10%+4; *:6%+6" },
+  "tiktok.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: TikTok Shop", placeholder: "0" },
+  "tiktok.frete": { label: "Frete pago pelo vendedor (R$) — programa de frete grátis: 6% do preço, até R$ 50", secret: false, group: "Precificação: TikTok Shop", placeholder: "0" },
+  "tiktok.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: TikTok Shop", placeholder: "15" },
   "loja.faixas": { label: "Taxas da loja própria (cartão/gateway) por faixa", secret: false, group: "Precificação: loja própria (Sincrolab)", placeholder: "*:0%" },
   "loja.frete": { label: "Frete pago pela loja (R$)", secret: false, group: "Precificação: loja própria (Sincrolab)", placeholder: "0" },
 } as const satisfies Record<
@@ -201,6 +209,7 @@ export async function getParametrosPreco(): Promise<ParametrosPreco> {
     "mercadolivre.campanha", "mercadolivre.frete",
     "shopee.faixas", "shopee.campanha", "shopee.frete", "shopee.tipoVendedor", "shopee.adicionalCpf",
     "magalu.faixas", "magalu.campanha", "magalu.frete",
+    "tiktok.faixas", "tiktok.campanha", "tiktok.frete",
     "loja.faixas", "loja.frete",
   ] as const satisfies readonly SettingKey[];
   const s = await getSettings([...chaves]);
@@ -240,6 +249,7 @@ export async function getParametrosPreco(): Promise<ParametrosPreco> {
         adicional: s["shopee.tipoVendedor"] !== "cnpj" && (await pedidosShopee90d()) > 450 ? num(s["shopee.adicionalCpf"], 3) : 0,
       },
       magalu: { faixas: faixas(s["magalu.faixas"], FAIXAS_PADRAO.magalu), campanha: num(s["magalu.campanha"], 10), frete: num(s["magalu.frete"], 0) },
+      tiktok: { faixas: faixas(s["tiktok.faixas"], FAIXAS_PADRAO.tiktok), campanha: num(s["tiktok.campanha"], 0), frete: num(s["tiktok.frete"], 0) },
       loja: { faixas: faixas(s["loja.faixas"], "*:0%"), campanha: 0, frete: num(s["loja.frete"], 0) },
     },
   };

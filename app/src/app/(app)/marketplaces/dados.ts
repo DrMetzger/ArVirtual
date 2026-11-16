@@ -1,7 +1,7 @@
 import "server-only";
 import { and, desc, eq, gte, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { anuncios, contasMarketplace, pedidosMarketplace, produtos, type Marketplace } from "@/db/schema";
+import { anuncios, contasMarketplace, MARKETPLACES, pedidosMarketplace, produtos, type Marketplace } from "@/db/schema";
 import { statusDaSituacao } from "@/lib/marketplaces/situacao";
 
 export type Resumo = { marketplace: Marketplace; pedidos: number; vendido: number; taxas: number; frete: number; abertos: number; visitas: number; curtidas: number };
@@ -31,7 +31,7 @@ export async function resumoMarketplaces(): Promise<Resumo[]> {
       .where(eq(anuncios.status, "publicado"))
       .groupBy(anuncios.marketplace),
   ]);
-  return (["mercadolivre", "shopee", "magalu"] as Marketplace[]).map((m) => {
+  return ([...MARKETPLACES] as Marketplace[]).map((m) => {
     const v = vendas.find((x) => x.marketplace === m);
     const a = vistas.find((x) => x.marketplace === m);
     return { marketplace: m, pedidos: v?.pedidos ?? 0, vendido: v?.vendido ?? 0, taxas: v?.taxas ?? 0, frete: v?.frete ?? 0, abertos: v?.abertos ?? 0, visitas: a?.visitas ?? 0, curtidas: a?.curtidas ?? 0 };

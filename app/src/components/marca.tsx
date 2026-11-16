@@ -9,6 +9,7 @@ export const CANAIS: Record<Canal, { nome: string; logo: string; logoEscuro?: st
   // A sacola da Shopee ocupa o quadrado inteiro: um pouco menor para ficar do tamanho dos outros ícones.
   shopee: { nome: "Shopee", logo: "/marcas/shopee.png", icone: "/marcas/shopee-icone.png", iconeMenor: true },
   magalu: { nome: "Magalu", logo: "/marcas/magalu.png", icone: "/marcas/magalu-icone.png" },
+  tiktok: { nome: "TikTok Shop", logo: "/marcas/tiktok.png", icone: "/marcas/tiktok-icone.png" },
   // O logo original tem o texto branco: no tema claro usa a versão com texto azul-marinho.
   loja: { nome: "Sincrolab", logo: "/marcas/sincrolab.png", logoClaro: "/marcas/sincrolab-claro.png", icone: "/marcas/sincrolab-icone.png" },
 };

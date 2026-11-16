@@ -25,12 +25,8 @@ import { UPLOAD_DIR } from "@/lib/uploads";
 // - Shopee: tabela por faixa de preço, igual para todas as categorias.
 // Tudo automático; o que for escolhido à mão (origem "manual") nunca é sobrescrito.
 
-export type MarketplaceTaxa = "mercadolivre" | "shopee" | "magalu";
-export const PLATAFORMAS_TAXA: MarketplaceTaxa[] = [
-  "magalu",
-  "mercadolivre",
-  "shopee",
-];
+export type MarketplaceTaxa = "mercadolivre" | "shopee" | "magalu" | "tiktok";
+export const PLATAFORMAS_TAXA: MarketplaceTaxa[] = ["magalu", "mercadolivre", "shopee", "tiktok"];
 /** Contratos ficam fora da pasta pública de uploads (têm dados da empresa). */
 const PASTA_CONTRATOS = `${UPLOAD_DIR}/contratos`;
 

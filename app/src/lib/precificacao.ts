@@ -7,7 +7,7 @@ import { round2 } from "./utils";
 // de embalagem (R$). O preço sugerido é o que, depois de tudo isso, deixa o lucro desejado sobre o custo.
 
 export type Faixa = { ate: number; comissao: number; fixa: number }; // ate = Infinity na última faixa
-export type CanalPreco = "mercadolivre" | "shopee" | "magalu" | "loja";
+export type CanalPreco = "mercadolivre" | "shopee" | "magalu" | "tiktok" | "loja";
 /** freteAcima: o frete pago pelo vendedor só entra quando a venda chega nesse valor (0 = sempre). */
 /**
  * fixaMaxPct: a taxa fixa nunca passa desse % do preço (Shopee: abaixo de R$ 9 a taxa é metade do preço).
@@ -15,7 +15,7 @@ export type CanalPreco = "mercadolivre" | "shopee" | "magalu" | "loja";
  */
 export type TaxasCanal = { faixas: Faixa[]; campanha: number; frete: number; freteAcima?: number; fixaMaxPct?: number; adicional?: number };
 /** Taxa da categoria do produto em cada plataforma (troca a comissão e, se informada, a taxa fixa das faixas). */
-export type AjusteCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu", { comissao: number; fixa?: number; categoria?: string }>>;
+export type AjusteCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu" | "tiktok", { comissao: number; fixa?: number; categoria?: string }>>;
 export type ParametrosPreco = {
   imposto: number; // % sobre a venda (Simples Nacional)
   embalagem: number; // R$ por pedido
@@ -49,6 +49,8 @@ export const FAIXAS_PADRAO: Record<Exclude<CanalPreco, "loja">, string> = {
   shopee: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26",
   // Contrato do Magalu: 18% na maioria das categorias + R$ 5 por item a partir de R$ 10.
   magalu: "9.99:18%; *:18%+5",
+  // TikTok Shop Brasil (desde 15/07/2026): abaixo de R$ 50, 10% + R$ 4 por item; a partir de R$ 50, 6% + R$ 6.
+  tiktok: "49.99:10%+4; *:6%+6",
 };
 
 /** Aplica a taxa da categoria do produto: comissão da categoria em todas as faixas; taxa fixa onde a faixa cobra. */

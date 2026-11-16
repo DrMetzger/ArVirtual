@@ -557,7 +557,7 @@ function PrecosPlataforma({
   padrao: number;
   className?: string;
 }) {
-  const itens = (["mercadolivre", "shopee", "magalu"] as const).filter(
+  const itens = (["mercadolivre", "shopee", "magalu", "tiktok"] as const).filter(
     (c) => precos[c] && precos[c] !== padrao,
   );
   if (!itens.length) return null;
