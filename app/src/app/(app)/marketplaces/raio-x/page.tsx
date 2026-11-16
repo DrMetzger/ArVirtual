@@ -56,7 +56,7 @@ function Anuncio({ l, voltar }: { l: LinhaRaioX; voltar: string }) {
         <p>
           <span className="text-muted">Vendas</span>
           <br />
-          <b>{l.periodo === "total" ? num(l.vendasTotal ?? 0) : num(l.vendas30)}</b>{" "}
+          <b>{l.periodo === "total" ? num(Math.max(l.vendasTotal ?? 0, l.vendas30)) : num(l.vendas30)}</b>{" "}
           <span className="text-muted">{l.periodo === "total" ? "total" : "30 dias"}</span>
         </p>
         <p>
