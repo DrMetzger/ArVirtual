@@ -1,0 +1,22 @@
+name: Diagnóstico trazer anúncios (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-trazer.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: O que o trazer está fazendo
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          echo "== processos de conversão no app"
+          docker compose exec -T app sh -c 'ps -eo pid,etime,args | grep -E "yt-dlp|ffmpeg|node" | grep -v grep | cut -c1-90'
+          echo "== log (filtrado, sem urls)"
+          docker compose logs --since 4h app 2>&1 | grep -iE "trazer|import|gemini|warn|erro|error|timeout|abort" | sed -E 's#https?://[^ ]+#<url>#g' | cut -c1-220 | tail -60
+          echo "== produtos criados nas últimas 4h"
+          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select count(*) from produtos where criado_em > now() - interval '4 hours'" 2>&1 | tail -2
+          REMOTO
