@@ -4,6 +4,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import sharp from "sharp";
 import type { ModeloAchado, OrigemModelo3d } from "@/db/schema";
 import { ler3mf, lerZip, malhaStl, medidasMalha, pesoEstimadoPla, type Malha } from "@/lib/assistente/arquivos";
+import { gerarComGemini } from "@/lib/gemini";
 import { getSettings } from "@/lib/settings";
 import { UPLOAD_DIR } from "@/lib/uploads";
 
@@ -62,8 +63,27 @@ export function licencaComercial(licenca: string): boolean | null {
   const l = licenca.toUpperCase();
   if (!l.trim()) return null;
   if (/\bNC\b|NON-?COMMERCIAL|NÃO COMERCIAL|NAO COMERCIAL|STANDARD DIGITAL FILE|SDFL|PERSONAL USE|USO PESSOAL|PRIVATE USE/.test(l)) return false;
-  if (/CC0|PUBLIC DOMAIN|DOM[IÍ]NIO P[UÚ]BLICO|\bBY\b|ATTRIBUTION|GPL|LGPL|\bMIT\b|\bBSD\b|COMMERCIAL USE|USO COMERCIAL/.test(l)) return true;
+  if (/CC0|PUBLIC DOMAIN|DOM[IÍ]NIO P[UÚ]BLICO|\bBY\b|ATTRIBUTION|GPL|LGPL|\bMIT\b|\bBSD\b|COMMERCIAL USE|USO COMERCIAL|PODE VENDER/.test(l)) return true;
   return null;
+}
+
+/** Licença com nome e explicação em português (CC0, CC BY-NC, licença padrão do site...). */
+export function licencaPt(texto: string): string {
+  const t = texto.toUpperCase();
+  if (!t.trim()) return "";
+  if (/CC0|PUBLIC DOMAIN|DOM[IÍ]NIO P[UÚ]BLICO/.test(t)) return "CC0 (domínio público: pode vender)";
+  if (/STANDARD DIGITAL FILE|SDFL/.test(t)) return "Licença padrão do site (só uso pessoal)";
+  if (/\bGPL|LGPL/.test(t)) return "GPL (pode vender)";
+  if (/\bMIT\b|\bBSD\b/.test(t)) return "Licença livre (pode vender)";
+  if (/\bBY\b|ATTRIBUTION|CREATIVE COMMONS|\bCC\b/.test(t)) {
+    const partes = ["BY"];
+    if (/\bNC\b|NON-?COMMERCIAL/.test(t)) partes.push("NC");
+    if (/\bND\b|NO ?DERIV/.test(t)) partes.push("ND");
+    if (/\bSA\b|SHARE ?ALIKE/.test(t)) partes.push("SA");
+    const codigo = `CC ${partes.join("-")}`;
+    return partes.includes("NC") ? `${codigo} (não comercial)` : partes.includes("ND") ? `${codigo} (pode vender sem modificar, dando crédito)` : `${codigo} (pode vender, dando crédito)`;
+  }
+  return texto;
 }
 
 export function fonteDoLink(link: string): { fonte: Exclude<Fonte, "arquivo">; id: string; perfil?: string } | null {
@@ -184,7 +204,7 @@ async function makerWorld(id: string, link: string): Promise<Modelo3d> {
     autor: d.designCreator?.name ?? "",
     descricao: textoDeHtml(d.summary ?? ""),
     fotos: [...new Set(fotos)].slice(0, 10),
-    licenca: LICENCAS_MW[lic] ?? lic,
+    licenca: licencaPt(LICENCAS_MW[lic] ?? lic),
     comercial: licencaComercial(LICENCAS_MW[lic] ?? lic),
     perfis,
     medidasMm: null,
@@ -222,7 +242,7 @@ async function printables(id: string, link: string): Promise<Modelo3d> {
     if (url) arquivos.push({ url, nome: s.name, tamanho: s.fileSize });
   }
   const med = await medirVarios(arquivos);
-  const lic = [p.license?.abbreviation, p.license?.name].filter(Boolean).join(" · ");
+  const lic = licencaPt([p.license?.abbreviation, p.license?.name].filter(Boolean).join(" "));
   return {
     fonte: "printables",
     link,
@@ -264,7 +284,7 @@ async function thingiverse(id: string, link: string): Promise<Modelo3d> {
     autor: t.creator?.name ?? "",
     descricao: textoDeHtml(t.description_html || t.description || ""),
     fotos: fotos.slice(0, 10),
-    licenca: t.license ?? "",
+    licenca: licencaPt(t.license ?? ""),
     comercial: licencaComercial(t.license ?? ""),
     perfis: [],
     medidasMm: med.medidasMm,
@@ -297,7 +317,7 @@ async function cults(slug: string, link: string): Promise<Modelo3d> {
   );
   const c = r.data?.creation;
   if (!c) throw new Error(r.errors?.[0]?.message ? `Cults: ${r.errors[0].message}` : "Modelo não encontrado no Cults.");
-  const lic = [c.license?.code, c.license?.name].filter(Boolean).join(" · ");
+  const lic = licencaPt([c.license?.code, c.license?.name].filter(Boolean).join(" "));
   return {
     fonte: "cults",
     link,
@@ -367,9 +387,7 @@ export async function lerModeloDoArquivo(nome: string, buf: Buffer, origin: stri
 
 // ------------------------------------------------------------------------------------------------ Busca
 /** Procura modelos no MakerWorld e no Printables (20 em cada); os que a licença deixa vender vêm primeiro, depois os mais baixados. */
-export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAchado[]> {
-  const q = termo.trim().slice(0, 80);
-  if (!q) return [];
+async function buscarTermo(q: string): Promise<ModeloAchado[]> {
   const mw = json<{ hits?: { id: number; title: string; slug?: string; cover?: string; license?: string; downloadCount?: number; likeCount?: number; designCreator?: { name?: string } }[] }>(
     `https://makerworld.com/api/v1/search-service/select/design2?keyword=${encodeURIComponent(q)}&limit=20&offset=0`,
     {},
@@ -377,7 +395,7 @@ export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAc
   )
     .then((r) =>
       (r.hits ?? []).map((h): ModeloAchado => {
-        const lic = LICENCAS_MW[h.license ?? ""] ?? h.license ?? "";
+        const lic = licencaPt(LICENCAS_MW[h.license ?? ""] ?? h.license ?? "");
         return {
           fonte: "makerworld",
           titulo: h.title,
@@ -406,7 +424,7 @@ export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAc
   )
     .then((r) =>
       (r.data?.searchPrints2?.items ?? []).map((i): ModeloAchado => {
-        const lic = [i.license?.abbreviation, i.license?.name].filter(Boolean).join(" · ");
+        const lic = licencaPt([i.license?.abbreviation, i.license?.name].filter(Boolean).join(" "));
         return {
           fonte: "printables",
           titulo: i.name,
@@ -421,7 +439,72 @@ export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAc
       }),
     )
     .catch(() => [] as ModeloAchado[]);
-  const todos = [...(await mw), ...(await pr)];
+  return [...(await mw), ...(await pr)];
+}
+
+// ------------------------------------------------------------------------------------------------ Português
+// Os sites são em inglês e o MakerWorld chega a bloquear pesquisas em português vindas do servidor:
+// a pesquisa vai traduzida para o inglês por dentro e os títulos voltam traduzidos para o português.
+const traducoes = new Map<string, string>();
+
+/** Traduz textos curtos (títulos, termos) de/para o português com a IA; o que falhar fica como estava. */
+async function traduzir(textos: string[], para: "pt" | "en"): Promise<string[]> {
+  const chave = (t: string) => `${para}|${t}`;
+  const faltam = [...new Set(textos.filter((t) => t.trim() && !traducoes.has(chave(t))))];
+  for (let i = 0; i < faltam.length; i += 40) {
+    const lote = faltam.slice(i, i + 40);
+    try {
+      const resp = await gerarComGemini(
+        [
+          {
+            role: "user",
+            text:
+              (para === "en"
+                ? "Traduza para o inglês estes termos de busca de modelos para impressão 3D (palavras que um maker usaria no MakerWorld/Printables)."
+                : "Traduza para o português do Brasil estes títulos de modelos para impressão 3D, curtos e naturais (mantenha nomes próprios, marcas e números).") +
+              `\nResponda só JSON: um array de strings na mesma ordem.\n${JSON.stringify(lote)}`,
+          },
+        ],
+        { json: true, temperature: 0 },
+      );
+      const arr = JSON.parse(resp.slice(resp.indexOf("["), resp.lastIndexOf("]") + 1)) as unknown[];
+      lote.forEach((t, k) => {
+        const v = typeof arr[k] === "string" ? (arr[k] as string).trim() : "";
+        if (v) traducoes.set(chave(t), v.slice(0, 200));
+      });
+    } catch {
+      /* sem IA: fica no original */
+    }
+  }
+  if (traducoes.size > 5000) traducoes.clear();
+  return textos.map((t) => traducoes.get(chave(t)) ?? t);
+}
+
+/** Procura modelos (você digita em português); os que a licença deixa vender vêm primeiro, depois os mais baixados. */
+export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAchado[]> {
+  const q = termo.trim().slice(0, 80);
+  if (!q) return [];
+  const [ingles] = await traduzir([q], "en");
+  const termos = [...new Set([ingles!, q].map((t) => t.toLowerCase()))];
+  const vistos = new Set<string>();
+  const todos: ModeloAchado[] = [];
+  for (const t of termos) {
+    let achados = await buscarTermo(t);
+    // O MakerWorld às vezes recusa a primeira pesquisa: tenta mais uma vez.
+    if (!achados.some((m) => m.fonte === "makerworld")) {
+      await new Promise((r) => setTimeout(r, 1200));
+      achados = [...achados.filter((m) => m.fonte !== "makerworld"), ...(await buscarTermo(t)).filter((m) => m.fonte === "makerworld")];
+    }
+    for (const m of achados) if (!vistos.has(m.link)) vistos.add(m.link) && todos.push(m);
+  }
   const peso = (m: ModeloAchado) => (m.comercial === true ? 2 : m.comercial === null ? 1 : 0);
-  return todos.sort((a, b) => peso(b) - peso(a) || b.downloads - a.downloads).slice(0, limite);
+  const melhores = todos.sort((a, b) => peso(b) - peso(a) || b.downloads - a.downloads).slice(0, limite);
+  const titulos = await traduzir(melhores.map((m) => m.titulo), "pt");
+  return melhores.map((m, i) => ({ ...m, titulo: titulos[i] ?? m.titulo }));
+}
+
+/** Título e nomes dos perfis do modelo lido em português (a descrição a IA já reescreve ao cadastrar). */
+export async function emPortugues(m: Modelo3d): Promise<Modelo3d> {
+  const [titulo, ...perfis] = await traduzir([m.titulo, ...m.perfis.map((p) => p.titulo)], "pt");
+  return { ...m, titulo: titulo ?? m.titulo, perfis: m.perfis.map((p, i) => ({ ...p, titulo: perfis[i] ?? p.titulo })) };
 }

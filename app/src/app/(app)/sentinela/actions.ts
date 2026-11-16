@@ -95,5 +95,5 @@ export async function buscarDeNovo(relatorioId: number, indice: number, termo: s
   const plano = r.plano.map((x, i) => (i === indice ? { ...x, busca, modelos } : x));
   await db.update(sentinelaRelatorios).set({ plano }).where(eq(sentinelaRelatorios.id, relatorioId));
   revalidatePath("/sentinela");
-  return modelos.length ? {} : { erro: "Nada encontrado com esse termo. Tente em inglês (ex.: jesus figure shelf)." };
+  return modelos.length ? {} : { erro: "Nada encontrado com esse termo. Tente outras palavras." };
 }

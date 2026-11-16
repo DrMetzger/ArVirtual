@@ -7,7 +7,7 @@ import { listaFilamentos } from "@/lib/filamentos";
 import { custoComposicao, gramasTotais } from "@/lib/impressao";
 import { encaixe, listaImpressoras } from "@/lib/impressoras";
 import { importarProduto } from "@/lib/importar-produto";
-import { fonteDoLink, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
+import { emPortugues, fonteDoLink, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
 import { precosPorCanal } from "@/lib/precificacao";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 
@@ -108,7 +108,7 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
 
 /** Cadastro sem tela: primeiro perfil, cores ligadas aos filamentos mais parecidos, tempo do perfil ou estimado. */
 async function cadastrarPeloLink(link: string, origin: string) {
-  const m = await lerModeloDoLink(link);
+  const m = await emPortugues(await lerModeloDoLink(link));
   if (m.comercial !== true) throw new Error(m.comercial === false ? "licença não permite vender" : "licença não identificada (confira e cadastre pela tela)");
   const fils = await listaFilamentos();
   const perfil = m.perfis[0] ?? null;

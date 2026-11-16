@@ -446,7 +446,7 @@ Onde a demanda é boa e há poucos vendedores.
 Datas próximas e o que preparar para cada uma, com antecedência.
 ## Cuidado
 O que evitar (marcas registradas, produto que chinês faz mais barato).
-Depois do texto, numa linha só, escreva: PLANO_JSON: [{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras EM INGLÊS para achar o modelo 3D no MakerWorld/Printables"}] com os 5 produtos de "Fazer esta semana".
+Depois do texto, numa linha só, escreva: PLANO_JSON: [{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras em português para achar o modelo 3D (ex.: suporte controle ps5)"}] com os 5 produtos de "Fazer esta semana".
 Na última linha, escreva exatamente: NOVOS_TERMOS: termo1; termo2; ... (até 10 termos de busca curtos, sem acento, para eu passar a vigiar).`;
   const { texto } = await gerarComGeminiDetalhado([{ role: "user", text: prompt }], { pesquisa: true, temperature: 0.6 });
   const m = texto.match(/NOVOS_TERMOS:\s*(.+)\s*$/im);
@@ -507,7 +507,7 @@ export async function estruturarPlano(relatorioId: number) {
         role: "user",
         text:
           `Do relatório abaixo, pegue só os produtos da parte "Fazer esta semana" e devolva só JSON: ` +
-          `[{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras EM INGLÊS para achar o modelo 3D no MakerWorld/Printables"}]\n\n${r.texto.slice(0, 12000)}`,
+          `[{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras em português para achar o modelo 3D (ex.: suporte controle ps5)"}]\n\n${r.texto.slice(0, 12000)}`,
       },
     ],
     { json: true, temperature: 0.1 },

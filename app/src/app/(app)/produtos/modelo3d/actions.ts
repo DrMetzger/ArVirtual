@@ -6,7 +6,7 @@ import type { ModeloAchado } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { encaixe, listaImpressoras, type Encaixe } from "@/lib/impressoras";
 import { cadastrarVarios, criarProdutoDoModelo, estadoCadastro, produtoDoModelo } from "@/lib/cadastro-modelos";
-import { buscarModelos, lerModeloDoArquivo, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
+import { buscarModelos, emPortugues, lerModeloDoArquivo, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
 
 // Modelo lido fica guardado 1 hora: o cadastro usa o que o servidor leu (não o que volta da tela).
 const g = globalThis as unknown as { modelos3d?: Map<string, { m: Modelo3d; em: number }> };
@@ -25,13 +25,14 @@ export async function lerModelo(_: Leitura | null, form: FormData): Promise<Leit
   try {
     const link = String(form.get("link") ?? "").trim();
     const arquivo = form.get("arquivo");
-    const m =
+    const lido =
       arquivo instanceof File && arquivo.size
         ? await lerModeloDoArquivo(arquivo.name, Buffer.from(await arquivo.arrayBuffer()), await origem(), link)
         : link
           ? await lerModeloDoLink(link)
           : null;
-    if (!m) return { erro: "Cole o link do modelo ou envie o arquivo .3mf/.stl." };
+    if (!lido) return { erro: "Cole o link do modelo ou envie o arquivo .3mf/.stl." };
+    const m = lido.fonte === "arquivo" ? lido : await emPortugues(lido);
     const maquinas = await listaImpressoras();
     const encaixes: Record<string, Encaixe[]> = {};
     for (const p of m.perfis.length ? m.perfis : [null]) {
@@ -79,7 +80,7 @@ export async function buscarNosSites(termo: string): Promise<{ erro?: string; mo
   await requireUser();
   if (termo.trim().length < 2) return { erro: "Digite o que procurar." };
   const modelos = await buscarModelos(termo, 12).catch(() => []);
-  return modelos.length ? { modelos } : { erro: "Nada encontrado. Tente em inglês (ex.: phone stand, dragon flexi)." };
+  return modelos.length ? { modelos } : { erro: `Nada encontrado para “${termo.trim()}”. Tente outras palavras (ex.: suporte de celular, dragão articulado).` };
 }
 
 /** "Cadastrar tudo": cadastra em segundo plano os modelos que a licença deixa vender (e pula os já cadastrados). */
