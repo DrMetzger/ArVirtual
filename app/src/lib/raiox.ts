@@ -137,7 +137,8 @@ export function analisarRaioX(linhas: Linha[]) {
   for (const [mp, ls] of porPlataforma) {
     const ativos = ls.filter((l) => l.status === "ativo");
     const comVisita = ativos.filter((l) => l.visitas != null);
-    const vendasDe = (l: Linha) => (l.periodo === "total" ? (l.vendasTotal ?? 0) : l.vendas30);
+    // Shopee informa vendas desde a publicação, mas às vezes atrasa: vale o maior entre ela e os pedidos do ERP.
+    const vendasDe = (l: Linha) => (l.periodo === "total" ? Math.max(l.vendasTotal ?? 0, l.vendas30) : l.vendas30);
     const totV = comVisita.reduce((s, l) => s + (l.visitas ?? 0), 0);
     const totS = comVisita.reduce((s, l) => s + vendasDe(l), 0);
     const p0 = totV > 0 ? totS / totV : 0;
