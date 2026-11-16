@@ -1,7 +1,7 @@
 import "server-only";
-import { inArray } from "drizzle-orm";
+import { and, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { configuracoes } from "@/db/schema";
+import { configuracoes, pedidosMarketplace } from "@/db/schema";
 import { decrypt, encrypt, mask } from "./crypto";
 import { PARAMETROS_PADRAO, type ParametrosImpressao } from "./impressao";
 import { FAIXAS_PADRAO, FAIXAS_PREMIUM_ML, lerFaixas, type ParametrosPreco } from "./precificacao";
@@ -115,11 +115,13 @@ export const SETTINGS = {
   "mercadolivre.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Mercado Livre", placeholder: "10" },
   "mercadolivre.frete": { label: "Sua parte do frete grátis (R$ por venda)", secret: false, group: "Precificação: Mercado Livre", placeholder: "0" },
   "mercadolivre.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: Mercado Livre", placeholder: "30" },
-  "shopee.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Shopee", placeholder: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26" },
+  "shopee.faixas": { label: "Comissão e taxa fixa por faixa de preço (vazio = tabela oficial)", secret: false, group: "Precificação: Shopee", placeholder: "79.99:20%+4.5; 99.99:14%+16; 199.99:14%+20; *:14%+26" },
+  "shopee.tipoVendedor": { label: "Sua loja na Shopee é", secret: false, group: "Precificação: Shopee", options: ["cpf", "cnpj"] },
+  "shopee.adicionalCpf": { label: "Adicional por item do CPF acima de 450 pedidos em 90 dias (R$)", secret: false, group: "Precificação: Shopee", placeholder: "3" },
   "shopee.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Shopee", placeholder: "10" },
   "shopee.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Shopee", placeholder: "0" },
   "shopee.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: Shopee", placeholder: "15" },
-  "magalu.faixas": { label: "Comissão e taxa fixa por faixa de preço", secret: false, group: "Precificação: Magalu", placeholder: "*:16%+5" },
+  "magalu.faixas": { label: "Comissão e taxa fixa por faixa de preço (vazio = contrato)", secret: false, group: "Precificação: Magalu", placeholder: "9.99:18%; *:18%+5" },
   "magalu.campanha": { label: "Desconto de campanha (%)", secret: false, group: "Precificação: Magalu", placeholder: "10" },
   "magalu.frete": { label: "Frete pago pelo vendedor (R$)", secret: false, group: "Precificação: Magalu", placeholder: "0" },
   "magalu.prazo": { label: "Prazo para receber (dias após a venda)", secret: false, group: "Precificação: Magalu", placeholder: "30" },
@@ -182,13 +184,22 @@ export async function setSetting(key: SettingKey, value: string) {
     .onConflictDoUpdate({ target: configuracoes.chave, set: { valor: stored, secreto: secret, atualizadoEm: new Date() } });
 }
 
+/** Pedidos da Shopee nos últimos 90 dias (regra do adicional do vendedor CPF). */
+export async function pedidosShopee90d() {
+  const [r] = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(pedidosMarketplace)
+    .where(and(eq(pedidosMarketplace.marketplace, "shopee"), gte(pedidosMarketplace.data, new Date(Date.now() - 90 * 86400_000))));
+  return r?.n ?? 0;
+}
+
 /** Parâmetros de preço por canal (Configurações › Precificação); campos vazios usam os padrões. */
 export async function getParametrosPreco(): Promise<ParametrosPreco> {
   const chaves = [
     "impressao.margem", "precificacao.imposto", "precificacao.embalagem",
     "mercadolivre.faixas", "mercadolivre.faixasPremium", "mercadolivre.tipoAnuncio", "mercadolivre.freteGratis", "mercadolivre.freteAcima",
     "mercadolivre.campanha", "mercadolivre.frete",
-    "shopee.faixas", "shopee.campanha", "shopee.frete",
+    "shopee.faixas", "shopee.campanha", "shopee.frete", "shopee.tipoVendedor", "shopee.adicionalCpf",
     "magalu.faixas", "magalu.campanha", "magalu.frete",
     "loja.faixas", "loja.frete",
   ] as const satisfies readonly SettingKey[];
@@ -219,7 +230,15 @@ export async function getParametrosPreco(): Promise<ParametrosPreco> {
         frete: s["mercadolivre.freteGratis"] === "nunca" ? 0 : num(s["mercadolivre.frete"], 0),
         freteAcima: s["mercadolivre.freteGratis"] === "sempre" ? 0 : num(s["mercadolivre.freteAcima"], 79),
       },
-      shopee: { faixas: faixas(s["shopee.faixas"], FAIXAS_PADRAO.shopee), campanha: num(s["shopee.campanha"], 10), frete: num(s["shopee.frete"], 0) },
+      shopee: {
+        faixas: faixas(s["shopee.faixas"], FAIXAS_PADRAO.shopee),
+        campanha: num(s["shopee.campanha"], 10),
+        frete: num(s["shopee.frete"], 0),
+        // Abaixo de R$ 9 (CNPJ) a taxa fixa é metade do preço; no CPF, abaixo de R$ 12 é regressiva (mesma aproximação).
+        fixaMaxPct: 50,
+        // CPF com mais de 450 pedidos em 90 dias: adicional por item (contado sozinho pelos pedidos da Shopee).
+        adicional: s["shopee.tipoVendedor"] !== "cnpj" && (await pedidosShopee90d()) > 450 ? num(s["shopee.adicionalCpf"], 3) : 0,
+      },
       magalu: { faixas: faixas(s["magalu.faixas"], FAIXAS_PADRAO.magalu), campanha: num(s["magalu.campanha"], 10), frete: num(s["magalu.frete"], 0) },
       loja: { faixas: faixas(s["loja.faixas"], "*:0%"), campanha: 0, frete: num(s["loja.frete"], 0) },
     },

@@ -94,6 +94,7 @@ export async function salvarIntegracoes(_: FormState, form: FormData): Promise<F
       await setSetting(k, limpar ? "" : valor);
     }
     revalidatePath("/configuracoes");
+    revalidatePath("/marketplaces/taxas");
     return { ok: `${grupo}: salvo.` };
   } catch (e) {
     return falha(e);

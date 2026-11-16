@@ -175,6 +175,39 @@ export const categorias = pgTable("categorias", {
   id: serial("id").primaryKey(),
   nome: text("nome").notNull().unique(),
   ordem: integer("ordem").notNull().default(0),
+  /** Taxa de cada plataforma para os produtos desta categoria (do contrato lido pela IA ou da API do Mercado Livre). */
+  taxas: jsonb("taxas").$type<TaxasDaCategoria>().notNull().default({}),
+  ...timestamps,
+});
+
+export type TaxaCategoria = {
+  /** Categoria da plataforma usada (ex.: "Artesanato" no Magalu, "Casa > Decoração" no ML). */
+  categoria: string;
+  comissao: number;
+  /** Mercado Livre: comissão do Premium (a `comissao` é a do Clássico). */
+  comissaoPremium?: number;
+  /** Taxa fixa por item (R$); ausente = a da tabela geral. */
+  fixa?: number;
+  /** "contrato", "api" ou "manual" (manual não é sobrescrito pela automação). */
+  origem: "contrato" | "api" | "manual";
+};
+export type TaxasDaCategoria = Partial<Record<"mercadolivre" | "shopee" | "magalu", TaxaCategoria>>;
+
+/** Contrato/tabela de taxas de cada plataforma, destrinchado pela IA. */
+export type ContratoExtraido = {
+  /** Comissão e taxa fixa da maioria das categorias. */
+  padrao: { comissao: number; fixa: number; fixaAPartirDe: number };
+  /** Faixas por preço (Shopee), quando o contrato tem. */
+  faixas?: { ate: number | null; comissao: number; fixa: number }[];
+  categorias: { nome: string; comissao: number; fixa?: number }[];
+  observacoes: string[];
+};
+export const contratosTaxas = pgTable("contratos_taxas", {
+  marketplace: text("marketplace").primaryKey(),
+  nomeArquivo: text("nome_arquivo").notNull().default(""),
+  arquivo: text("arquivo").notNull().default(""),
+  extraido: jsonb("extraido").$type<ContratoExtraido>(),
+  erro: text("erro").notNull().default(""),
   ...timestamps,
 });
 

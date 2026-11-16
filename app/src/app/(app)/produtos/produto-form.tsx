@@ -7,7 +7,7 @@ import { Alert, Button, Card, CardHeader, Field, Input, Select, Textarea } from 
 import { SubmitButton, useFormAction } from "@/components/ui/client";
 import type { Produto } from "@/db/schema";
 import { custoComposicao, gramasTotais, type ParametrosImpressao } from "@/lib/impressao";
-import type { ParametrosPreco } from "@/lib/precificacao";
+import { comCategoria, type AjusteCategoria, type ParametrosPreco } from "@/lib/precificacao";
 import { formatBRL, formatGramas, formatValor, parseDecimal, precoGrama } from "@/lib/utils";
 import { salvarProduto } from "./actions";
 import { CadastroIA, type ResultadoIA } from "./cadastro-ia";
@@ -40,6 +40,7 @@ export function ProdutoForm({
   filamentos = [],
   variacoes = [],
   categorias = [],
+  ajustes = {},
 }: {
   produto?: Produto;
   parametros: ParametrosImpressao;
@@ -47,7 +48,10 @@ export function ProdutoForm({
   filamentos?: FilamentoOpt[];
   variacoes?: VariacaoInicial[];
   categorias?: { id: number; nome: string }[];
+  /** Taxa de cada plataforma por categoria (contratos e API do ML). */
+  ajustes?: Record<number, AjusteCategoria>;
 }) {
+  const [categoriaId, setCategoriaId] = useState(produto?.categoriaId ? String(produto.categoriaId) : "");
   const [temVariacoes, setTemVariacoes] = useState(produto?.temVariacoes ?? false);
   const [sku, setSku] = useState(produto?.sku ?? "");
   const [nome, setNome] = useState(produto?.nome ?? "");
@@ -140,7 +144,7 @@ export function ProdutoForm({
               <Input name="nome" value={nome} onChange={(e) => setNome(e.target.value)} required />
             </Field>
             <Field label="Categoria" className="sm:col-span-6" hint="Separa o produto nas grades e no site. Gerencie em Cadastros › Categorias.">
-              <Select name="categoriaId" defaultValue={produto?.categoriaId ?? ""}>
+              <Select name="categoriaId" value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
                 <option value="">Sem categoria</option>
                 {categorias.map((c) => (
                   <option key={c.id} value={c.id}>
@@ -365,7 +369,8 @@ export function ProdutoForm({
         <PrecosCanal
           custo={parseDecimal(custo) || calc.custo}
           preco={preco}
-          parametros={precos}
+          parametros={comCategoria(precos, ajustes[Number(categoriaId)])}
+          ajuste={ajustes[Number(categoriaId)]}
           setPreco={setPreco}
           precosCanal={precosCanal}
           alterar={(canal, v) => setPrecosCanal((p) => ({ ...p, [canal]: v }))}
