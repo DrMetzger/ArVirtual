@@ -60,7 +60,7 @@ const VariacaoSchema = z.object({
   imagens: z.array(z.string()).default([]),
   campoFotos: z.string().regex(/^[\w.-]*$/).default(""),
 });
-const CANAIS_PRECO = ["mercadolivre", "shopee", "magalu", "tiktok", "loja"] as const;
+const CANAIS_PRECO = ["mercadolivre", "shopee", "magalu", "loja"] as const;
 
 /** Filamentos da peça: [{ filamentoId, gramas }] vindos da tela (ignora linhas vazias). */
 function lerComposicao(raw: FormDataEntryValue | null) {

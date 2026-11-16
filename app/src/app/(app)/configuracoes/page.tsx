@@ -52,12 +52,6 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       </>
     ),
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
-    "TikTok Shop": (
-      <>
-        Em partner.tiktokshop.com › App &amp; Service › seu app: copie App Key, App Secret e Service ID. Redirect URL do app (cole lá):{" "}
-        <code className="break-all">{callbackUrl(origin, "tiktok")}</code>. Depois, em Marketplaces › TikTok Shop, clique em Conectar.
-      </>
-    ),
     "Shopee Afiliados": (
       <>
         Em affiliate.shopee.com.br › Open API (precisa ser afiliado aprovado), gere o App ID e a Senha. Com eles o ERP busca produtos com comissão, gera seus links de

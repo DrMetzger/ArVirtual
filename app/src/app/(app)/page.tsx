@@ -89,7 +89,7 @@ export default async function Dashboard() {
   const [analise, estAnuncios, metas, recentes, comissoes, oportunidades, naPlataforma] = await Promise.all([
     analisarVendas("30d").catch(() => null),
     estatisticaAnuncios().catch(() => null),
-    getSettings(["meta.anuncios.magalu", "meta.anuncios.mercadolivre", "meta.anuncios.shopee", "meta.anuncios.tiktok"]),
+    getSettings(["meta.anuncios.magalu", "meta.anuncios.mercadolivre", "meta.anuncios.shopee"]),
     db
       .select({ id: pedidosMarketplace.id, marketplace: pedidosMarketplace.marketplace, idExterno: pedidosMarketplace.idExterno, status: pedidosMarketplace.status, comprador: pedidosMarketplace.comprador, total: pedidosMarketplace.total, data: pedidosMarketplace.data })
       .from(pedidosMarketplace)
@@ -116,9 +116,8 @@ export default async function Dashboard() {
     anunciosPorPlataforma().catch(() => new Map()),
   ]);
   const aEnviar = recentes.filter((p) => situacaoPedido(p.marketplace, p.status) === "pago");
-  const META_PADRAO = { magalu: 30, mercadolivre: 30, shopee: 40, tiktok: 30 } as const;
-  // TikTok Shop entra no termômetro quando a conta está conectada (já contada na plataforma).
-  const termometro = (["magalu", "mercadolivre", "shopee", ...(naPlataforma.has("tiktok") ? (["tiktok"] as const) : [])] as const).map((c) => {
+  const META_PADRAO = { magalu: 30, mercadolivre: 30, shopee: 40 } as const;
+  const termometro = (["magalu", "mercadolivre", "shopee"] as const).map((c) => {
     const pl = estAnuncios?.plataformas.find((x) => x.canal === c);
     const meta = Number(metas[`meta.anuncios.${c}`]) || META_PADRAO[c];
     // O que vale é o que está NA plataforma (contado lá pela API); sem contagem ainda, usa o que o ERP sabe.

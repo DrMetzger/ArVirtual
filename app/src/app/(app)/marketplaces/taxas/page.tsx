@@ -23,13 +23,11 @@ const NOMES: Record<MarketplaceTaxa, string> = {
   magalu: "Magalu",
   mercadolivre: "Mercado Livre",
   shopee: "Shopee",
-  tiktok: "TikTok Shop",
 };
 const GRUPO: Record<MarketplaceTaxa, string> = {
   magalu: "Precificação: Magalu",
   mercadolivre: "Precificação: Mercado Livre",
   shopee: "Precificação: Shopee",
-  tiktok: "Precificação: TikTok Shop",
 };
 const pct = (n: number) =>
   `${n.toLocaleString("pt-BR", { maximumFractionDigits: 2 })}%`;
