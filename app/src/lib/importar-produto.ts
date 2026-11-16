@@ -145,10 +145,12 @@ export async function* importarProduto(
   origin: string,
   /** Dados já lidos da página no navegador do usuário (botão "Copiar para o ArVirtual"): não busca nada. */
   daPagina?: DadosImportados,
+  /** Conta dona do anúncio (quando os dados já vieram da API dela): o anúncio fica ligado ao produto criado. */
+  contaOrigem?: { id: number; marketplace: Marketplace },
 ): AsyncGenerator<Passo, { id: string; nome: string; avisos: string[] }> {
   const avisos: string[] = [];
   yield { etapa: "Lendo o anúncio", pct: 5, detalhe: link };
-  const { dados, conta } = daPagina ? { dados: daPagina, conta: undefined } : await lerAnuncio(link);
+  const { dados, conta } = daPagina ? { dados: daPagina, conta: contaOrigem } : await lerAnuncio(link);
   yield { etapa: "Lendo o anúncio", pct: 15, detalhe: dados.titulo };
 
   const fotosOrigem = [...new Set(dados.fotos)].slice(0, MAX_FOTOS);
