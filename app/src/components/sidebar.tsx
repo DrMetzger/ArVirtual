@@ -34,7 +34,7 @@ import {
   Music2,
   BarChart3,
   Wrench,
-  Smartphone, Film, Gem, Radar, ScanSearch } from "lucide-react";
+  Smartphone, Film, Gem, Radar, ScanSearch, Tags } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -56,6 +56,7 @@ const NAV: (Item | Grupo)[] = [
     icon: FolderOpen,
     itens: [
       { href: "/produtos", label: "Produtos", icon: Package },
+      { href: "/categorias", label: "Categorias", icon: Tags },
       { href: "/clientes", label: "Clientes", icon: Users },
       { href: "/compras/fornecedores", label: "Fornecedores", icon: Truck },
       { href: "/fiscal", label: "Matriz fiscal", icon: Scale },

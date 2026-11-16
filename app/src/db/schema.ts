@@ -170,6 +170,14 @@ export const enderecos = pgTable(
 );
 
 // ---------- Produtos ----------
+/** Categorias do catálogo (separam o site e as grades: produtos, raio-x...). */
+export const categorias = pgTable("categorias", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull().unique(),
+  ordem: integer("ordem").notNull().default(0),
+  ...timestamps,
+});
+
 export const produtos = pgTable(
   "produtos",
   {
@@ -208,6 +216,8 @@ export const produtos = pgTable(
     temVariacoes: boolean("tem_variacoes").notNull().default(false),
     /** Variação: aponta para o produto principal (herda fiscal, fotos e medidas). */
     paiId: uuid("pai_id").references((): AnyPgColumn => produtos.id, { onDelete: "cascade" }),
+    /** Categoria do catálogo (a variação usa a do produto principal). */
+    categoriaId: integer("categoria_id").references((): AnyPgColumn => categorias.id, { onDelete: "set null" }),
     /** Atributos da variação, ex.: { Cor: "Preto", Material: "PLA" }. */
     atributos: jsonb("atributos").$type<Record<string, string>>().notNull().default({}),
     /** Preço de venda por canal (vazio = usa o preço de venda). */
