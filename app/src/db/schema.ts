@@ -170,6 +170,39 @@ export const enderecos = pgTable(
 );
 
 // ---------- Produtos ----------
+/** Impressoras 3D da oficina (pode haver várias): área de impressão, cores ao mesmo tempo e consumo. */
+export const impressoras = pgTable("impressoras", {
+  id: serial("id").primaryKey(),
+  nome: text("nome").notNull(),
+  modelo: text("modelo").notNull().default(""),
+  /** Área útil de impressão (mm). */
+  larguraMm: integer("largura_mm").notNull(),
+  profundidadeMm: integer("profundidade_mm").notNull(),
+  alturaMm: integer("altura_mm").notNull(),
+  /** Cores na mesma impressão (AMS/AMS lite = 4; sem AMS = 1). */
+  cores: integer("cores").notNull().default(1),
+  bicoMm: numeric("bico_mm", { precision: 3, scale: 2, mode: "number" }).notNull().default(0.4),
+  materiais: text("materiais").notNull().default("PLA, PETG"),
+  potenciaW: integer("potencia_w").notNull().default(95),
+  ativa: boolean("ativa").notNull().default(true),
+  ...timestamps,
+});
+export type Impressora = typeof impressoras.$inferSelect;
+
+export type OrigemModelo3d = {
+  fonte: "makerworld" | "printables" | "thingiverse" | "cults" | "arquivo";
+  link: string;
+  autor: string;
+  licenca: string;
+  /** true = licença permite vender as impressões; false = não comercial; null = conferir. */
+  comercial: boolean | null;
+  /** Você confirmou que tem licença comercial (modelo não comercial). */
+  licencaComercialPropria?: boolean;
+  medidasMm?: number[] | null;
+  /** Impressoras (ids) em que o modelo cabe. */
+  impressoras?: number[];
+};
+
 /** Categorias do catálogo (separam o site e as grades: produtos, raio-x...). */
 export const categorias = pgTable("categorias", {
   id: serial("id").primaryKey(),
@@ -251,6 +284,8 @@ export const produtos = pgTable(
     paiId: uuid("pai_id").references((): AnyPgColumn => produtos.id, { onDelete: "cascade" }),
     /** Categoria do catálogo (a variação usa a do produto principal). */
     categoriaId: integer("categoria_id").references((): AnyPgColumn => categorias.id, { onDelete: "set null" }),
+    /** Modelo 3D de origem (MakerWorld, Printables, Thingiverse, Cults ou arquivo): link, autor e licença. */
+    modelo3d: jsonb("modelo3d").$type<OrigemModelo3d>(),
     /** Atributos da variação, ex.: { Cor: "Preto", Material: "PLA" }. */
     atributos: jsonb("atributos").$type<Record<string, string>>().notNull().default({}),
     /** Preço de venda por canal (vazio = usa o preço de venda). */
@@ -1033,8 +1068,23 @@ export const sentinelaRelatorios = pgTable("sentinela_relatorios", {
   id: serial("id").primaryKey(),
   texto: text("texto").notNull(),
   fontes: jsonb("fontes").$type<{ titulo: string; url: string }[]>().notNull().default([]),
+  /** "Fazer esta semana" em itens, cada um com os modelos 3D achados no MakerWorld/Printables. */
+  plano: jsonb("plano").$type<ItemPlano[]>(),
   criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
+
+export type ModeloAchado = {
+  fonte: "makerworld" | "printables";
+  titulo: string;
+  link: string;
+  imagem: string;
+  autor: string;
+  licenca: string;
+  comercial: boolean | null;
+  downloads: number;
+  curtidas: number;
+};
+export type ItemPlano = { produto: string; preco: number | null; marketplace: string; porque: string; busca: string; modelos: ModeloAchado[] };
 
 // ---------------------------------------------------------------------------------------------
 // Garimpo de afiliados (Shopee): totalmente separado do Sentinela (que é só impressão 3D).

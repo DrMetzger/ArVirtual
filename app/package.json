@@ -22,7 +22,7 @@
     "jose": "^6.2.13",
     "js-brasil": "^2.8.0",
     "lucide-react": "^1.61.0",
-    "next": "^16.4.3",
+    "next": "^16.4.6",
     "node-forge": "^1.4.0",
     "nodemailer": "^10.2.1",
     "pdf-lib": "1.17.1",

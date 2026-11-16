@@ -1,0 +1,1 @@
+ALTER TABLE "sentinela_relatorios" ADD COLUMN "plano" jsonb;
