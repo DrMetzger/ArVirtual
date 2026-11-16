@@ -1,5 +1,5 @@
 import { eq } from "drizzle-orm";
-import { ExternalLink, Eye, Heart, Link2, Music2, Package, RefreshCw } from "lucide-react";
+import { ExternalLink, Eye, Heart, Link2, Package, RefreshCw } from "lucide-react";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -33,7 +33,7 @@ const SITUACAO = {
 
 export async function generateMetadata({ params }: { params: Promise<{ canal: string }> }): Promise<Metadata> {
   const { canal } = await params;
-  return { title: canal === "tiktok" ? "TikTok Shop" : MARKETPLACES.includes(canal as Marketplace) ? CANAIS[canal as Marketplace].nome : "Marketplace" };
+  return { title: MARKETPLACES.includes(canal as Marketplace) ? CANAIS[canal as Marketplace].nome : "Marketplace" };
 }
 
 // Página própria de cada marketplace: tudo o que a API dele oferece num lugar só.
@@ -42,18 +42,6 @@ export default async function MarketplacePage({ params, searchParams }: { params
   const { canal } = await params;
   const { ok, erro } = await searchParams;
 
-  if (canal === "tiktok") {
-    return (
-      <>
-        <PageHeader title="TikTok Shop" description="Integração em preparação." />
-        <EmptyState
-          icon={<Music2 />}
-          title="Em breve"
-          description="Quando a TikTok Shop liberar o seu app de parceiro, a loja entra aqui como os outros marketplaces: contas, anúncios, pedidos, taxas e métricas."
-        />
-      </>
-    );
-  }
   if (!MARKETPLACES.includes(canal as Marketplace)) notFound();
   const m = canal as Marketplace;
   const info = MARKETPLACE_INFO[m];
