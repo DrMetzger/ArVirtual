@@ -34,7 +34,7 @@ import {
   Music2,
   BarChart3,
   Wrench,
-  Smartphone, Film, Gem, Radar } from "lucide-react";
+  Smartphone, Film, Gem, Radar, ScanSearch } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -74,6 +74,7 @@ const NAV: (Item | Grupo)[] = [
     label: "Marketplaces",
     icon: Store,
     itens: [
+      { href: "/marketplaces/raio-x", label: "Raio-X dos anúncios", icon: ScanSearch },
       { href: "/marketplaces", label: "Visão geral", icon: Store },
       { href: "/marketplaces/mercadolivre", label: "Mercado Livre", icon: Store, imagem: "/marcas/mercadolivre-icone.png" },
       { href: "/marketplaces/shopee", label: "Shopee", icon: Store, imagem: "/marcas/shopee-icone.png" },

@@ -233,11 +233,16 @@ export default async function Dashboard() {
       <Card className="mb-6">
         <CardHeader
           action={
-            <form action={recontarAnuncios}>
-              <SubmitButton size="sm" variant="outline" pendingText="Contando nas plataformas...">
-                Recontar agora
-              </SubmitButton>
-            </form>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/marketplaces/raio-x" className={buttonClass("gold", "sm")}>
+                Raio-X dos anúncios <ArrowRight />
+              </Link>
+              <form action={recontarAnuncios}>
+                <SubmitButton size="sm" variant="outline" pendingText="Contando nas plataformas...">
+                  Recontar agora
+                </SubmitButton>
+              </form>
+            </div>
           }
           title={
             <span className="inline-flex items-center gap-2">

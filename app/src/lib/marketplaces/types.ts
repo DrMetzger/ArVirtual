@@ -134,6 +134,16 @@ export type PedidoExterno = {
   dados: unknown;
 };
 
+export type DadosRaioX = {
+  visitas?: number;
+  periodo?: "30d" | "total";
+  vendasTotal?: number;
+  fotos?: number;
+  premium?: boolean;
+  freteGratis?: boolean;
+  qualidade?: { nota: number; nivel: string; acoes: string[] };
+};
+
 export type MetricasAnuncio = { visitas: number; curtidas: number };
 export type SituacaoAnuncio = "publicado" | "pausado" | "encerrado";
 /** Taxas do pedido; `final` = valor fechado (enquanto não, é parcial e é lido de novo depois). */
@@ -190,6 +200,11 @@ export interface MarketplaceAdapter {
   enviarNota?(conta: ContaComToken, dados: unknown, nota: NotaParaEnviar): Promise<void>;
   /** Etiqueta de envio do pedido em PDF (`dados` é o pedido como a API devolveu). */
   etiqueta?(conta: ContaComToken, dados: unknown): Promise<Buffer>;
+  /**
+   * Raio-X de cada anúncio (só o que a plataforma informa): visitas e período, vendas totais, fotos, Premium, frete grátis
+   * e a qualidade com as ações recomendadas (ML).
+   */
+  raiox?(conta: ContaComToken, ids: string[]): Promise<Record<string, DadosRaioX>>;
   /** Anúncios existentes na conta, para vincular aos produtos do cadastro. */
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */
