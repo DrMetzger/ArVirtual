@@ -98,7 +98,7 @@ export async function parteDoAnexo(a: AnexoIa, inline: boolean): Promise<Parte> 
 }
 
 // ---------- Modelos 3D ----------
-type Malha = { min: number[]; max: number[]; volume: number; area: number; triangulos: number };
+export type Malha = { min: number[]; max: number[]; volume: number; area: number; triangulos: number };
 
 function novaMalha(): Malha {
   return { min: [Infinity, Infinity, Infinity], max: [-Infinity, -Infinity, -Infinity], volume: 0, area: 0, triangulos: 0 };
@@ -141,6 +141,11 @@ function descreverMalha(m: Malha) {
 }
 
 export function analisarStl(buf: Buffer): string {
+  return `Análise do STL:\n${descreverMalha(malhaStl(buf))}`;
+}
+
+/** Malha de um STL (binário ou texto): medidas, volume e área. */
+export function malhaStl(buf: Buffer): Malha {
   const m = novaMalha();
   const n = buf.length >= 84 ? buf.readUInt32LE(80) : 0;
   const binario = buf.length >= 84 && 84 + n * 50 === buf.length;
@@ -154,11 +159,83 @@ export function analisarStl(buf: Buffer): string {
     const vs = [...buf.toString("utf8").matchAll(/vertex\s+(\S+)\s+(\S+)\s+(\S+)/g)].map((x) => [Number(x[1]), Number(x[2]), Number(x[3])]);
     for (let i = 0; i + 2 < vs.length; i += 3) somarTriangulo(m, vs[i]!, vs[i + 1]!, vs[i + 2]!);
   }
-  return `Análise do STL:\n${descreverMalha(m)}`;
+  return m;
+}
+
+/** Medidas (mm) da malha, em X × Y × Z; null se não há triângulos. */
+export function medidasMalha(m: Malha) {
+  return m.triangulos ? [0, 1, 2].map((k) => Math.round((m.max[k]! - m.min[k]!) * 10) / 10) : null;
+}
+
+/** Peso estimado em PLA (g) com 2 paredes e 15% de preenchimento. */
+export function pesoEstimadoPla(m: Malha) {
+  const volCm3 = Math.abs(m.volume) / 1000;
+  const casca = Math.min(Math.abs(m.volume), m.area * 0.84) / 1000;
+  return Math.round((casca + Math.max(0, volCm3 - casca) * 0.15) * 1.24);
+}
+
+export type Fatiamento3mf = { tempoS: number; pesoG: number; filamentos: { tipo: string; cor: string; gramas: number }[] };
+
+/**
+ * 3MF (Bambu Studio / OrcaSlicer): malha de todos os objetos e, se o arquivo foi fatiado (Exportar arquivo fatiado),
+ * tempo, peso e gramas de cada filamento; sem fatiamento, as cores/tipos dos filamentos do projeto.
+ */
+export function ler3mf(buf: Buffer): { malha: Malha; fatiamento: Fatiamento3mf | null; cores: { tipo: string; cor: string }[]; impressora: string } {
+  const arquivos = lerZip(buf, (n) => /^3D\/.*\.model$/i.test(n) || /Metadata\/(slice_info\.config|project_settings\.config)$/i.test(n));
+  const m = novaMalha();
+  for (const [nome, dados] of arquivos) {
+    if (!nome.endsWith(".model")) continue;
+    for (const obj of dados.toString("utf8").split(/<object\b/).slice(1)) {
+      const vs = [...obj.matchAll(/<vertex\s+x="([^"]+)"\s+y="([^"]+)"\s+z="([^"]+)"/g)].map((x) => [Number(x[1]), Number(x[2]), Number(x[3])]);
+      for (const t of obj.matchAll(/<triangle\s+v1="(\d+)"\s+v2="(\d+)"\s+v3="(\d+)"/g)) {
+        const a = vs[Number(t[1])];
+        const b = vs[Number(t[2])];
+        const c = vs[Number(t[3])];
+        if (a && b && c) somarTriangulo(m, a, b, c);
+      }
+    }
+  }
+  let fatiamento: Fatiamento3mf | null = null;
+  const fatiado = [...arquivos].find(([n]) => /slice_info\.config$/i.test(n))?.[1]?.toString("utf8");
+  if (fatiado) {
+    // Uma <plate> por mesa: soma tempo, peso e gramas por cor de todas.
+    let tempoS = 0;
+    let pesoG = 0;
+    const porCor = new Map<string, { tipo: string; cor: string; gramas: number }>();
+    for (const placa of fatiado.split(/<plate>/).slice(1)) {
+      tempoS += Number(placa.match(/key="prediction"\s+value="([\d.]+)"/)?.[1] ?? 0);
+      pesoG += Number(placa.match(/key="weight"\s+value="([\d.]+)"/)?.[1] ?? 0);
+      for (const f of placa.matchAll(/<filament\b([^>]*)\/?>/g)) {
+        const at = (k: string) => f[1]!.match(new RegExp(`\\b${k}="([^"]*)"`))?.[1] ?? "";
+        const cor = at("color").toUpperCase();
+        const tipo = at("type");
+        const chave = `${tipo}|${cor}`;
+        const atual = porCor.get(chave) ?? { tipo, cor, gramas: 0 };
+        atual.gramas += Number(at("used_g") || 0);
+        porCor.set(chave, atual);
+      }
+    }
+    if (tempoS || pesoG) fatiamento = { tempoS, pesoG: Math.round(pesoG), filamentos: [...porCor.values()].filter((f) => f.gramas > 0).map((f) => ({ ...f, gramas: Math.round(f.gramas * 10) / 10 })) };
+  }
+  let cores: { tipo: string; cor: string }[] = [];
+  let impressora = "";
+  const projeto = [...arquivos].find(([n]) => /project_settings\.config$/i.test(n))?.[1]?.toString("utf8");
+  if (projeto) {
+    try {
+      const cfg = JSON.parse(projeto) as Record<string, unknown>;
+      const lista = (v: unknown) => (Array.isArray(v) ? v.map(String) : typeof v === "string" ? v.split(";") : []);
+      const tipos = lista(cfg.filament_type);
+      cores = lista(cfg.filament_colour).map((c, i) => ({ tipo: tipos[i] ?? tipos[0] ?? "PLA", cor: c.toUpperCase() }));
+      impressora = String(cfg.printer_model ?? "");
+    } catch {
+      /* config fora do padrão */
+    }
+  }
+  return { malha: m, fatiamento, cores, impressora };
 }
 
 /** Leitor mínimo de ZIP (o 3MF é um ZIP): devolve os arquivos pedidos. */
-function lerZip(buf: Buffer, quer: (nome: string) => boolean) {
+export function lerZip(buf: Buffer, quer: (nome: string) => boolean) {
   const out = new Map<string, Buffer>();
   let fimDir = -1;
   for (let i = buf.length - 22; i >= Math.max(0, buf.length - 65_557); i--) {

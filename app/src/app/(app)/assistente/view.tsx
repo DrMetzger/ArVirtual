@@ -1,3 +1,4 @@
+import { listaImpressoras } from "@/lib/impressoras";
 import { and, asc, desc, eq } from "drizzle-orm";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -31,8 +32,9 @@ export async function Assistente({ id }: { id?: string }) {
     db.select().from(conversasIa).where(eq(conversasIa.usuarioId, session.sub)).orderBy(desc(conversasIa.atualizadoEm)).limit(500),
     id ? db.query.conversasIa.findFirst({ where: and(eq(conversasIa.id, id), eq(conversasIa.usuarioId, session.sub)) }) : null,
     db.$count(memoriasIa, eq(memoriasIa.ativo, true)),
-    getSettings(["impressora.modelo", "impressora.bico", "impressora.mesa"]),
+    getSettings(["impressora.mesa"]),
   ]);
+  const maquinas = await listaImpressoras();
   if (id && !aberta) notFound();
   const mensagens = aberta ? await db.select().from(mensagensIa).where(eq(mensagensIa.conversaId, aberta.id)).orderBy(asc(mensagensIa.id)) : [];
   return (
@@ -41,7 +43,7 @@ export async function Assistente({ id }: { id?: string }) {
       conversaId={aberta?.id ?? null}
       mensagensIniciais={mensagens.map(paraTela)}
       totalMemorias={memorias}
-      impressora={`${cfg["impressora.modelo"] || "Bambu Lab A1 mini"} · bico ${cfg["impressora.bico"] || "0,4 mm"} · ${cfg["impressora.mesa"] || "Textured PEI"}`}
+      impressora={`${maquinas.map((m) => m.nome).join(", ") || "Bambu Lab A1 mini"} · ${cfg["impressora.mesa"] || "Textured PEI"}`}
     />
   );
 }

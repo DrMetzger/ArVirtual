@@ -1,3 +1,5 @@
+import { listaImpressoras, MODELOS_IMPRESSORA } from "@/lib/impressoras";
+import { Impressoras } from "./impressoras";
 import { asc } from "drizzle-orm";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -51,6 +53,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         {apicpfReserva ? " · usando a chave do servidor (segredo APICPF_CHAVE)" : ""}.
       </>
     ),
+    Thingiverse: "Opcional: só para importar modelos do Thingiverse pelo link. Sem a chave, baixe o arquivo no site e envie em Produtos › Importar modelo 3D.",
+    Cults: "Opcional: só para importar modelos do Cults pelo link (fotos, descrição e licença). O arquivo para medir o tamanho você envia baixado.",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     "Shopee Afiliados": (
       <>
@@ -119,6 +123,8 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       {aba === "empresa" ? <EmpresaForm empresa={(await db.query.empresa.findFirst()) ?? null} /> : null}
 
       {aba === "certificado" ? await certificadoAba() : null}
+
+      {aba === "impressora" ? <Impressoras lista={await listaImpressoras(false)} modelos={MODELOS_IMPRESSORA} /> : null}
 
       {aba === "integracoes" || aba === "precificacao" || aba === "impressora" ? (
         <div className="grid gap-6 xl:grid-cols-2">

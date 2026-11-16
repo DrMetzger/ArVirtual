@@ -1,7 +1,9 @@
 import "server-only";
+import { buscarModelos } from "@/lib/modelos3d";
+import { maiorMedidaCm } from "@/lib/impressoras";
 import { and, asc, desc, eq, gte, inArray, isNull, lt, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { sentinelaItens, sentinelaLeituras, sentinelaRelatorios, sentinelaTermos, type AnaliseSentinela, type ExtrasAfiliado } from "@/db/schema";
+import { sentinelaItens, sentinelaLeituras, sentinelaRelatorios, sentinelaTermos, type AnaliseSentinela, type ExtrasAfiliado, type ItemPlano } from "@/db/schema";
 import { afiliadosConfigurado, buscarOfertas, type Oferta } from "@/lib/afiliados";
 import { gerarComGemini, gerarComGeminiDetalhado, geminiConfigurado } from "@/lib/gemini";
 import { custoImpressao } from "@/lib/impressao";
@@ -283,7 +285,8 @@ async function analisarLote(limite: number) {
   const candidatos = [...daShopee_, ...doML];
   if (!candidatos.length) return 0;
   const [pi, pp, maxTxt] = await Promise.all([getParametrosImpressao(), getParametrosPreco(), getSetting("impressao.tamanhoMaxCm")]);
-  const maxCm = Number(maxTxt.replace(",", ".")) || 17;
+  // Configurado à mão ou, sem isso, a maior impressora cadastrada menos 1 cm de folga.
+  const maxCm = Number(maxTxt.replace(",", ".")) || Math.max(5, (await maiorMedidaCm()) - 1);
   let feitos = 0;
   for (let i = 0; i < candidatos.length; i += 20) {
     const lote = candidatos.slice(i, i + 20);
@@ -433,15 +436,21 @@ ${nichos}
 
 Pesquise também no magazineluiza.com.br quem vende peças parecidas com as minhas e as oportunidades, e por quanto
 (o Magalu não tem API, só a sua pesquisa). Pesquise na internet o que está em alta AGORA no Brasil (datas comemorativas das próximas 6 semanas, lançamentos de games/filmes/séries,
-modas de decoração e de presente) e cruze com os dados. Entregue, em português, direto ao ponto, sem enrolação:
-1. "Fazer esta semana": 5 produtos concretos para imprimir e anunciar já (nome do anúncio sugerido, preço, por que vai vender, em qual marketplace primeiro).
-2. "Nichos com pouca concorrência": onde a demanda é boa e há poucos vendedores.
-3. "Calendário": datas próximas e o que preparar para cada uma, com antecedência.
-4. "Cuidado": o que evitar (marcas registradas, produto que chinês faz mais barato).
+modas de decoração e de presente) e cruze com os dados. Entregue, em português, direto ao ponto, sem enrolação, com exatamente estes 4 títulos em Markdown:
+## Fazer esta semana
+5 produtos concretos para imprimir e anunciar já (nome do anúncio sugerido, preço, por que vai vender, em qual marketplace primeiro).
+## Nichos com pouca concorrência
+Onde a demanda é boa e há poucos vendedores.
+## Calendário
+Datas próximas e o que preparar para cada uma, com antecedência.
+## Cuidado
+O que evitar (marcas registradas, produto que chinês faz mais barato).
+Depois do texto, numa linha só, escreva: PLANO_JSON: [{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras EM INGLÊS para achar o modelo 3D no MakerWorld/Printables"}] com os 5 produtos de "Fazer esta semana".
 Na última linha, escreva exatamente: NOVOS_TERMOS: termo1; termo2; ... (até 10 termos de busca curtos, sem acento, para eu passar a vigiar).`;
   const { texto } = await gerarComGeminiDetalhado([{ role: "user", text: prompt }], { pesquisa: true, temperature: 0.6 });
   const m = texto.match(/NOVOS_TERMOS:\s*(.+)\s*$/im);
-  const corpo = texto.replace(/\n?.*NOVOS_TERMOS:.*$/im, "").trim();
+  const plano = lerPlanoJson(texto.match(/PLANO_JSON:\s*(\[.*\])/i)?.[1] ?? "");
+  const corpo = texto.replace(/\n?.*NOVOS_TERMOS:.*$/im, "").replace(/\n?.*PLANO_JSON:.*$/im, "").trim();
   if (m) {
     const ativos = (await db.select({ n: sql<number>`count(*)::int` }).from(sentinelaTermos).where(eq(sentinelaTermos.ativo, true)))[0]?.n ?? 0;
     const novos = m[1]!
@@ -451,8 +460,61 @@ Na última linha, escreva exatamente: NOVOS_TERMOS: termo1; termo2; ... (até 10
       .slice(0, Math.max(0, MAX_TERMOS_ATIVOS - ativos));
     if (novos.length) await db.insert(sentinelaTermos).values(novos.map((termo) => ({ termo, origem: "ia" as const, motivo: "Sugerido pela IA no relatório" }))).onConflictDoNothing();
   }
-  const [r] = await db.insert(sentinelaRelatorios).values({ texto: corpo }).returning();
+  const [r] = await db
+    .insert(sentinelaRelatorios)
+    .values({ texto: corpo, plano: plano.length ? await comModelos(plano) : null })
+    .returning();
   return r!;
+}
+
+type ItemSemModelos = Omit<ItemPlano, "modelos">;
+
+function lerPlanoJson(t: string): ItemSemModelos[] {
+  try {
+    const j = JSON.parse(t) as unknown;
+    const lista = Array.isArray(j) ? j : Array.isArray((j as { itens?: unknown })?.itens) ? (j as { itens: unknown[] }).itens : [];
+    return (lista as Record<string, unknown>[])
+      .map((x) => ({
+        produto: String(x.produto ?? "").slice(0, 160),
+        preco: Number(x.preco) > 0 ? Math.round(Number(x.preco) * 100) / 100 : null,
+        marketplace: String(x.marketplace ?? "").slice(0, 40),
+        porque: String(x.porque ?? "").slice(0, 400),
+        busca: String(x.busca ?? x.produto ?? "").slice(0, 80),
+      }))
+      .filter((x) => x.produto)
+      .slice(0, 8);
+  } catch {
+    return [];
+  }
+}
+
+/** Para cada item do plano, os modelos 3D achados (MakerWorld e Printables; os que podem ser vendidos primeiro). */
+async function comModelos(itens: ItemSemModelos[]): Promise<ItemPlano[]> {
+  const out: ItemPlano[] = [];
+  for (const i of itens) out.push({ ...i, modelos: await buscarModelos(i.busca, 6).catch(() => []) });
+  return out;
+}
+
+/** Relatório antigo (só texto): a IA separa o "Fazer esta semana" em itens e o sistema acha os modelos 3D. */
+export async function estruturarPlano(relatorioId: number) {
+  const r = await db.query.sentinelaRelatorios.findFirst({ where: eq(sentinelaRelatorios.id, relatorioId) });
+  if (!r) throw new Error("Relatório não encontrado.");
+  const texto = await gerarComGemini(
+    [
+      {
+        role: "user",
+        text:
+          `Do relatório abaixo, pegue só os produtos da parte "Fazer esta semana" e devolva só JSON: ` +
+          `[{"produto": "nome do anúncio", "preco": 0.0, "marketplace": "Magalu", "porque": "uma frase", "busca": "2 a 4 palavras EM INGLÊS para achar o modelo 3D no MakerWorld/Printables"}]\n\n${r.texto.slice(0, 12000)}`,
+      },
+    ],
+    { json: true, temperature: 0.1 },
+  );
+  const itens = lerPlanoJson(texto);
+  if (!itens.length) throw new Error("A IA não conseguiu separar os itens do plano. Gere um plano novo.");
+  const plano = await comModelos(itens);
+  await db.update(sentinelaRelatorios).set({ plano }).where(eq(sentinelaRelatorios.id, relatorioId));
+  return plano;
 }
 
 /** Rotina automática: coleta a cada 4 horas; IA analisa o que subiu; relatório 1 vez por dia. */

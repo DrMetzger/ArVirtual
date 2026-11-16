@@ -1,4 +1,5 @@
 import "server-only";
+import { listaImpressoras } from "@/lib/impressoras";
 import { and, desc, eq, gte } from "drizzle-orm";
 import { db } from "@/db";
 import { filamentos, memoriasIa, pedidosMarketplace, produtos } from "@/db/schema";
@@ -27,9 +28,9 @@ export const MARCA_MEMORIA = /\[\[lembrar:\s*([^\]]+?)\s*\]\]/g;
 
 /** Instruções do assistente com tudo que ele precisa saber da empresa, da impressora e do que já aprendeu. */
 export async function montarSistema() {
-  const [cfg, emp, custo, preco, fils, prods, mems, pedidos] = await Promise.all([
+  const [cfg, emp, custo, preco, fils, prods, mems, pedidos, maquinas] = await Promise.all([
     getSettings([
-      "ia.instrucoes", "ia.aprender", "impressora.modelo", "impressora.quantidade", "impressora.bico", "impressora.mesa", "impressora.ams",
+      "ia.instrucoes", "ia.aprender", "impressora.mesa",
       "impressora.fatiador", "impressora.materiais", "impressora.ambiente", "impressora.observacoes",
     ]),
     db.query.empresa.findFirst(),
@@ -50,9 +51,9 @@ export async function montarSistema() {
       .select({ marketplace: pedidosMarketplace.marketplace, status: pedidosMarketplace.status, total: pedidosMarketplace.total, itens: pedidosMarketplace.itens })
       .from(pedidosMarketplace)
       .where(and(gte(pedidosMarketplace.data, new Date(Date.now() - 30 * 86400_000)))),
+    listaImpressoras(),
   ]);
 
-  const modelo = cfg["impressora.modelo"] || "Bambu Lab A1 mini";
   const vendidos = pedidos.filter((p) => ["pago", "enviado", "entregue"].includes(situacaoPedido(p.marketplace, p.status)));
   const porCanal = Object.entries(
     vendidos.reduce<Record<string, { n: number; total: number }>>((acc, p) => {
@@ -100,8 +101,8 @@ Quando o usuário contar um fato durável sobre a empresa, produtos, fornecedore
     : ""
 }
 === IMPRESSORA (Configurações › Impressora 3D) ===
-${cfg["impressora.quantidade"] && cfg["impressora.quantidade"] !== "1" ? `${cfg["impressora.quantidade"]}× ` : ""}${modelo}${IMPRESSORAS[modelo] ? `: ${IMPRESSORAS[modelo]}` : ""}
-Bico: ${cfg["impressora.bico"] || "0,4 mm aço inox (padrão)"} · Mesa: ${cfg["impressora.mesa"] || "Textured PEI"} · Multicor: ${cfg["impressora.ams"] || "AMS lite (4 cores)"} · Fatiador: ${cfg["impressora.fatiador"] || "Bambu Studio"}
+${maquinas.map((m) => `- ${m.nome} (${m.modelo}${IMPRESSORAS[m.modelo] ? `: ${IMPRESSORAS[m.modelo]}` : ""}): área ${m.larguraMm} × ${m.profundidadeMm} × ${m.alturaMm} mm, ${m.cores} cor(es) de uma vez, bico ${String(m.bicoMm).replace(".", ",")} mm, ${m.materiais}`).join("\n") || "- Bambu Lab A1 mini"}
+Mesa: ${cfg["impressora.mesa"] || "Textured PEI"} · Fatiador: ${cfg["impressora.fatiador"] || "Bambu Studio"}
 Materiais usados: ${cfg["impressora.materiais"] || "não informado"}${cfg["impressora.ambiente"] ? `\nAmbiente: ${cfg["impressora.ambiente"]}` : ""}${cfg["impressora.observacoes"] ? `\nObservações: ${cfg["impressora.observacoes"]}` : ""}
 
 === CUSTOS E PREÇOS ===

@@ -12,6 +12,7 @@ import {
   sql,
 } from "drizzle-orm";
 import {
+  Box,
   Download,
   Eye,
   LayoutGrid,
@@ -237,6 +238,9 @@ export default async function ProdutosPage({
             ) : null}
             <Link href="/produtos/trazer" className={buttonClass("gold")}>
               <Download /> Trazer dos marketplaces
+            </Link>
+            <Link href="/produtos/modelo3d" className={buttonClass("outline")}>
+              <Box /> Importar modelo 3D
             </Link>
             <Link
               href="/produtos/novo#importar"

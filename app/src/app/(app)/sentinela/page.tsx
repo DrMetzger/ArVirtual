@@ -11,6 +11,7 @@ import { campeoesMagalu, estatisticaAnuncios, painelSentinela } from "@/lib/sent
 import { anunciosPorPlataforma } from "@/lib/contagem-anuncios";
 import { formatBRL, formatDate } from "@/lib/utils";
 import { Markdown } from "../assistente/markdown";
+import { PlanoAcoes } from "./plano";
 import { adicionarTermo, alternarTermo, coletarAgora, excluirTermo, relatorioAgora, trabalhoEmAndamento } from "./actions";
 import { AtualizarSozinho } from "./atualizar";
 import { ItemCard, type ItemSentinela } from "./item-card";
@@ -248,8 +249,9 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
             description={p.relatorio ? `Gerado em ${formatDate(p.relatorio.criadoEm)}` : "Ainda não gerado"}
           />
           {p.relatorio ? (
-            <div className="max-w-3xl p-5 text-sm leading-relaxed">
-              <Markdown texto={p.relatorio.texto} />
+            <div className="grid gap-4 p-5">
+              <PlanoAcoes relatorioId={p.relatorio.id} plano={p.relatorio.plano ?? null} />
+              <SecoesPlano texto={p.relatorio.texto} semFazer={Boolean(p.relatorio.plano?.length)} />
             </div>
           ) : (
             <p className="p-5 text-sm text-muted">Clique em Plano da IA lá em cima.</p>
@@ -349,5 +351,36 @@ export default async function SentinelaPage({ searchParams }: { searchParams: Pr
         )}
       </div>
     </>
+  );
+}
+
+/** Texto do plano em abas pelos títulos (## ...); "Fazer esta semana" sai daqui quando já virou cartões. */
+function SecoesPlano({ texto, semFazer }: { texto: string; semFazer: boolean }) {
+  const partes = texto.split(/\n(?=#{1,3}\s)/).map((t) => t.trim()).filter(Boolean);
+  const secoes = partes
+    .map((t) => {
+      const titulo = t.match(/^#{1,3}\s+(.+)/)?.[1]?.replace(/[*#]/g, "").replace(/^\d+[.)]\s*/, "").trim() ?? "";
+      return { titulo, corpo: titulo ? t.replace(/^#{1,3}\s+.+\n?/, "") : t };
+    })
+    .filter((x) => !(semFazer && /fazer esta semana/i.test(x.titulo)) && x.corpo.trim());
+  if (secoes.length < 2) {
+    return (
+      <div className="max-w-3xl text-sm leading-relaxed">
+        <Markdown texto={secoes.map((x) => (x.titulo ? `## ${x.titulo}\n${x.corpo}` : x.corpo)).join("\n\n") || texto} />
+      </div>
+    );
+  }
+  return (
+    <Abas
+      abas={secoes.map((x, i) => ({
+        id: `s${i}`,
+        rotulo: <>{x.titulo || "Resumo"}</>,
+        conteudo: (
+          <div className="max-w-3xl text-sm leading-relaxed">
+            <Markdown texto={x.corpo} />
+          </div>
+        ),
+      }))}
+    />
   );
 }
