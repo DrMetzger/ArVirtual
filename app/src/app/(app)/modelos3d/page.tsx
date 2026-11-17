@@ -10,19 +10,20 @@ import { cn, formatDate } from "@/lib/utils";
 import { novaPesquisa } from "./actions";
 import { ResultadosPesquisa } from "./resultados";
 
-export const metadata: Metadata = { title: "Pesquisa de modelos 3D" };
+export const metadata: Metadata = { title: "Modelos 3D" };
 
 export default async function PesquisaModelosPage({ searchParams }: { searchParams: Promise<{ p?: string; erro?: string }> }) {
   await requireUser();
   const sp = await searchParams;
-  const pesquisas = await listaPesquisas();
+  // Mesmo termo pesquisado de novo: fica só a mais recente no histórico.
+  const pesquisas = (await listaPesquisas()).filter((x, i, xs) => xs.findIndex((y) => y.termo.toLowerCase() === x.termo.toLowerCase()) === i);
   const atual = pesquisas.find((x) => String(x.id) === sp.p) ?? pesquisas[0];
   const itens = atual ? await itensDaPesquisa(atual.id) : [];
   return (
     <>
       <PageHeader
-        title="Pesquisa de modelos 3D"
-        description="Todos os modelos do MakerWorld e do Printables para o que você procurar, com o mercado de cada um no Magalu, Mercado Livre e Shopee: quem vende, por quanto, quanto vende e o preço para você concorrer."
+        title="Modelos 3D"
+        description="Todos os modelos de 6 sites (MakerWorld, Printables, Thangs, Thingiverse, Cults3D e MyMiniFactory) para o que você procurar, com o mercado de cada um no Magalu, Mercado Livre e Shopee: quem vende, por quanto, quanto vende e o preço para você concorrer."
       />
       <Card className="mb-5 p-5">
         <form action={novaPesquisa} className="flex gap-2">
@@ -54,7 +55,7 @@ export default async function PesquisaModelosPage({ searchParams }: { searchPara
           </div>
         ) : null}
       </Card>
-      {atual ? <ResultadosPesquisa key={atual.id} pesquisaId={atual.id} termo={atual.termo} inicial={itens} andamento={estadoCadastro()} /> : null}
+      {atual ? <ResultadosPesquisa key={atual.id} pesquisaId={atual.id} termo={atual.termo} inicial={itens} andamento={estadoCadastro()} fontes={atual.fontes} /> : null}
     </>
   );
 }

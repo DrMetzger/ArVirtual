@@ -2,7 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import sharp from "sharp";
-import type { ModeloAchado, OrigemModelo3d } from "@/db/schema";
+import { FONTES_MODELO, type FonteModelo, type ModeloAchado, type OrigemModelo3d } from "@/db/schema";
 import { ler3mf, lerZip, malhaStl, medidasMalha, pesoEstimadoPla, type Malha } from "@/lib/assistente/arquivos";
 import { gerarComGemini } from "@/lib/gemini";
 import { getSettings } from "@/lib/settings";
@@ -94,6 +94,10 @@ export function fonteDoLink(link: string): { fonte: Exclude<Fonte, "arquivo">; i
   if (m) return { fonte: "printables", id: m[1]! };
   m = u.match(/thingiverse\.com\/thing:(\d+)/i);
   if (m) return { fonte: "thingiverse", id: m[1]! };
+  m = u.match(/thangs\.com\/(?:m\/(\d+)|.*?-(\d+)(?:[/?#]|$))/i);
+  if (m) return { fonte: "thangs", id: (m[1] ?? m[2])! };
+  m = u.match(/myminifactory\.com\/object\/(?:[a-z0-9-]*-)?(\d+)/i);
+  if (m) return { fonte: "myminifactory", id: m[1]! };
   m = u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/[^/]+\/([a-z0-9-]+)/i) ?? u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/([a-z0-9-]+)/i);
   if (m) return { fonte: "cults", id: m[1]! };
   return null;
@@ -334,12 +338,75 @@ async function cults(slug: string, link: string): Promise<Modelo3d> {
   };
 }
 
+// ------------------------------------------------------------------------------------------------ Thangs
+type ThangsModelo = {
+  name: string;
+  description?: string;
+  license?: string;
+  owner?: { username?: string };
+  attachments?: { imageUrl?: string; attachmentType?: string }[];
+  parts?: { name?: string; size?: number }[];
+};
+
+async function thangs(id: string, link: string): Promise<Modelo3d> {
+  const t = await json<ThangsModelo>(`https://thangs.com/api/models/${id}`, {}, "Thangs");
+  // A licença vem como nome de arquivo: ".../Creative Commons Attribution-NonCommercial-ShareAlike 4.0 ....txt".
+  const nomeLic = (t.license ?? "").split("/").pop()?.replace(/\.txt$/i, "") ?? "";
+  return {
+    fonte: "thangs",
+    link,
+    titulo: t.name,
+    autor: t.owner?.username ?? "",
+    descricao: textoDeHtml(t.description ?? ""),
+    fotos: (t.attachments ?? []).filter((a) => a.imageUrl && (a.attachmentType ?? "image") === "image").map((a) => a.imageUrl!).slice(0, 10),
+    licenca: licencaPt(nomeLic),
+    comercial: licencaComercial(nomeLic),
+    perfis: [],
+    medidasMm: null,
+    pesoEstimadoG: null,
+    avisos: ["O Thangs não informa peso nem tempo: baixe o arquivo e envie aqui (ou fatie no Bambu Studio) para o custo exato."],
+  };
+}
+
+// ------------------------------------------------------------------------------------------------ MyMiniFactory
+async function myMiniFactory(id: string, link: string): Promise<Modelo3d> {
+  const chave = (await getSettings(["myminifactory.chave"]))["myminifactory.chave"].trim();
+  if (!chave) throw new Error("Para ler do MyMiniFactory, cadastre a chave em Configurações › Integrações › MyMiniFactory (ou envie o arquivo baixado).");
+  const o = await json<{ name: string; description?: string; url?: string; images?: { standard?: { url?: string } }[]; designer?: { username?: string }; license?: string; licenses?: { type?: string; value?: boolean }[] }>(
+    `https://www.myminifactory.com/api/v2/objects/${id}?key=${encodeURIComponent(chave)}`,
+    {},
+    "MyMiniFactory",
+  );
+  const comercialMMF = o.licenses?.find((l) => /commercial/i.test(l.type ?? ""))?.value;
+  return {
+    fonte: "myminifactory",
+    link,
+    titulo: o.name,
+    autor: o.designer?.username ?? "",
+    descricao: textoDeHtml(o.description ?? ""),
+    fotos: (o.images ?? []).map((i) => i.standard?.url).filter((x): x is string => Boolean(x)).slice(0, 10),
+    licenca: comercialMMF === true ? "Uso comercial permitido" : comercialMMF === false ? "Sem uso comercial" : licencaPt(o.license ?? ""),
+    comercial: comercialMMF ?? licencaComercial(o.license ?? ""),
+    perfis: [],
+    medidasMm: null,
+    pesoEstimadoG: null,
+    avisos: ["O MyMiniFactory não informa peso nem tempo pela API: envie o arquivo para o custo exato."],
+  };
+}
+
 export async function lerModeloDoLink(link: string): Promise<Modelo3d> {
   const f = fonteDoLink(link);
-  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Thingiverse ou Cults.");
+  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Thangs, Thingiverse, Cults3D ou MyMiniFactory.");
   const limpo = link.trim();
-  const m =
-    f.fonte === "makerworld" ? await makerWorld(f.id, limpo) : f.fonte === "printables" ? await printables(f.id, limpo) : f.fonte === "thingiverse" ? await thingiverse(f.id, limpo) : await cults(f.id, limpo);
+  const leitores: Record<FonteModelo, (id: string, l: string) => Promise<Modelo3d>> = {
+    makerworld: makerWorld,
+    printables,
+    thangs,
+    thingiverse,
+    cults,
+    myminifactory: myMiniFactory,
+  };
+  const m = await leitores[f.fonte](f.id, limpo);
   // Perfil indicado no link (#profileId-…) vem primeiro.
   if (f.perfil) m.perfis.sort((a, b) => (a.id === f.perfil ? -1 : b.id === f.perfil ? 1 : 0));
   return m;
@@ -386,60 +453,194 @@ export async function lerModeloDoArquivo(nome: string, buf: Buffer, origin: stri
 }
 
 // ------------------------------------------------------------------------------------------------ Busca
-/** Procura modelos no MakerWorld e no Printables (20 em cada); os que a licença deixa vender vêm primeiro, depois os mais baixados. */
-async function buscarTermo(q: string): Promise<ModeloAchado[]> {
-  const mw = json<{ hits?: { id: number; title: string; slug?: string; cover?: string; license?: string; downloadCount?: number; likeCount?: number; designCreator?: { name?: string } }[] }>(
-    `https://makerworld.com/api/v1/search-service/select/design2?keyword=${encodeURIComponent(q)}&limit=20&offset=0`,
-    {},
-    "MakerWorld",
-  )
-    .then((r) =>
-      (r.hits ?? []).map((h): ModeloAchado => {
-        const lic = licencaPt(LICENCAS_MW[h.license ?? ""] ?? h.license ?? "");
-        return {
-          fonte: "makerworld",
-          titulo: h.title,
-          link: `https://makerworld.com/pt/models/${h.id}${h.slug ? `-${h.slug}` : ""}`,
-          imagem: h.cover ?? "",
-          autor: h.designCreator?.name ?? "",
-          licenca: lic,
-          comercial: licencaComercial(lic),
-          downloads: h.downloadCount ?? 0,
-          curtidas: h.likeCount ?? 0,
-        };
-      }),
-    )
-    .catch(() => [] as ModeloAchado[]);
-  const pr = json<{ data?: { searchPrints2?: { items?: { id: string; name: string; slug: string; license?: { abbreviation?: string; name?: string }; image?: { filePath?: string }; likesCount?: number; downloadCount?: number; user?: { publicUsername?: string } }[] } } }>(
+// Cada site devolve os modelos e como foi ("12 modelos", "precisa da chave", "fora do ar").
+type ResultadoFonte = { modelos: ModeloAchado[]; status: string };
+const POR_FONTE = 20;
+
+const statusDe = (n: number) => (n ? `${n} modelo(s)` : "nada encontrado");
+const erroDe = (e: unknown) => {
+  const m = (e as Error).message ?? "";
+  return /bloqueou/.test(m) ? "bloqueou a pesquisa" : /recusou|401|403/.test(m) ? "recusou a chave" : "fora do ar agora";
+};
+
+async function buscaMakerWorld(q: string): Promise<ResultadoFonte> {
+  type R = { hits?: { id: number; title: string; slug?: string; cover?: string; license?: string; downloadCount?: number; likeCount?: number; designCreator?: { name?: string } }[] };
+  const url = `https://makerworld.com/api/v1/search-service/select/design2?keyword=${encodeURIComponent(q)}&limit=${POR_FONTE}&offset=0`;
+  // O MakerWorld às vezes recusa a primeira pesquisa: tenta mais uma vez.
+  const r = await json<R>(url, {}, "MakerWorld").catch(async () => {
+    await new Promise((ok) => setTimeout(ok, 1500));
+    return json<R>(url, {}, "MakerWorld");
+  });
+  const modelos = (r.hits ?? []).map((h): ModeloAchado => {
+    const lic = licencaPt(LICENCAS_MW[h.license ?? ""] ?? h.license ?? "");
+    return {
+      fonte: "makerworld",
+      titulo: h.title,
+      link: `https://makerworld.com/pt/models/${h.id}${h.slug ? `-${h.slug}` : ""}`,
+      imagem: h.cover ?? "",
+      autor: h.designCreator?.name ?? "",
+      licenca: lic,
+      comercial: licencaComercial(lic),
+      downloads: h.downloadCount ?? 0,
+      curtidas: h.likeCount ?? 0,
+    };
+  });
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+async function buscaPrintables(q: string): Promise<ResultadoFonte> {
+  const r = await json<{ data?: { searchPrints2?: { items?: { id: string; name: string; slug: string; license?: { abbreviation?: string; name?: string }; image?: { filePath?: string }; likesCount?: number; downloadCount?: number; user?: { publicUsername?: string } }[] } } }>(
     "https://api.printables.com/graphql/",
     {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         query: `query($q: String!, $n: Int) { searchPrints2(query: $q, limit: $n) { items { id name slug license { abbreviation name } image { filePath } likesCount downloadCount user { publicUsername } } } }`,
-        variables: { q, n: 20 },
+        variables: { q, n: POR_FONTE },
       }),
     },
     "Printables",
-  )
-    .then((r) =>
-      (r.data?.searchPrints2?.items ?? []).map((i): ModeloAchado => {
-        const lic = licencaPt([i.license?.abbreviation, i.license?.name].filter(Boolean).join(" "));
-        return {
-          fonte: "printables",
-          titulo: i.name,
-          link: `https://www.printables.com/model/${i.id}-${i.slug}`,
-          imagem: i.image?.filePath ? `https://media.printables.com/${i.image.filePath}` : "",
-          autor: i.user?.publicUsername ?? "",
-          licenca: lic,
-          comercial: licencaComercial(lic),
-          downloads: i.downloadCount ?? 0,
-          curtidas: i.likesCount ?? 0,
-        };
+  );
+  const modelos = (r.data?.searchPrints2?.items ?? []).map((i): ModeloAchado => {
+    const lic = licencaPt([i.license?.abbreviation, i.license?.name].filter(Boolean).join(" "));
+    return {
+      fonte: "printables",
+      titulo: i.name,
+      link: `https://www.printables.com/model/${i.id}-${i.slug}`,
+      imagem: i.image?.filePath ? `https://media.printables.com/${i.image.filePath}` : "",
+      autor: i.user?.publicUsername ?? "",
+      licenca: lic,
+      comercial: licencaComercial(lic),
+      downloads: i.downloadCount ?? 0,
+      curtidas: i.likesCount ?? 0,
+    };
+  });
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+async function buscaThangs(q: string): Promise<ResultadoFonte> {
+  const r = await json<{ results?: { modelId?: string; modelTitle?: string; name?: string; thumbnailUrl?: string; thumbnails?: string[]; ownerUsername?: string; downloadCount?: number; likesCount?: number; attributionUrl?: string; modelPageUrl?: string }[] }>(
+    `https://thangs.com/api/models/v2/search-by-text?searchTerm=${encodeURIComponent(q)}&scope=all&page=0&pageSize=${POR_FONTE}`,
+    {},
+    "Thangs",
+  );
+  const modelos = (r.results ?? [])
+    .filter((x) => x.modelId)
+    .map(
+      (x): ModeloAchado => ({
+        fonte: "thangs",
+        titulo: x.modelTitle || x.name || "",
+        link: `https://thangs.com/m/${x.modelId}`,
+        imagem: x.thumbnails?.[0] || x.thumbnailUrl || "",
+        autor: x.ownerUsername ?? "",
+        // A busca do Thangs não traz a licença: ela é lida ao abrir o modelo.
+        licenca: "",
+        comercial: null,
+        downloads: x.downloadCount ?? 0,
+        curtidas: x.likesCount ?? 0,
       }),
-    )
-    .catch(() => [] as ModeloAchado[]);
-  return [...(await mw), ...(await pr)];
+    );
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+async function buscaThingiverse(q: string): Promise<ResultadoFonte> {
+  const token = (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim();
+  if (!token) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
+  const r = await json<{ hits?: { id: number; name: string; public_url?: string; thumbnail?: string; preview_image?: string; like_count?: number; collect_count?: number; creator?: { name?: string } }[] }>(
+    `https://api.thingiverse.com/search/${encodeURIComponent(q)}/?type=things&per_page=${POR_FONTE}&sort=popular`,
+    { headers: { Authorization: `Bearer ${token}` } },
+    "Thingiverse",
+  );
+  const modelos = (r.hits ?? []).map(
+    (h): ModeloAchado => ({
+      fonte: "thingiverse",
+      titulo: h.name,
+      link: h.public_url || `https://www.thingiverse.com/thing:${h.id}`,
+      imagem: h.preview_image || h.thumbnail || "",
+      autor: h.creator?.name ?? "",
+      licenca: "",
+      comercial: null,
+      downloads: h.collect_count ?? 0,
+      curtidas: h.like_count ?? 0,
+    }),
+  );
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+async function buscaCults(q: string): Promise<ResultadoFonte> {
+  const s = await getSettings(["cults.usuario", "cults.chave"]);
+  if (!s["cults.usuario"] || !s["cults.chave"]) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
+  const auth = Buffer.from(`${s["cults.usuario"].trim()}:${s["cults.chave"].trim()}`).toString("base64");
+  const r = await json<{ data?: { creationsSearchBatch?: { results?: { name: string; url: string; illustrationImageUrl?: string; license?: { code?: string; name?: string }; creator?: { nick?: string }; downloadsCount?: number; likesCount?: number }[] } }; errors?: { message: string }[] }>(
+    "https://cults3d.com/graphql",
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Basic ${auth}` },
+      body: JSON.stringify({
+        query: `query($q: String!, $n: Int) { creationsSearchBatch(query: $q, limit: $n) { results { name(locale: PT) url(locale: PT) illustrationImageUrl license { code name(locale: PT) } creator { nick } downloadsCount likesCount } } }`,
+        variables: { q, n: POR_FONTE },
+      }),
+    },
+    "Cults",
+  );
+  if (r.errors?.length && !r.data?.creationsSearchBatch) throw new Error(r.errors[0]!.message);
+  const modelos = (r.data?.creationsSearchBatch?.results ?? []).map((c): ModeloAchado => {
+    const lic = licencaPt([c.license?.code, c.license?.name].filter(Boolean).join(" "));
+    return {
+      fonte: "cults",
+      titulo: c.name,
+      link: c.url,
+      imagem: c.illustrationImageUrl ?? "",
+      autor: c.creator?.nick ?? "",
+      licenca: lic,
+      comercial: licencaComercial(lic),
+      downloads: c.downloadsCount ?? 0,
+      curtidas: c.likesCount ?? 0,
+    };
+  });
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+async function buscaMyMiniFactory(q: string): Promise<ResultadoFonte> {
+  const chave = (await getSettings(["myminifactory.chave"]))["myminifactory.chave"].trim();
+  if (!chave) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
+  const r = await json<{ items?: { id: number; name: string; url?: string; images?: { thumbnail?: { url?: string }; standard?: { url?: string } }[]; designer?: { username?: string; name?: string }; likes?: number; views?: number; license?: string; licenses?: { type?: string; value?: boolean }[] }[] }>(
+    `https://www.myminifactory.com/api/v2/search?q=${encodeURIComponent(q)}&per_page=${POR_FONTE}&key=${encodeURIComponent(chave)}`,
+    {},
+    "MyMiniFactory",
+  );
+  const modelos = (r.items ?? []).map((o): ModeloAchado => {
+    const comercialMMF = o.licenses?.find((l) => /commercial/i.test(l.type ?? ""))?.value;
+    return {
+      fonte: "myminifactory",
+      titulo: o.name,
+      link: o.url || `https://www.myminifactory.com/object/${o.id}`,
+      imagem: o.images?.[0]?.standard?.url || o.images?.[0]?.thumbnail?.url || "",
+      autor: o.designer?.username || o.designer?.name || "",
+      licenca: comercialMMF === true ? "Uso comercial permitido" : comercialMMF === false ? "Sem uso comercial" : licencaPt(o.license ?? ""),
+      comercial: comercialMMF ?? licencaComercial(o.license ?? ""),
+      downloads: o.views ?? 0,
+      curtidas: o.likes ?? 0,
+    };
+  });
+  return { modelos, status: statusDe(modelos.length) };
+}
+
+const BUSCAS: Record<FonteModelo, (q: string) => Promise<ResultadoFonte>> = {
+  makerworld: buscaMakerWorld,
+  printables: buscaPrintables,
+  thangs: buscaThangs,
+  thingiverse: buscaThingiverse,
+  cults: buscaCults,
+  myminifactory: buscaMyMiniFactory,
+};
+
+/** Pesquisa um termo (já em inglês) nos 6 sites ao mesmo tempo. */
+async function buscarTermo(q: string) {
+  const resultados = await Promise.all(
+    FONTES_MODELO.map(async (f) => [f, await BUSCAS[f](q).catch((e) => ({ modelos: [], status: erroDe(e) }))] as const),
+  );
+  return Object.fromEntries(resultados) as Record<FonteModelo, ResultadoFonte>;
 }
 
 // ------------------------------------------------------------------------------------------------ Português
@@ -480,27 +681,41 @@ async function traduzir(textos: string[], para: "pt" | "en"): Promise<string[]> 
   return textos.map((t) => traducoes.get(chave(t)) ?? t);
 }
 
-/** Procura modelos (você digita em português); os que a licença deixa vender vêm primeiro, depois os mais baixados. */
-export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAchado[]> {
+/**
+ * Procura modelos nos 6 sites (você digita em português; vai traduzido por dentro) e devolve TODOS (todas as licenças),
+ * com como foi em cada site. Títulos voltam em português. Ordem: mais baixados primeiro, intercalando os sites.
+ */
+export async function buscarModelosDetalhado(termo: string, limite = 60): Promise<{ modelos: ModeloAchado[]; fontes: Partial<Record<FonteModelo, string>> }> {
   const q = termo.trim().slice(0, 80);
-  if (!q) return [];
+  if (!q) return { modelos: [], fontes: {} };
   const [ingles] = await traduzir([q], "en");
   const termos = [...new Set([ingles!, q].map((t) => t.toLowerCase()))];
+  const porFonte = new Map<FonteModelo, ModeloAchado[]>();
+  const fontes: Partial<Record<FonteModelo, string>> = {};
   const vistos = new Set<string>();
-  const todos: ModeloAchado[] = [];
   for (const t of termos) {
-    let achados = await buscarTermo(t);
-    // O MakerWorld às vezes recusa a primeira pesquisa: tenta mais uma vez.
-    if (!achados.some((m) => m.fonte === "makerworld")) {
-      await new Promise((r) => setTimeout(r, 1200));
-      achados = [...achados.filter((m) => m.fonte !== "makerworld"), ...(await buscarTermo(t)).filter((m) => m.fonte === "makerworld")];
+    const r = await buscarTermo(t);
+    for (const f of FONTES_MODELO) {
+      const lista = porFonte.get(f) ?? [];
+      for (const m of r[f].modelos) if (!vistos.has(m.link)) vistos.add(m.link) && lista.push(m);
+      porFonte.set(f, lista);
+      // Fica o melhor status entre as duas pesquisas (a em português costuma achar menos).
+      if (!fontes[f] || /^\d/.test(r[f].status)) fontes[f] = lista.length ? statusDe(lista.length) : r[f].status;
     }
-    for (const m of achados) if (!vistos.has(m.link)) vistos.add(m.link) && todos.push(m);
   }
+  // Intercala os sites (mais baixados de cada um primeiro), para nenhum site sumir da lista.
+  const filas = FONTES_MODELO.map((f) => (porFonte.get(f) ?? []).sort((a, b) => b.downloads - a.downloads));
+  const todos: ModeloAchado[] = [];
+  for (let i = 0; todos.length < limite && filas.some((x) => x.length > i); i++) for (const fila of filas) if (fila[i] && todos.length < limite) todos.push(fila[i]!);
+  const titulos = await traduzir(todos.map((m) => m.titulo), "pt");
+  return { modelos: todos.map((m, i) => ({ ...m, titulo: titulos[i] ?? m.titulo })), fontes };
+}
+
+/** Só os modelos (usada pelo plano da IA): os que a licença deixa vender primeiro. */
+export async function buscarModelos(termo: string, limite = 6): Promise<ModeloAchado[]> {
+  const { modelos } = await buscarModelosDetalhado(termo, 60);
   const peso = (m: ModeloAchado) => (m.comercial === true ? 2 : m.comercial === null ? 1 : 0);
-  const melhores = todos.sort((a, b) => peso(b) - peso(a) || b.downloads - a.downloads).slice(0, limite);
-  const titulos = await traduzir(melhores.map((m) => m.titulo), "pt");
-  return melhores.map((m, i) => ({ ...m, titulo: titulos[i] ?? m.titulo }));
+  return [...modelos].sort((a, b) => peso(b) - peso(a) || b.downloads - a.downloads).slice(0, limite);
 }
 
 /** Título e nomes dos perfis do modelo lido em português (a descrição a IA já reescreve ao cadastrar). */

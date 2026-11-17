@@ -46,7 +46,7 @@ export function PlanoAcoes({ relatorioId, plano, andamento }: { relatorioId: num
     <div className="grid gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-4">
         <p className="text-sm text-muted">
-          Cadastra como produto todos os modelos do plano que a licença deixa vender (os já cadastrados são pulados). Anunciar continua com você, no produto.
+          Cadastra como produto todos os modelos do plano (os já cadastrados são pulados). Os de licença não comercial entram com o anúncio bloqueado até você confirmar a licença no produto.
         </p>
         <BotaoCadastrarTudo modelos={todos} aoIniciar={() => setVigiar((v) => v + 1)} />
       </div>
@@ -81,7 +81,7 @@ function ItemCard({ item, indice, relatorioId, aoIniciar }: { item: ItemPlano; i
         <p className="text-xs font-semibold tracking-wide text-muted uppercase">
           Modelos 3D encontrados ({item.modelos.length}){item.modelos.length ? ` · ${vendaveis} com licença que deixa vender ou a conferir` : ""}
         </p>
-        {item.modelos.some((m) => m.comercial === true) ? <BotaoCadastrarTudo modelos={item.modelos} rotulo="Cadastrar os deste item" aoIniciar={aoIniciar} /> : null}
+        {item.modelos.length ? <BotaoCadastrarTudo modelos={item.modelos} rotulo="Cadastrar todos deste item" aoIniciar={aoIniciar} /> : null}
         {item.modelos.length ? (
           <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
             {item.modelos.map((m) => (

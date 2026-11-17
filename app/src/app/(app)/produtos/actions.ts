@@ -377,6 +377,16 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
   await requireUser();
   const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId) });
   if (!p) return [{ conta: "-", ok: false, mensagem: "Produto não encontrado." }];
+  // Modelo 3D de licença não comercial: só anuncia depois de confirmar a licença comercial no produto.
+  if (p.modelo3d?.comercial === false && !p.modelo3d.licencaComercialPropria) {
+    return [
+      {
+        conta: "-",
+        ok: false,
+        mensagem: `A licença deste modelo (${p.modelo3d.licenca || "não comercial"}) não permite vender. Compre a licença comercial do autor e confirme no quadro "Modelo 3D de origem" deste produto para anunciar.`,
+      },
+    ];
+  }
 
   const contaIds = form.getAll("contas").map(Number).filter(Boolean);
   if (!contaIds.length) return [{ conta: "-", ok: false, mensagem: "Selecione ao menos uma conta de marketplace." }];
@@ -607,4 +617,13 @@ export async function desvincularAnuncio(anuncioId: number, produtoId: string) {
   revalidatePath(`/produtos/${produtoId}`);
   revalidatePath("/produtos");
   redirect(`/produtos/${produtoId}?ok=${encodeURIComponent("Anúncio desvinculado deste produto (nada foi alterado no marketplace).")}`);
+}
+
+/** Confirma (ou desfaz) que você tem a licença comercial do modelo 3D deste produto. */
+export async function confirmarLicencaModelo(produtoId: string, tem: boolean) {
+  await requireUser();
+  const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId), columns: { modelo3d: true } });
+  if (!p?.modelo3d) return;
+  await db.update(produtos).set({ modelo3d: { ...p.modelo3d, licencaComercialPropria: tem } }).where(eq(produtos.id, produtoId));
+  revalidatePath(`/produtos/${produtoId}`);
 }

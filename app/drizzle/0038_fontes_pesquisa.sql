@@ -1,0 +1,1 @@
+ALTER TABLE "pesquisas_modelos" ADD COLUMN "fontes" jsonb DEFAULT '{}'::jsonb NOT NULL;

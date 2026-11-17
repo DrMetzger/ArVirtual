@@ -6,14 +6,14 @@ import { notFound, redirect } from "next/navigation";
 import { Alert, Badge, buttonClass, Card, CardHeader, PageHeader } from "@/components/ui";
 import { SubmitButton } from "@/components/ui/client";
 import { db } from "@/db";
-import { anuncios, arquivosProduto, contasMarketplace, produtos } from "@/db/schema";
+import { anuncios, arquivosProduto, contasMarketplace, NOMES_FONTE, produtos, type OrigemModelo3d } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { geminiConfigurado } from "@/lib/gemini";
 import { MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { listaFilamentos } from "@/lib/filamentos";
 import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { formatBRL, formatDate } from "@/lib/utils";
-import { conferirAnunciosProduto, desvincularAnuncio, duplicarProduto, excluirProduto } from "../actions";
+import { confirmarLicencaModelo, conferirAnunciosProduto, desvincularAnuncio, duplicarProduto, excluirProduto } from "../actions";
 import { Anunciar } from "../anunciar";
 import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
@@ -92,6 +92,7 @@ export default async function ProdutoPage({
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
         {ok ? <Alert tone="green">{ok}</Alert> : null}
+        {produto.modelo3d ? <OrigemModelo produtoId={id} o={produto.modelo3d} /> : null}
         {copia ? (
           <Alert tone="green">
             Cópia criada com SKU {produto.sku}, estoque zero e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
@@ -201,5 +202,42 @@ export default async function ProdutoPage({
         </div>
       </div>
     </>
+  );
+}
+
+/** De onde veio o modelo 3D, a licença e (se não comercial) a confirmação da licença comercial para poder anunciar. */
+function OrigemModelo({ produtoId, o }: { produtoId: string; o: OrigemModelo3d }) {
+  const bloqueado = o.comercial === false && !o.licencaComercialPropria;
+  return (
+    <Alert tone={bloqueado ? "red" : o.comercial === true || o.licencaComercialPropria ? "green" : "gold"}>
+      <div className="grid gap-1.5">
+        <p className="font-semibold">
+          Modelo 3D de origem: {NOMES_FONTE[o.fonte]}
+          {o.autor ? ` · autor ${o.autor}` : ""}
+          {o.link ? (
+            <a href={o.link} target="_blank" rel="noreferrer" className="ml-2 underline">
+              abrir
+            </a>
+          ) : null}
+        </p>
+        <p className="text-sm">
+          Licença: {o.licenca || "não identificada"}.{" "}
+          {o.comercial === true
+            ? "Pode vender (dê crédito ao autor quando a licença pedir)."
+            : o.comercial === false
+              ? o.licencaComercialPropria
+                ? "Você confirmou que tem a licença comercial: pode anunciar."
+                : "Não comercial: o anúncio fica bloqueado até você confirmar que comprou a licença comercial do autor."
+              : "Confira no site se o autor permite vender as impressões."}
+        </p>
+        {o.comercial === false ? (
+          <form action={confirmarLicencaModelo.bind(null, produtoId, !o.licencaComercialPropria)}>
+            <SubmitButton size="sm" variant={o.licencaComercialPropria ? "outline" : "gold"} pendingText="Salvando...">
+              {o.licencaComercialPropria ? "Desfazer: ainda não tenho a licença" : "Confirmo que tenho a licença comercial deste modelo"}
+            </SubmitButton>
+          </form>
+        ) : null}
+      </div>
+    </Alert>
   );
 }

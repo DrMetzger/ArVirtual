@@ -7,7 +7,7 @@ import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { MarcaIcone } from "@/components/marca";
 import { BotaoCadastrarTudo, ProgressoCadastro } from "@/components/modelos-achados";
 import { Badge, Button, buttonClass, Card, Input, Select } from "@/components/ui";
-import type { CanalMercado, MercadoCanal, pesquisaModelosItens } from "@/db/schema";
+import { FONTES_MODELO, NOMES_FONTE, type CanalMercado, type FonteModelo, type MercadoCanal, type pesquisaModelosItens } from "@/db/schema";
 import type { EstadoCadastro } from "@/lib/cadastro-modelos";
 import { cn, formatBRL } from "@/lib/utils";
 import { analisarDeNovo, andamentoPesquisa } from "./actions";
@@ -42,7 +42,19 @@ function precoDe(i: Item, plat: CanalMercado | "todas") {
   return ps.length ? Math.min(...ps) : 0;
 }
 
-export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { pesquisaId: number; termo: string; inicial: Item[]; andamento: EstadoCadastro | null }) {
+export function ResultadosPesquisa({
+  pesquisaId,
+  termo,
+  inicial,
+  andamento,
+  fontes,
+}: {
+  pesquisaId: number;
+  termo: string;
+  inicial: Item[];
+  andamento: EstadoCadastro | null;
+  fontes: Partial<Record<FonteModelo, string>>;
+}) {
   const [itens, setItens] = useState(inicial);
   const pendentes = itens.filter((i) => i.status === "pendente").length;
   // Enquanto há modelos em análise, busca os resultados novos a cada 6 s (sem recarregar a página).
@@ -56,6 +68,7 @@ export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { 
   }, [pendentes, pesquisaId]);
 
   const [licenca, setLicenca] = useState<"todas" | "vende" | "naoVende">("todas");
+  const [site, setSite] = useState<FonteModelo | "todos">("todos");
   const [plat, setPlat] = useState<CanalMercado | "todas">("todas");
   const [soVendendo, setSoVendendo] = useState(false);
   const [precoMin, setPrecoMin] = useState("");
@@ -69,6 +82,7 @@ export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { 
     const f = itens.filter((i) => {
       if (licenca === "vende" && i.modelo.comercial !== true) return false;
       if (licenca === "naoVende" && i.modelo.comercial !== false) return false;
+      if (site !== "todos" && i.modelo.fonte !== site) return false;
       if (i.status !== "pronto") return !soVendendo && !precoMin && !precoMax;
       if (soVendendo && !anunciosDe(i, plat)) return false;
       const p = precoDe(i, plat);
@@ -85,7 +99,7 @@ export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { 
       baixados: (i) => i.modelo.downloads,
     };
     return [...f].sort((a, b) => (a.status === "pronto" ? 0 : 1) - (b.status === "pronto" ? 0 : 1) || chave[ordem](b) - chave[ordem](a));
-  }, [itens, licenca, plat, soVendendo, precoMin, precoMax, ordem]);
+  }, [itens, licenca, site, plat, soVendendo, precoMin, precoMax, ordem]);
 
   const prontos = itens.length - pendentes;
   const vendaveis = itens.filter((i) => i.modelo.comercial === true).length;
@@ -104,12 +118,43 @@ export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { 
             <Badge tone="green">mercado analisado</Badge>
           )}
         </p>
+        <div className="flex flex-wrap gap-1.5 text-[11px]">
+          {FONTES_MODELO.map((f) => {
+            const st = fontes[f] ?? "não pesquisado";
+            const ok = /^\d/.test(st);
+            return (
+              <span key={f} className={cn("rounded-full border px-2 py-0.5", ok ? "border-green/40 text-green" : "border-border text-muted")} title={st}>
+                {NOMES_FONTE[f]}: {st}
+                {/chave/.test(st) ? (
+                  <a href="/configuracoes?aba=integracoes" className="ml-1 underline">
+                    cadastrar
+                  </a>
+                ) : null}
+              </span>
+            );
+          })}
+        </div>
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-gold/10 p-3">
+          <BotaoCadastrarTudo modelos={lista.map((i) => i.modelo)} rotulo="Cadastrar todos" grande aoIniciar={() => setVigiar((v) => v + 1)} />
+          <span className="text-xs text-muted">
+            Cadastra como produto todos os modelos mostrados (com os filtros abaixo). Os já cadastrados são pulados; os de licença não comercial entram com o anúncio
+            bloqueado até você confirmar a licença no produto.
+          </span>
+        </div>
         {pendentes ? (
           <div className="h-2 overflow-hidden rounded-full bg-black/10">
             <div className="h-full bg-gold transition-all" style={{ width: `${Math.round((prontos / Math.max(1, itens.length)) * 100)}%` }} />
           </div>
         ) : null}
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          <Select aria-label="Site" value={site} onChange={(e) => setSite(e.target.value as typeof site)}>
+            <option value="todos">Todos os sites</option>
+            {FONTES_MODELO.filter((f) => itens.some((i) => i.modelo.fonte === f)).map((f) => (
+              <option key={f} value={f}>
+                {NOMES_FONTE[f]} ({itens.filter((i) => i.modelo.fonte === f).length})
+              </option>
+            ))}
+          </Select>
           <Select aria-label="Licença" value={licenca} onChange={(e) => setLicenca(e.target.value as typeof licenca)}>
             <option value="todas">Todas as licenças</option>
             <option value="vende">Só os que pode vender</option>
@@ -138,11 +183,10 @@ export function ResultadosPesquisa({ pesquisaId, termo, inicial, andamento }: { 
             <input type="checkbox" checked={soVendendo} onChange={(e) => setSoVendendo(e.target.checked)} className="size-4 accent-[var(--gold)]" />
             Só os que já têm anúncio{plat === "todas" ? " em alguma plataforma" : ` no ${NOMES[plat]}`}
           </label>
-          <BotaoCadastrarTudo modelos={lista.map((i) => i.modelo)} aoIniciar={() => setVigiar((v) => v + 1)} />
         </div>
         <p className="text-xs text-muted">
           Mostrando {lista.length} de {itens.length}. O preço de mercado é a mediana dos anúncios parecidos; o preço para concorrer fica um pouco abaixo dela, sem passar do
-          seu mínimo. O Cadastrar tudo só leva os de licença liberada; os outros você vê aqui para estudar o mercado.
+          seu mínimo.
         </p>
         <ProgressoCadastro inicial={andamento} vigiar={vigiar} />
       </Card>
@@ -171,7 +215,7 @@ function CartaoPesquisa({ i, plat, aoReanalisar }: { i: Item; plat: CanalMercado
         <div className="grid min-w-0 content-start gap-1">
           <p className="line-clamp-2 font-semibold">{m.titulo}</p>
           <p className="text-[11px] text-muted">
-            {m.fonte === "makerworld" ? "MakerWorld" : "Printables"}
+            {NOMES_FONTE[m.fonte]}
             {m.autor ? ` · ${m.autor}` : ""} ·{" "}
             <span className="inline-flex items-center gap-0.5">
               <Download className="size-3" /> {num(m.downloads)}

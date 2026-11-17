@@ -63,9 +63,6 @@ export async function cadastrarModelo(e: Escolha): Promise<{ erro?: string; id?:
   await requireUser();
   const item = cache.get(e.token);
   if (!item) return { erro: "A leitura expirou: leia o modelo de novo." };
-  if (item.m.comercial === false && !e.licencaPropria) {
-    return { erro: "A licença deste modelo não permite vender as impressões. Só cadastre se você comprou a licença comercial (marque a confirmação)." };
-  }
   try {
     const criado = await criarProdutoDoModelo(item.m, e, await origem());
     cache.delete(e.token);
@@ -83,11 +80,11 @@ export async function buscarNosSites(termo: string): Promise<{ erro?: string; mo
   return modelos.length ? { modelos } : { erro: `Nada encontrado para “${termo.trim()}”. Tente outras palavras (ex.: suporte de celular, dragão articulado).` };
 }
 
-/** "Cadastrar tudo": cadastra em segundo plano os modelos que a licença deixa vender (e pula os já cadastrados). */
+/** "Cadastrar tudo": cadastra em segundo plano todos os modelos (todas as licenças; pula os já cadastrados). */
 export async function cadastrarTudo(modelos: { link: string; titulo: string; comercial: boolean | null }[]): Promise<{ ok?: string; erro?: string }> {
   await requireUser();
-  const vendaveis = modelos.filter((m) => m.comercial === true && /^https:\/\//.test(m.link)).slice(0, 60);
-  if (!vendaveis.length) return { erro: "Nenhum desses modelos tem licença que deixa vender." };
+  const vendaveis = modelos.filter((m) => /^https:\/\//.test(m.link)).slice(0, 80);
+  if (!vendaveis.length) return { erro: "Nenhum modelo para cadastrar." };
   const n = cadastrarVarios(vendaveis.map(({ link, titulo }) => ({ link, titulo: titulo.slice(0, 120) })), await origem());
   return { ok: n ? `${n} modelo(s) na fila para cadastrar.` : "Esses modelos já estão na fila." };
 }

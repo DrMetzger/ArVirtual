@@ -12,15 +12,13 @@ import type { FilamentoModelo, Modelo3d, Perfil } from "@/lib/modelos3d";
 import { precosPorCanal, type ParametrosPreco } from "@/lib/precificacao";
 import { maisParecido, tempoPeloPeso } from "@/lib/cores-filamento";
 import { cn, formatBRL } from "@/lib/utils";
-import { buscarNosSites, cadastrarModelo, lerModelo } from "./actions";
-import { BotaoCadastrarTudo, CartaoModelo, ProgressoCadastro } from "@/components/modelos-achados";
-import type { ModeloAchado } from "@/db/schema";
-import type { EstadoCadastro } from "@/lib/cadastro-modelos";
+import { cadastrarModelo, lerModelo } from "./actions";
+import { NOMES_FONTE } from "@/db/schema";
 
 type Filamento = { id: number; material: string; cor: string; marca: string; custoKg: number; saldoG: number; corHex: string };
 type Linha = { cor: string; tipo: string; filamentoId: number | null; gramas: number };
 
-const FONTES: Record<string, string> = { makerworld: "MakerWorld (Bambu)", printables: "Printables", thingiverse: "Thingiverse", cults: "Cults", arquivo: "Arquivo enviado" };
+const FONTES = NOMES_FONTE;
 const NOMES_CANAL: Record<string, string> = { mercadolivre: "Mercado Livre", shopee: "Shopee", magalu: "Magalu", loja: "Sincrolab (loja)" };
 
 function linhasDo(perfil: Perfil | null, modelo: Modelo3d, fils: Filamento[]): Linha[] {
@@ -37,20 +35,13 @@ export function ImportarModelo({
   parametros,
   precos,
   linkInicial = "",
-  andamento = null,
 }: {
   impressoras: { id: number; nome: string; potenciaW: number }[];
   filamentos: Filamento[];
   parametros: ParametrosImpressao;
   precos: ParametrosPreco;
   linkInicial?: string;
-  andamento?: EstadoCadastro | null;
 }) {
-  const [termo, setTermo] = useState("");
-  const [achados, setAchados] = useState<ModeloAchado[] | null>(null);
-  const [erroBusca, setErroBusca] = useState<string | null>(null);
-  const [buscando, iniciarBusca] = useTransition();
-  const [vigiar, setVigiar] = useState(0);
   const formRef = useRef<HTMLFormElement>(null);
   // Veio do Plano da IA com o link: já lê o modelo sozinho.
   useEffect(() => {
@@ -105,52 +96,13 @@ export function ImportarModelo({
 
   return (
     <div className="grid gap-5">
-      <Card>
-        <CardHeader
-          title="Procurar nos sites"
-          description={
-            <>
-              Procura no MakerWorld (Bambu) e no Printables. Os que a licença deixa vender aparecem primeiro; o Cadastrar tudo cadastra todos eles de uma vez. Para ver o
-              mercado de cada modelo (quem vende, por quanto, quanto vende e o preço para concorrer), use a{" "}
-              <a href="/modelos3d" className="text-gold underline">
-                Pesquisa de modelos 3D
-              </a>
-              .
-            </>
-          }
-        />
-        <form
-          className="flex gap-2 px-5"
-          onSubmit={(ev) => {
-            ev.preventDefault();
-            iniciarBusca(async () => {
-              setErroBusca(null);
-              const r = await buscarNosSites(termo);
-              setAchados(r.modelos ?? []);
-              if (r.erro) setErroBusca(r.erro);
-            });
-          }}
-        >
-          <Input value={termo} onChange={(ev) => setTermo(ev.target.value)} placeholder="Ex.: suporte controle ps5, dragao articulado, porta canetas" className="min-w-0 flex-1" aria-label="Procurar modelo" />
-          <Button type="submit" disabled={buscando}>
-            <Search /> {buscando ? "Procurando..." : "Procurar"}
-          </Button>
-        </form>
-        <div className="grid gap-3 p-5">
-          {erroBusca ? <p className="text-sm text-red">{erroBusca}</p> : null}
-          {achados?.length ? (
-            <>
-              <BotaoCadastrarTudo modelos={achados} aoIniciar={() => setVigiar((v) => v + 1)} />
-              <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4">
-                {achados.map((x) => (
-                  <CartaoModelo key={x.link} m={x} />
-                ))}
-              </div>
-            </>
-          ) : null}
-          <ProgressoCadastro inicial={andamento} vigiar={vigiar} />
-        </div>
-      </Card>
+      <Alert tone="blue">
+        Para procurar o produto em 6 sites de modelos 3D ao mesmo tempo, ver o mercado de cada um e cadastrar todos de uma vez, use{" "}
+        <a href="/modelos3d" className="font-semibold underline">
+          Modelos 3D
+        </a>{" "}
+        no menu.
+      </Alert>
 
       <Card>
         <div className="flex flex-wrap gap-1 border-b border-border p-2">
@@ -172,7 +124,7 @@ export function ImportarModelo({
         </div>
         <form ref={formRef} onSubmit={onSubmit} className="grid gap-3 p-5">
           {modo === "link" ? (
-            <Field label="Link do modelo" hint="makerworld.com/…/models/… · printables.com/model/… · thingiverse.com/thing:… · cults3d.com/…">
+            <Field label="Link do modelo" hint="MakerWorld, Printables, Thangs, Thingiverse, Cults3D ou MyMiniFactory">
               <Input name="link" required defaultValue={linkInicial} placeholder="https://makerworld.com/pt/models/..." />
             </Field>
           ) : (
@@ -241,12 +193,12 @@ export function ImportarModelo({
                   <Alert>
                     <span className="grid gap-2">
                       <span>
-                        A licença deste modelo não permite vender as impressões. Só cadastre se você comprou a licença comercial (no site do autor, assinatura ou
-                        compra direta).
+                        Licença não comercial: o produto pode ser cadastrado, mas o anúncio fica bloqueado até você confirmar que comprou a licença comercial do
+                        autor (dá para confirmar depois, na página do produto).
                       </span>
                       <label className="inline-flex items-center gap-2 font-semibold">
                         <input type="checkbox" checked={licenca} onChange={(e) => setLicenca(e.target.checked)} className="size-4 accent-[var(--gold)]" />
-                        Tenho a licença comercial deste modelo
+                        Já tenho a licença comercial deste modelo
                       </label>
                     </span>
                   </Alert>
@@ -383,7 +335,7 @@ export function ImportarModelo({
 
           <div className="grid gap-2">
             {msg ? <Alert>{msg}</Alert> : null}
-            <Button type="button" variant="gold" size="lg" disabled={salvando || Boolean(leitura?.jaCadastrado) || (m.comercial === false && !licenca)} onClick={cadastrar} className="justify-self-start">
+            <Button type="button" variant="gold" size="lg" disabled={salvando || Boolean(leitura?.jaCadastrado)} onClick={cadastrar} className="justify-self-start">
               <Sparkles /> {salvando ? "Cadastrando (fotos, descrição, NCM e categoria)..." : "Cadastrar produto no site"}
             </Button>
             <p className="text-xs text-muted">Depois, no produto, você escolhe em quais plataformas anunciar (os preços de cada uma já vão preenchidos).</p>

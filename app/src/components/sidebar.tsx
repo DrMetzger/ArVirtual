@@ -50,6 +50,7 @@ type Grupo = { label: string; icon: LucideIcon; itens: Item[] };
 // Módulos do backoffice, cada um no seu grupo.
 const NAV: (Item | Grupo)[] = [
   { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/modelos3d", label: "Modelos 3D", icon: Box },
   {
     label: "Cadastros",
     icon: FolderOpen,
@@ -114,7 +115,6 @@ const NAV: (Item | Grupo)[] = [
       { href: "/analises", label: "Análise de vendas", icon: BarChart3 },
       { href: "/sentinela", label: "Sentinela de mercado", icon: Radar },
       { href: "/sentinela/concorrencia", label: "Concorrência por produto", icon: Users },
-      { href: "/modelos3d", label: "Pesquisa de modelos 3D", icon: Box },
       { href: "/pesquisa", label: "Pesquisa manual", icon: TrendingUp },
     ],
   },

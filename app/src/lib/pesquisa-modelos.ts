@@ -5,7 +5,7 @@ import { pesquisaModelosItens, pesquisasModelos, type CanalMercado, type Detalhe
 import { pesquisarConcorrencia, resumir, type Anuncio } from "@/lib/concorrencia";
 import { tempoPeloPeso } from "@/lib/cores-filamento";
 import { custoComposicao } from "@/lib/impressao";
-import { buscarModelos, lerModeloDoLink } from "@/lib/modelos3d";
+import { buscarModelosDetalhado, lerModeloDoLink } from "@/lib/modelos3d";
 import { liquido, precosPorCanal } from "@/lib/precificacao";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 
@@ -13,14 +13,14 @@ import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 // peso/tempo/custo e o mercado de cada um no Mercado Livre, na Shopee e no Magalu, com o preço para concorrer.
 
 const CANAIS: CanalMercado[] = ["magalu", "mercadolivre", "shopee"];
-const MAX_MODELOS = 30;
+const MAX_MODELOS = 48;
 
 export async function criarPesquisa(termo: string) {
   const q = termo.trim().slice(0, 80);
   if (q.length < 2) throw new Error("Digite o que procurar.");
-  const modelos = await buscarModelos(q, MAX_MODELOS);
+  const { modelos, fontes } = await buscarModelosDetalhado(q, MAX_MODELOS);
   if (!modelos.length) throw new Error(`Nada encontrado para “${q}”. Tente outras palavras.`);
-  const [p] = await db.insert(pesquisasModelos).values({ termo: q }).returning();
+  const [p] = await db.insert(pesquisasModelos).values({ termo: q, fontes }).returning();
   await db.insert(pesquisaModelosItens).values(modelos.map((modelo, posicao) => ({ pesquisaId: p!.id, posicao, modelo })));
   void analisarPendentes();
   return p!.id;
