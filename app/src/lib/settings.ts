@@ -83,6 +83,7 @@ export const SETTINGS = {
     options: ["sim", "nao"],
   },
   "thingiverse.token": { label: "App Token (thingiverse.com › Apps › Create an App)", secret: true, group: "Thingiverse" },
+  "myminifactory.chave": { label: "Chave da API (myminifactory.com › Settings › Developer)", secret: true, group: "MyMiniFactory" },
   "cults.usuario": { label: "Usuário (apelido) do Cults", secret: false, group: "Cults" },
   "cults.chave": { label: "Chave da API (cults3d.com › Configurações › API)", secret: true, group: "Cults" },
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },

@@ -6,7 +6,7 @@ import { useEffect, useState, useTransition } from "react";
 import { andamentoCadastro, cadastrarTudo } from "@/app/(app)/produtos/modelo3d/actions";
 import { FotoAmpliavel } from "@/components/foto-ampliavel";
 import { Alert, Badge, Button, buttonClass } from "@/components/ui";
-import type { ModeloAchado } from "@/db/schema";
+import { NOMES_FONTE, type ModeloAchado } from "@/db/schema";
 import type { EstadoCadastro } from "@/lib/cadastro-modelos";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +23,7 @@ export function CartaoModelo({ m }: { m: ModeloAchado }) {
       )}
       <p className="line-clamp-2 text-sm font-semibold">{m.titulo}</p>
       <p className="text-[11px] text-muted">
-        {m.fonte === "makerworld" ? "MakerWorld" : "Printables"}
+        {NOMES_FONTE[m.fonte]}
         {m.autor ? ` · ${m.autor}` : ""}
       </p>
       <p className="flex flex-wrap items-center gap-2 text-[11px] text-muted">
@@ -49,17 +49,18 @@ export function CartaoModelo({ m }: { m: ModeloAchado }) {
   );
 }
 
-/** Cadastra de uma vez todos os modelos da lista que a licença deixa vender (os já cadastrados são pulados). */
-export function BotaoCadastrarTudo({ modelos, rotulo = "Cadastrar tudo que pode vender", aoIniciar }: { modelos: ModeloAchado[]; rotulo?: string; aoIniciar?: () => void }) {
+/** Cadastra de uma vez todos os modelos da lista (todas as licenças; os já cadastrados são pulados). */
+export function BotaoCadastrarTudo({ modelos, rotulo = "Cadastrar todos", aoIniciar, grande }: { modelos: ModeloAchado[]; rotulo?: string; aoIniciar?: () => void; grande?: boolean }) {
   const [msg, setMsg] = useState<{ ok?: string; erro?: string } | null>(null);
   const [rodando, iniciar] = useTransition();
-  const vendaveis = modelos.filter((m) => m.comercial === true).length;
+  const total = modelos.length;
   return (
     <span className="inline-flex flex-col items-start gap-1">
       <Button
         type="button"
         variant="gold"
-        disabled={rodando || !vendaveis}
+        size={grande ? "lg" : "md"}
+        disabled={rodando || !total}
         onClick={() =>
           iniciar(async () => {
             const r = await cadastrarTudo(modelos.map((m) => ({ link: m.link, titulo: m.titulo, comercial: m.comercial })));
@@ -68,7 +69,7 @@ export function BotaoCadastrarTudo({ modelos, rotulo = "Cadastrar tudo que pode 
           })
         }
       >
-        <Sparkles /> {rotulo} ({vendaveis})
+        <Sparkles /> {rodando ? "Enviando..." : `${rotulo} (${total})`}
       </Button>
       {msg ? <span className={msg.erro ? "text-xs text-red" : "text-xs text-green"}>{msg.erro ?? msg.ok}</span> : null}
     </span>

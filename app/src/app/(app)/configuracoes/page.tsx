@@ -54,6 +54,7 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       </>
     ),
     Thingiverse: "Opcional: só para importar modelos do Thingiverse pelo link. Sem a chave, baixe o arquivo no site e envie em Produtos › Importar modelo 3D.",
+    MyMiniFactory: "Opcional: para a pesquisa de modelos 3D incluir o MyMiniFactory. Crie a chave na sua conta do site (área de desenvolvedor).",
     Cults: "Opcional: só para importar modelos do Cults pelo link (fotos, descrição e licença). O arquivo para medir o tamanho você envia baixado.",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     "Shopee Afiliados": (

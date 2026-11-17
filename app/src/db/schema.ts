@@ -189,8 +189,21 @@ export const impressoras = pgTable("impressoras", {
 });
 export type Impressora = typeof impressoras.$inferSelect;
 
+/** Sites de arquivos para impressão 3D usados na pesquisa e na importação. */
+export const FONTES_MODELO = ["makerworld", "printables", "thangs", "thingiverse", "cults", "myminifactory"] as const;
+export type FonteModelo = (typeof FONTES_MODELO)[number];
+export const NOMES_FONTE: Record<FonteModelo | "arquivo", string> = {
+  makerworld: "MakerWorld",
+  printables: "Printables",
+  thangs: "Thangs",
+  thingiverse: "Thingiverse",
+  cults: "Cults3D",
+  myminifactory: "MyMiniFactory",
+  arquivo: "Arquivo enviado",
+};
+
 export type OrigemModelo3d = {
-  fonte: "makerworld" | "printables" | "thingiverse" | "cults" | "arquivo";
+  fonte: FonteModelo | "arquivo";
   link: string;
   /** "makerworld:22508": impede cadastrar o mesmo modelo duas vezes. */
   chave?: string;
@@ -1076,7 +1089,7 @@ export const sentinelaRelatorios = pgTable("sentinela_relatorios", {
 });
 
 export type ModeloAchado = {
-  fonte: "makerworld" | "printables";
+  fonte: FonteModelo;
   titulo: string;
   link: string;
   imagem: string;
@@ -1090,6 +1103,8 @@ export type ModeloAchado = {
 export const pesquisasModelos = pgTable("pesquisas_modelos", {
   id: serial("id").primaryKey(),
   termo: text("termo").notNull(),
+  /** Como foi a busca em cada site ("12 modelos", "sem chave", "fora do ar"...). */
+  fontes: jsonb("fontes").$type<Partial<Record<FonteModelo, string>>>().notNull().default({}),
   criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
 });
 

@@ -267,6 +267,13 @@
       "when": 1794873520290,
       "tag": "0037_pesquisa_modelos",
       "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1794881809083,
+      "tag": "0038_fontes_pesquisa",
+      "breakpoints": true
     }
   ]
 }

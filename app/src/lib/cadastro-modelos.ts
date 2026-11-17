@@ -40,7 +40,6 @@ export type EscolhaCadastro = {
 };
 
 export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, origin: string): Promise<{ id: string; nome: string }> {
-  if (m.comercial === false && !e.licencaPropria) throw new Error("A licença deste modelo não permite vender as impressões.");
   if (m.link) {
     const existe = await produtoDoModelo(m.link);
     if (existe) throw new Error(`Este modelo já está cadastrado: ${existe.nome}.`);
@@ -83,7 +82,8 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
     autor: m.autor,
     licenca: m.licenca,
     comercial: m.comercial,
-    ...(m.comercial === false ? { licencaComercialPropria: true } : {}),
+    // Não comercial: entra no catálogo, mas só pode ser anunciado depois de confirmar a licença comercial no produto.
+    ...(m.comercial === false ? { licencaComercialPropria: e.licencaPropria } : {}),
     medidasMm: m.medidasMm,
     impressoras: cabe.map((i) => i.id),
   };
@@ -109,7 +109,6 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
 /** Cadastro sem tela: primeiro perfil, cores ligadas aos filamentos mais parecidos, tempo do perfil ou estimado. */
 async function cadastrarPeloLink(link: string, origin: string) {
   const m = await emPortugues(await lerModeloDoLink(link));
-  if (m.comercial !== true) throw new Error(m.comercial === false ? "licença não permite vender" : "licença não identificada (confira e cadastre pela tela)");
   const fils = await listaFilamentos();
   const perfil = m.perfis[0] ?? null;
   const cores = perfil?.filamentos.length
