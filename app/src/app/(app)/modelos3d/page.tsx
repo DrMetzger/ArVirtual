@@ -1,0 +1,60 @@
+import { Search } from "lucide-react";
+import type { Metadata } from "next";
+import Link from "next/link";
+import { Alert, Card, Input, PageHeader } from "@/components/ui";
+import { SubmitButton } from "@/components/ui/client";
+import { requireUser } from "@/lib/auth";
+import { estadoCadastro } from "@/lib/cadastro-modelos";
+import { itensDaPesquisa, listaPesquisas } from "@/lib/pesquisa-modelos";
+import { cn, formatDate } from "@/lib/utils";
+import { novaPesquisa } from "./actions";
+import { ResultadosPesquisa } from "./resultados";
+
+export const metadata: Metadata = { title: "Pesquisa de modelos 3D" };
+
+export default async function PesquisaModelosPage({ searchParams }: { searchParams: Promise<{ p?: string; erro?: string }> }) {
+  await requireUser();
+  const sp = await searchParams;
+  const pesquisas = await listaPesquisas();
+  const atual = pesquisas.find((x) => String(x.id) === sp.p) ?? pesquisas[0];
+  const itens = atual ? await itensDaPesquisa(atual.id) : [];
+  return (
+    <>
+      <PageHeader
+        title="Pesquisa de modelos 3D"
+        description="Todos os modelos do MakerWorld e do Printables para o que você procurar, com o mercado de cada um no Magalu, Mercado Livre e Shopee: quem vende, por quanto, quanto vende e o preço para você concorrer."
+      />
+      <Card className="mb-5 p-5">
+        <form action={novaPesquisa} className="flex gap-2">
+          <Input name="termo" required minLength={2} maxLength={80} placeholder="Ex.: suporte placa de vídeo, porta controle, dragão articulado" className="min-w-0 flex-1" />
+          <SubmitButton pendingText="Procurando os modelos...">
+            <Search /> Pesquisar
+          </SubmitButton>
+        </form>
+        {sp.erro ? (
+          <div className="mt-3">
+            <Alert>{sp.erro}</Alert>
+          </div>
+        ) : null}
+        {pesquisas.length ? (
+          <div className="mt-4 flex flex-wrap gap-2">
+            {pesquisas.map((x) => (
+              <Link
+                key={x.id}
+                href={`/modelos3d?p=${x.id}`}
+                title={formatDate(x.criadoEm)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                  atual?.id === x.id ? "border-primary bg-primary text-primary-fg" : "border-border text-muted hover:text-foreground",
+                )}
+              >
+                {x.termo}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+      </Card>
+      {atual ? <ResultadosPesquisa key={atual.id} pesquisaId={atual.id} termo={atual.termo} inicial={itens} andamento={estadoCadastro()} /> : null}
+    </>
+  );
+}

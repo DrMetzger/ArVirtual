@@ -1086,6 +1086,50 @@ export type ModeloAchado = {
   downloads: number;
   curtidas: number;
 };
+/** Pesquisa de mercado de modelos 3D: um termo, os modelos achados e o mercado de cada um nas plataformas. */
+export const pesquisasModelos = pgTable("pesquisas_modelos", {
+  id: serial("id").primaryKey(),
+  termo: text("termo").notNull(),
+  criadoEm: timestamp("criado_em", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export type CanalMercado = "mercadolivre" | "shopee" | "magalu";
+export type MercadoCanal = {
+  anuncios: number;
+  vendedores: number;
+  min: number;
+  mediana: number;
+  max: number;
+  /** Shopee: vendas somadas dos anúncios parecidos. */
+  vendas: number;
+  /** Preço para disputar (um pouco abaixo da mediana, nunca abaixo do seu mínimo); null = não compensa. */
+  concorrer: number | null;
+  lucro: number | null;
+  /** Seu preço mínimo (lucro zero) e o sugerido (lucro desejado) nesta plataforma. */
+  minimo: number;
+  sugerido: number;
+  top: { produto: string; preco: number; vendas?: number; link: string; vendedor: string }[];
+};
+export type DetalheModelo = { pesoG: number; tempoMin: number; cores: number; custo: number; estimado: boolean; medidasMm: number[] | null };
+
+export const pesquisaModelosItens = pgTable(
+  "pesquisa_modelos_itens",
+  {
+    id: serial("id").primaryKey(),
+    pesquisaId: integer("pesquisa_id")
+      .notNull()
+      .references(() => pesquisasModelos.id, { onDelete: "cascade" }),
+    posicao: integer("posicao").notNull().default(0),
+    modelo: jsonb("modelo").$type<ModeloAchado>().notNull(),
+    detalhe: jsonb("detalhe").$type<DetalheModelo>(),
+    mercado: jsonb("mercado").$type<Partial<Record<CanalMercado, MercadoCanal>>>(),
+    status: text("status", { enum: ["pendente", "pronto", "erro"] }).notNull().default("pendente"),
+    erro: text("erro").notNull().default(""),
+    atualizadoEm: timestamp("atualizado_em", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("pesquisa_modelos_itens_pesquisa_idx").on(t.pesquisaId)],
+);
+
 export type ItemPlano = { produto: string; preco: number | null; marketplace: string; porque: string; busca: string; modelos: ModeloAchado[] };
 
 // ---------------------------------------------------------------------------------------------

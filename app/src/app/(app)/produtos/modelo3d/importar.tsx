@@ -108,7 +108,16 @@ export function ImportarModelo({
       <Card>
         <CardHeader
           title="Procurar nos sites"
-          description="Procura no MakerWorld (Bambu) e no Printables. Os que a licença deixa vender aparecem primeiro; o Cadastrar tudo cadastra todos eles de uma vez."
+          description={
+            <>
+              Procura no MakerWorld (Bambu) e no Printables. Os que a licença deixa vender aparecem primeiro; o Cadastrar tudo cadastra todos eles de uma vez. Para ver o
+              mercado de cada modelo (quem vende, por quanto, quanto vende e o preço para concorrer), use a{" "}
+              <a href="/modelos3d" className="text-gold underline">
+                Pesquisa de modelos 3D
+              </a>
+              .
+            </>
+          }
         />
         <form
           className="flex gap-2 px-5"

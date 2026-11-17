@@ -33,7 +33,7 @@ import {
   Link2,
   BarChart3,
   Wrench,
-  Smartphone, Film, Gem, Radar, ScanSearch, Tags, Percent } from "lucide-react";
+  Smartphone, Film, Gem, Radar, ScanSearch, Tags, Percent, Box } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -114,6 +114,7 @@ const NAV: (Item | Grupo)[] = [
       { href: "/analises", label: "Análise de vendas", icon: BarChart3 },
       { href: "/sentinela", label: "Sentinela de mercado", icon: Radar },
       { href: "/sentinela/concorrencia", label: "Concorrência por produto", icon: Users },
+      { href: "/modelos3d", label: "Pesquisa de modelos 3D", icon: Box },
       { href: "/pesquisa", label: "Pesquisa manual", icon: TrendingUp },
     ],
   },

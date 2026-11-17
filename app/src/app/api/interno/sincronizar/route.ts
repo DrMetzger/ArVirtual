@@ -7,6 +7,7 @@ import { rotinaGarimpo } from "@/lib/garimpo";
 import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
 import { rotinaRaioX } from "@/lib/raiox";
 import { rotinaTaxas } from "@/lib/taxas";
+import { analisarPendentes } from "@/lib/pesquisa-modelos";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -42,5 +43,7 @@ export async function POST(req: Request) {
   // Raio-X dos anúncios (visitas, vendas, qualidade) a cada 6 h.
   void rotinaRaioX().catch((e: Error) => console.warn(`[raio-x] ${e.message}`));
   void rotinaTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
+  // Pesquisa de modelos 3D que parou no meio (servidor reiniciou): continua de onde estava.
+  void analisarPendentes().catch((e: Error) => console.warn(`[pesquisa-modelos] ${e.message}`));
   return Response.json(r);
 }
