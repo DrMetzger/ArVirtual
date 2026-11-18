@@ -6,6 +6,7 @@ import { rotinaSentinela } from "@/lib/sentinela";
 import { rotinaGarimpo } from "@/lib/garimpo";
 import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
 import { rotinaRaioX } from "@/lib/raiox";
+import { rotinaRegulatorioMagalu } from "@/lib/magalu-regulatorio";
 import { rotinaTaxas } from "@/lib/taxas";
 import { analisarPendentes } from "@/lib/pesquisa-modelos";
 import { concluirPendentes } from "@/lib/publicacoes-pendentes";
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
   // Quantos anúncios cada plataforma enxerga (contados lá, pela API), a cada 6 h.
   void rotinaContagemAnuncios().catch((e: Error) => console.warn(`[contagem-anuncios] ${e.message}`));
   // Raio-X dos anúncios (visitas, vendas, qualidade) a cada 6 h.
+  void rotinaRegulatorioMagalu().catch((e: Error) => console.warn(`[magalu-regulatorio] ${e.message}`));
   void rotinaRaioX().catch((e: Error) => console.warn(`[raio-x] ${e.message}`));
   void rotinaTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
   // Pesquisa de modelos 3D que parou no meio (servidor reiniciou): continua de onde estava.
