@@ -41,6 +41,7 @@ export function ProdutoForm({
   variacoes = [],
   categorias = [],
   ajustes = {},
+  estoqueInicial = 100,
 }: {
   produto?: Produto;
   parametros: ParametrosImpressao;
@@ -50,6 +51,8 @@ export function ProdutoForm({
   categorias?: { id: number; nome: string }[];
   /** Taxa de cada plataforma por categoria (contratos e API do ML). */
   ajustes?: Record<number, AjusteCategoria>;
+  /** Estoque com que o produto novo nasce (Configurações). */
+  estoqueInicial?: number;
 }) {
   const [categoriaId, setCategoriaId] = useState(produto?.categoriaId ? String(produto.categoriaId) : "");
   const [temVariacoes, setTemVariacoes] = useState(produto?.temVariacoes ?? false);
@@ -188,7 +191,7 @@ export function ProdutoForm({
               </Field>
             ) : (
               <Field label="Estoque inicial" className="sm:col-span-2" hint="Entra no kardex como saldo inicial.">
-                <Input name="estoque" type="number" min={0} defaultValue={0} />
+                <Input name="estoque" type="number" min={0} defaultValue={estoqueInicial} />
               </Field>
             )}
             <Field label="Unidade" className="sm:col-span-2">

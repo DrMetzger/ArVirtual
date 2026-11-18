@@ -274,6 +274,13 @@
       "when": 1794881809083,
       "tag": "0038_fontes_pesquisa",
       "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1794973780324,
+      "tag": "0039_categoria_marketplace",
+      "breakpoints": true
     }
   ]
 }

@@ -11,6 +11,8 @@ import { adapter, contaComToken } from "@/lib/marketplaces";
 import type { DadosImportados } from "@/lib/marketplaces/types";
 import { categoriaDoProduto } from "@/lib/categorias";
 import { cadastroPelaIA } from "@/lib/produto-ia";
+import { movimentar } from "@/lib/estoque";
+import { estoqueInicialPadrao } from "@/lib/settings";
 import { MAX_VIDEO, UPLOAD_DIR } from "@/lib/uploads";
 
 /** Passo do importador para a barra de progresso da tela. */
@@ -236,6 +238,9 @@ export async function* importarProduto(
       mensagem: "Criado pelo importador (anúncio de origem)",
     });
   }
+  // Todo produto novo nasce com o estoque inicial padrão (Configurações; 100).
+  const inicial = await estoqueInicialPadrao();
+  if (inicial > 0) await db.transaction((tx) => movimentar(tx, { produtoId: p!.id, quantidade: inicial, tipo: "entrada", observacao: "Saldo inicial" }));
   await categoriaDoProduto(p!.id, titulo, descricao);
   if (!ncm) avisos.push("Escolha o NCM do produto (nenhum NCM cadastrado combinou).");
   avisos.push("Confira custo, filamento e estoque antes de anunciar.");

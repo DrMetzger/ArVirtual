@@ -1,4 +1,5 @@
 import "server-only";
+import { categoriaMagaluPara, fichaObrigatoria } from "./magalu-categoria";
 import { getSetting, getSettings } from "@/lib/settings";
 import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
@@ -23,9 +24,13 @@ export const MAGALU_SCOPES = [
 /** Permissão de logística (gerar etiquetas). O client precisa dela antes (idm client add-scope), senão o login recusa. */
 export const MAGALU_SCOPES_ETIQUETA = ["open:order-logistics-seller:read", "open:order-logistics-seller:write"].join(" ");
 
-/** Escopos pedidos ao conectar: os de sempre e, se ligado em Configurações, os de etiqueta. */
+/** Permissão de ler categorias: o ERP escolhe a categoria (fora das reguladas: Anatel, Inmetro...). Também precisa do add-scope. */
+export const MAGALU_SCOPES_CATEGORIAS = "open:portfolio-categories-seller:read";
+
+/** Escopos pedidos ao conectar: os de sempre e, se ligados em Configurações, os de etiqueta e de categorias. */
 export async function escoposMagalu() {
-  return (await getSetting("magalu.etiquetas")) === "ligado" ? `${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}` : MAGALU_SCOPES;
+  const [etiquetas, cats] = await Promise.all([getSetting("magalu.etiquetas"), getSetting("magalu.categorias")]);
+  return [MAGALU_SCOPES, etiquetas === "ligado" && MAGALU_SCOPES_ETIQUETA, cats === "ligado" && MAGALU_SCOPES_CATEGORIAS].filter(Boolean).join(" ");
 }
 
 async function credenciais() {
@@ -217,6 +222,24 @@ export const magalu: MarketplaceAdapter = {
       produto.cor && { name: "Cor", value: produto.cor },
       { name: "Fabricação", value: "Impressão 3D" },
     ].filter(Boolean) as { name: string; value: string }[];
+    // Categoria escolhida pelo ERP (fora dos departamentos que pedem Anatel/Inmetro) e a ficha obrigatória dela.
+    let categoria = anuncio.categoria;
+    let avisoCategoria = "";
+    if (!categoria && (await getSetting("magalu.categorias")) === "ligado") {
+      const chamar = <T,>(path: string) => api<T>(path, conta.accessToken);
+      try {
+        const c = await categoriaMagaluPara(chamar, produto);
+        if (c) {
+          categoria = c.id;
+          avisoCategoria = ` Categoria: ${c.path}.`;
+          ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
+        }
+      } catch (e) {
+        avisoCategoria = /40[13]/.test((e as Error).message)
+          ? " Sem a permissão de categorias, o Magalu escolheu a categoria pelo título (pode pedir certificado): rode o add-scope de categorias em Configurações › Magalu e reconecte."
+          : "";
+      }
+    }
     const atributos = Object.entries(produto.atributos ?? {})
       .filter(([k, v]) => k && v)
       .slice(0, 3)
@@ -252,7 +275,7 @@ export const magalu: MarketplaceAdapter = {
           extra_data: [],
           ncm: /^\d{8}$/.test(produto.ncm) ? produto.ncm : undefined,
           origin: [1, 2, 3, 6, 7, 8].includes(produto.origem) ? "imported" : "national",
-          ...(anuncio.categoria ? { category: { id: anuncio.categoria } } : {}),
+          ...(categoria ? { category: { id: categoria } } : {}),
         }),
       }).catch((e: Error) => {
         // Criado entre a conferência e o envio: segue para preço e estoque.
@@ -288,7 +311,7 @@ export const magalu: MarketplaceAdapter = {
       link: "https://seller.magalu.com",
       aviso: jaExistia
         ? `O cadastro já existia no Magalu (${jaExistia.status === "DRAFT" ? "rascunho" : (jaExistia.status ?? "sem status")}): não criei outro, só completei preço e estoque. O Magalu analisa antes de publicar.`
-        : "O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).",
+        : `O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).${avisoCategoria}`,
     };
   },
 

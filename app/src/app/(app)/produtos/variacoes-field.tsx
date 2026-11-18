@@ -201,7 +201,8 @@ export function VariacoesField({
       preco: l.preco.trim() ? parseDecimal(l.preco) : null,
       custo: custoDe(l),
       gtin: l.gtin.trim(),
-      estoqueInicial: Math.max(0, Math.round(parseDecimal(l.estoqueInicial))),
+      // Vazio = o estoque inicial padrão (Configurações).
+      estoqueInicial: l.estoqueInicial.trim() === "" ? null : Math.max(0, Math.round(parseDecimal(l.estoqueInicial))),
       estoque: l.id && l.estoqueTela.trim() !== "" ? Math.round(parseDecimal(l.estoqueTela)) : null,
       estoqueAntes: l.id ? (l.estoque ?? 0) : null,
       ativo: l.ativo,
@@ -394,7 +395,7 @@ export function VariacoesField({
                         </Link>
                       </div>
                     ) : (
-                      <Input value={l.estoqueInicial} inputMode="numeric" onChange={(e) => atualizar(l.key, { estoqueInicial: e.target.value })} placeholder="0" className="h-9" />
+                      <Input value={l.estoqueInicial} inputMode="numeric" onChange={(e) => atualizar(l.key, { estoqueInicial: e.target.value })} placeholder="padrão" className="h-9" />
                     )}
                   </label>
                   <label>

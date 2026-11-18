@@ -1,0 +1,1 @@
+ALTER TABLE "categorias" ADD COLUMN "no_marketplace" jsonb DEFAULT '{}'::jsonb NOT NULL;

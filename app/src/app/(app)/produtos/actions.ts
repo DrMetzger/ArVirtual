@@ -11,7 +11,7 @@ import { z } from "zod";
 import { db } from "@/db";
 import { anuncios, arquivosProduto, contasMarketplace, movimentosEstoque, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { getParametrosPreco, getSettings } from "@/lib/settings";
+import { estoqueInicialPadrao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { CAMPOS_ANUNCIO, type AnuncioExterno, type CampoAnuncio, type MudancasAnuncio } from "@/lib/marketplaces/types";
@@ -52,7 +52,7 @@ const VariacaoSchema = z.object({
   preco: z.number().min(0).nullable(),
   custo: z.number().min(0).default(0),
   gtin: str.transform(onlyDigits).refine((v) => !v || [8, 12, 13, 14].includes(v.length), "GTIN/EAN da variação deve ter 8, 12, 13 ou 14 dígitos"),
-  estoqueInicial: z.number().int().min(0).default(0),
+  estoqueInicial: z.number().int().min(0).nullable().default(null),
   /** Variação já existente: estoque digitado e o que estava na tela ao abrir (a diferença vira ajuste). */
   estoque: z.number().int().nullable().default(null),
   estoqueAntes: z.number().int().nullable().default(null),
@@ -269,8 +269,9 @@ async function salvarVariacoes(
       }
     } else {
       const [nova] = await tx.insert(produtos).values({ ...dados, estoque: 0 }).returning({ id: produtos.id });
-      if (v.estoqueInicial > 0) {
-        await movimentar(tx, { produtoId: nova!.id, quantidade: v.estoqueInicial, tipo: "entrada", observacao: "Saldo inicial da variação", usuarioId });
+      const inicialVar = v.estoqueInicial ?? (await estoqueInicialPadrao());
+      if (inicialVar > 0) {
+        await movimentar(tx, { produtoId: nova!.id, quantidade: inicialVar, tipo: "entrada", observacao: "Saldo inicial da variação", usuarioId });
       }
     }
   }
@@ -319,16 +320,20 @@ export async function duplicarProduto(id: string) {
   const skuNovo = livre(`${p.sku}-C`);
   const { id: _id, criadoEm: _c, atualizadoEm: _a, ...dados } = p;
 
+  const inicial = await estoqueInicialPadrao();
   const novoId = await db.transaction(async (tx) => {
     const [novo] = await tx
       .insert(produtos)
       .values({ ...dados, sku: skuNovo, nome: `${p.nome} (cópia)`.slice(0, 200), estoque: 0 })
       .returning({ id: produtos.id });
+    // A cópia nasce com o estoque inicial padrão (nas variações, se tiver).
+    if (!variacoes.length) await movimentar(tx, { produtoId: novo!.id, quantidade: inicial, tipo: "entrada", observacao: "Saldo inicial" });
     for (const v of variacoes) {
       const { id: _vid, criadoEm: _vc, atualizadoEm: _va, ...dv } = v;
       // SKU da variação acompanha o SKU novo do produto (VASO-PRETO → VASO-C-PRETO).
       const sku = livre(v.sku.toUpperCase().startsWith(p.sku.toUpperCase()) ? skuNovo + v.sku.slice(p.sku.length) : `${v.sku}-C`);
-      await tx.insert(produtos).values({ ...dv, sku, nome: `${v.nome} (cópia)`.slice(0, 200), paiId: novo!.id, estoque: 0 });
+      const [nv] = await tx.insert(produtos).values({ ...dv, sku, nome: `${v.nome} (cópia)`.slice(0, 200), paiId: novo!.id, estoque: 0 }).returning({ id: produtos.id });
+      await movimentar(tx, { produtoId: nv!.id, quantidade: inicial, tipo: "entrada", observacao: "Saldo inicial da variação" });
     }
     // Arquivos de impressão: cópia física (apagar um produto não pode levar o arquivo do outro).
     const arquivos = await tx.select().from(arquivosProduto).where(eq(arquivosProduto.produtoId, id));
