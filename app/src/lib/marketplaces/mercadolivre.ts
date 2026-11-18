@@ -1,5 +1,6 @@
 import "server-only";
 import { getSettings } from "@/lib/settings";
+import type { Produto } from "@/db/schema";
 import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type ContaComToken, type DadosRaioX, type MarketplaceAdapter, type PedidoExterno, type Tokens } from "./types";
 
 // Documentação: https://developers.mercadolivre.com.br/
@@ -210,19 +211,25 @@ export const mercadoLivre: MarketplaceAdapter = {
       // Clássico = gold_special; Premium = gold_pro (parcelado sem juros, comissão maior).
       listing_type_id: anuncio.tipoAnuncio === "premium" ? "gold_pro" : "gold_special",
       // Automático: o ML aplica a regra dele (grátis obrigatório a partir de R$ 79). Sempre/nunca: força.
-      ...(anuncio.freteGratis === "sempre" || anuncio.freteGratis === "nunca"
-        ? { shipping: { mode: "me2", local_pick_up: false, free_shipping: anuncio.freteGratis === "sempre" } }
-        : {}),
+      // Sempre Mercado Envios (me2): sem dizer o modo, o ML tenta o me1 e recusa ("User has not mode me1").
+      shipping: {
+        mode: "me2",
+        local_pick_up: false,
+        ...(anuncio.freteGratis === "sempre" || anuncio.freteGratis === "nunca" ? { free_shipping: anuncio.freteGratis === "sempre" } : {}),
+      },
       pictures: produto.imagens.map((source) => ({ source })),
       attributes: [
         { id: "SELLER_SKU", value_name: produto.sku },
-        { id: "BRAND", value_name: "ArVirtual" },
+        { id: "BRAND", value_name: "SINCROLAB" },
+        { id: "MANUFACTURER", value_name: "SINCROLAB" },
         { id: "MODEL", value_name: produto.sku },
         ...(produto.gtin ? [{ id: "GTIN", value_name: produto.gtin }] : []),
         // Variação: a cor diferencia os itens da mesma família.
         ...(produto.atributos?.Cor ? [{ id: "COLOR", value_name: produto.atributos.Cor }] : []),
       ],
     };
+    // Atributos obrigatórios da categoria que ainda faltam (Fabricante, Marca...): preenchidos antes de enviar.
+    (corpo.attributes as { id: string; value_name: string }[]).push(...(await atributosObrigatorios(conta.accessToken, categoria, produto, corpo.attributes as { id: string }[])));
     const publicar = (body: Record<string, unknown>) =>
       api<{ id: string; permalink: string }>("/items", conta.accessToken, { method: "POST", body: JSON.stringify(body) });
     let item: { id: string; permalink: string };
@@ -554,3 +561,33 @@ export const mercadoLivre: MarketplaceAdapter = {
     return out;
   },
 };
+
+type AtributoML = { id: string; name?: string; value_type?: string; tags?: Record<string, unknown>; values?: { id: string; name: string }[] };
+
+/** Marca e fabricante de tudo que a loja vende. */
+export const MARCA_PROPRIA = "SINCROLAB";
+
+/** Obrigatórios da categoria que faltam: marca/fabricante SINCROLAB, material e cor do produto, e "não se aplica" no resto. */
+async function atributosObrigatorios(token: string, categoria: string, produto: Produto, jaTem: { id: string }[]) {
+  const attrs = await api<AtributoML[]>(`/categories/${encodeURIComponent(categoria)}/attributes`, token).catch(() => [] as AtributoML[]);
+  const tem = new Set(jaTem.map((a) => a.id));
+  const out: { id: string; value_name: string }[] = [];
+  for (const a of Array.isArray(attrs) ? attrs : []) {
+    const t = a.tags ?? {};
+    if (!(t.required || t.catalog_required || t.conditional_required) || t.read_only || t.fixed || tem.has(a.id)) continue;
+    const nome = `${a.id} ${a.name ?? ""}`;
+    const opcoes = a.values ?? [];
+    let v = "";
+    if (/BRAND|MANUFACTURER|fabricante|marca/i.test(nome)) v = MARCA_PROPRIA;
+    else if (/MODEL|modelo/i.test(nome)) v = produto.sku;
+    else if (/MATERIAL/i.test(nome)) v = produto.material || "PLA";
+    else if (/COLOR|cor\b/i.test(nome)) v = produto.cor || "Variada";
+    else if (opcoes.length) v = (opcoes.find((o) => /n[aã]o se aplica|outro|gen[eé]ric|sem\b/i.test(o.name)) ?? opcoes[0]!).name;
+    else if (a.value_type === "string" || !a.value_type) v = "Não se aplica";
+    if (!v) continue;
+    // Com lista fechada, usa o nome exato da opção quando existir (ex.: a marca já cadastrada no ML).
+    const igual = opcoes.find((o) => o.name.toLowerCase() === v.toLowerCase());
+    out.push({ id: a.id, value_name: (igual?.name ?? v).slice(0, 255) });
+  }
+  return out;
+}

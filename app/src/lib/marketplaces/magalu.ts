@@ -271,7 +271,7 @@ export const magalu: MarketplaceAdapter = {
           sku: produto.sku,
           title: anuncio.titulo.slice(0, 150),
           description: descricaoHtml(anuncio.descricao || produto.descricao || anuncio.titulo),
-          brand: "ArVirtual",
+          brand: "SINCROLAB",
           // Variações do mesmo produto ficam no mesmo grupo (SKU base); produto simples é o próprio grupo.
           group: { id: (anuncio.grupo ?? produto.sku).slice(0, 50), main_variation: anuncio.principal ?? true },
           channels: [{ id: canal }],
