@@ -91,12 +91,6 @@ export const SETTINGS = {
   "cults.chave": { label: "Chave da API (cults3d.com › Configurações › API)", secret: true, group: "Cults" },
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
-  "magalu.categorias": {
-    label: "Categoria escolhida pelo ERP, fora das reguladas (evita pedir Anatel/Inmetro): rode antes o add-scope de categorias abaixo e reconecte",
-    secret: false,
-    group: "Magalu",
-    options: ["desligado", "ligado"],
-  },
   "magalu.etiquetas": {
     label: "Etiquetas pela API (liga a permissão de logística: rode antes o comando add-scope abaixo e reconecte a conta)",
     secret: false,

@@ -29,8 +29,8 @@ export const MAGALU_SCOPES_CATEGORIAS = "open:portfolio-categories-seller:read";
 
 /** Escopos pedidos ao conectar: os de sempre e, se ligados em Configurações, os de etiqueta e de categorias. */
 export async function escoposMagalu() {
-  const [etiquetas, cats] = await Promise.all([getSetting("magalu.etiquetas"), getSetting("magalu.categorias")]);
-  return [MAGALU_SCOPES, etiquetas === "ligado" && MAGALU_SCOPES_ETIQUETA, cats === "ligado" && MAGALU_SCOPES_CATEGORIAS].filter(Boolean).join(" ");
+  const etiquetas = await getSetting("magalu.etiquetas");
+  return [MAGALU_SCOPES, etiquetas === "ligado" && MAGALU_SCOPES_ETIQUETA].filter(Boolean).join(" ");
 }
 
 async function credenciais() {
@@ -239,7 +239,8 @@ export const magalu: MarketplaceAdapter = {
     // Categoria escolhida pelo ERP (fora dos departamentos que pedem Anatel/Inmetro) e a ficha obrigatória dela.
     let categoria = anuncio.categoria;
     let avisoCategoria = "";
-    if (!categoria && (await getSetting("magalu.categorias")) === "ligado") {
+    // Sempre tenta (sem nada a configurar); se o Magalu não deixar consultar categorias, segue como antes.
+    if (!categoria) {
       const chamar = <T,>(path: string) => api<T>(path, conta.accessToken);
       try {
         const c = await categoriaMagaluPara(chamar, produto);
@@ -249,9 +250,8 @@ export const magalu: MarketplaceAdapter = {
           ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
         }
       } catch (e) {
-        avisoCategoria = /40[13]/.test((e as Error).message)
-          ? " Sem a permissão de categorias, o Magalu escolheu a categoria pelo título (pode pedir certificado): rode o add-scope de categorias em Configurações › Magalu e reconecte."
-          : "";
+        void e;
+        avisoCategoria = "";
       }
     }
     const atributos = Object.entries(produto.atributos ?? {})
@@ -339,7 +339,7 @@ export const magalu: MarketplaceAdapter = {
     let corrigido = "";
     // Categoria/ficha/certificação: troca para uma categoria fora das reguladas e preenche a ficha obrigatória.
     const deCategoria = campos.some((c) => /categor|datasheet|attribute|ficha/.test(c)) || motivos.some((m) => /categor|ficha|certif|anatel|inmetro|homolog|atribut/i.test(m)) || !motivos.length;
-    if (produto && deCategoria && (await getSetting("magalu.categorias")) === "ligado") {
+    if (produto && deCategoria) {
       const chamar = <T,>(path: string) => api<T>(path, conta.accessToken);
       const c = await categoriaMagaluPara(chamar, produto).catch(() => null);
       if (c) {
@@ -359,7 +359,7 @@ export const magalu: MarketplaceAdapter = {
     const situacao = st === "DRAFT" ? "Rascunho no Magalu (não aparece no portal)" : st === "BLOCKED" ? "Bloqueado pelo Magalu" : st === "UNPUBLISHED" ? "Despublicado no Magalu" : `Magalu: ${st || "sem situação"}`;
     return {
       pronto: false,
-      mensagem: `${situacao}${motivos.length ? `: ${motivos.join("; ")}` : ""}.${corrigido || (deCategoria && !corrigido ? " Para o ERP corrigir a categoria sozinho, ligue a permissão de categorias em Configurações › Magalu." : "")} O ERP confere de novo sozinho.`,
+      mensagem: `${situacao}${motivos.length ? `: ${motivos.join("; ")}` : ""}.${corrigido} O ERP confere de novo sozinho.`,
     };
   },
 
