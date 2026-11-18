@@ -116,6 +116,7 @@ export default async function ProdutoPage({
         <div className="grid gap-6 xl:grid-cols-2">
           <Anunciar
             produtoId={id}
+            faltaMedidas={[!(produto.pesoG > 0) && "peso com embalagem", !(produto.alturaCm > 0) && "altura", !(produto.larguraCm > 0) && "largura", !(produto.comprimentoCm > 0) && "comprimento"].filter((x): x is string => Boolean(x))}
             nome={produto.nome}
             descricao={produto.descricao}
             preco={produto.preco}

@@ -348,16 +348,16 @@ export function ProdutoForm({
               <Input name="custo" inputMode="decimal" value={custo} onChange={(e) => setCusto(e.target.value)} onBlur={() => setCusto(normalizar(custo))} />
             </Field>
             <Field label="Peso c/ embalagem (g)">
-              <Input name="pesoG" type="number" min={0} defaultValue={produto?.pesoG ?? 0} />
+              <Input name="pesoG" type="number" min={1} required defaultValue={produto?.pesoG || ""} placeholder="obrigatório" />
             </Field>
             <Field label="Altura (cm)">
-              <Input name="alturaCm" inputMode="decimal" defaultValue={fmt(produto?.alturaCm)} />
+              <Input name="alturaCm" inputMode="decimal" required title="Obrigatório (maior que zero)" defaultValue={fmt(produto?.alturaCm)} placeholder="obrigatório" />
             </Field>
             <Field label="Largura (cm)">
-              <Input name="larguraCm" inputMode="decimal" defaultValue={fmt(produto?.larguraCm)} />
+              <Input name="larguraCm" inputMode="decimal" required title="Obrigatório (maior que zero)" defaultValue={fmt(produto?.larguraCm)} placeholder="obrigatório" />
             </Field>
             <Field label="Comprimento (cm)">
-              <Input name="comprimentoCm" inputMode="decimal" defaultValue={fmt(produto?.comprimentoCm)} />
+              <Input name="comprimentoCm" inputMode="decimal" required title="Obrigatório (maior que zero)" defaultValue={fmt(produto?.comprimentoCm)} placeholder="obrigatório" />
             </Field>
             <label className="flex items-center gap-2 text-sm sm:col-span-2">
               <input type="checkbox" name="ativo" defaultChecked={produto?.ativo ?? true} className="size-4 accent-[var(--gold)]" />
@@ -374,6 +374,8 @@ export function ProdutoForm({
           setPreco={setPreco}
           precosCanal={precosCanal}
           alterar={(canal, v) => setPrecosCanal((p) => ({ ...p, [canal]: v }))}
+          produtoId={produto?.id}
+          mercadoInicial={produto?.modelo3d?.mercado}
         />
 
         {state?.erro ? <Alert>{state.erro}</Alert> : null}
