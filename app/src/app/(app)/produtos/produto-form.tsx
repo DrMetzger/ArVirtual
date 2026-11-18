@@ -104,7 +104,7 @@ export function ProdutoForm({
   const calc = useMemo(() => custoComposicao(comp, tempoMin, parametros, filamentos), [JSON.stringify(comp), tempoMin, parametros, filamentos]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
-    <form onSubmit={onSubmit} className="grid gap-6 xl:grid-cols-3">
+    <form onSubmit={onSubmit} className="grid gap-6 pb-28 xl:grid-cols-3">
       {produto ? <input type="hidden" name="id" value={produto.id} /> : null}
       <input type="hidden" name="temVariacoes" value={temVariacoes ? "1" : ""} />
       <input
@@ -381,8 +381,12 @@ export function ProdutoForm({
           mercadoInicial={produto?.modelo3d?.mercado}
         />
 
+      </div>
+
+      {/* Barra de salvar fixa: sempre visível, mesmo rolando a tela. */}
+      <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-stretch gap-2 border-t border-border bg-surface/95 p-3 shadow-[0_-4px_16px_rgba(0,0,0,0.08)] backdrop-blur sm:inset-x-auto sm:bottom-6 sm:right-6 sm:max-w-md sm:items-end sm:rounded-xl sm:border sm:p-3 sm:shadow-xl">
         {state?.erro ? <Alert>{state.erro}</Alert> : null}
-        <SubmitButton pending={pending} size="lg" pendingText="Salvando...">
+        <SubmitButton pending={pending} size="lg" pendingText="Salvando..." className="w-full sm:w-auto">
           {produto ? "Salvar alterações" : "Cadastrar produto"}
         </SubmitButton>
       </div>
