@@ -1,0 +1,18 @@
+name: Conferência pós-publicação (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-pos.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Estoque e migrações
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T db psql -U arvirtual -d arvirtual -Atc "select 'itens com estoque 100: ' || count(*) filter (where estoque = 100) || ' de ' || count(*) from produtos where tem_variacoes = false; select 'ajustes no kardex: ' || count(*) from movimentos_estoque where origem = 'ajuste:estoque-100'; select 'impressoras: ' || count(*) from impressoras; select 'anuncios processando: ' || count(*) from anuncios where status = 'processando'" </dev/null 2>&1
+          REMOTO
