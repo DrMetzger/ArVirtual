@@ -220,7 +220,12 @@ async function makerWorld(id: string, link: string): Promise<Modelo3d> {
     perfis,
     medidasMm: null,
     pesoEstimadoG: null,
-    avisos: [AVISO_LOGIN("MakerWorld"), ...(perfis.length ? [] : ["O modelo não tem perfil de impressão publicado: informe o filamento e o tempo depois de fatiar."])],
+    // O 3MF de cada perfil baixa com a sua conta Bambu Lab (Configurações › Integrações).
+    arquivos: perfis.map((p) => ({ nome: `${d.title} - ${p.titulo}.3mf`.replace(/[\\/:*?"<>|]+/g, " ").slice(0, 180), url: `makerworld:${p.id}` })),
+    avisos: [
+      ...((await getSettings(["makerworld.token"]))["makerworld.token"] ? [] : ["Para o 3MF vir junto, conecte sua conta Bambu Lab em Configurações › Integrações (o MakerWorld só libera o download com login)."]),
+      ...(perfis.length ? [] : ["O modelo não tem perfil de impressão publicado: informe o filamento e o tempo depois de fatiar."]),
+    ],
   };
 }
 

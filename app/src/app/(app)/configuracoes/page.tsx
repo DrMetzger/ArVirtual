@@ -1,5 +1,7 @@
 import { listaImpressoras, MODELOS_IMPRESSORA } from "@/lib/impressoras";
 import { Impressoras } from "./impressoras";
+import { ContaBambu } from "./bambu";
+import { contaBambu } from "@/lib/bambu-conta";
 import { asc } from "drizzle-orm";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
@@ -127,10 +129,16 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
 
       {aba === "impressora" ? <Impressoras lista={await listaImpressoras(false)} modelos={MODELOS_IMPRESSORA} /> : null}
 
+      {aba === "integracoes" ? (
+        <div className="mb-6">
+          <ContaBambu conta={await contaBambu()} />
+        </div>
+      ) : null}
+
       {aba === "integracoes" || aba === "precificacao" || aba === "impressora" ? (
         <div className="grid gap-6 xl:grid-cols-2">
           {Object.entries(
-            (await getSettingsForDisplay()).filter((s) => abaDoGrupo(s.group) === aba).reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
+            (await getSettingsForDisplay()).filter((s) => abaDoGrupo(s.group) === aba && s.group !== "Conta Bambu Lab (MakerWorld)").reduce<Record<string, Awaited<ReturnType<typeof getSettingsForDisplay>>>>((acc, s) => {
               (acc[s.group] ??= []).push(s);
               return acc;
             }, {}),

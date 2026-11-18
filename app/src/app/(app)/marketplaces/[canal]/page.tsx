@@ -29,6 +29,7 @@ const SITUACAO = {
   pausado: { rotulo: "Pausado", tom: "gold" },
   encerrado: { rotulo: "Não existe mais", tom: "neutral" },
   erro: { rotulo: "Erro ao publicar", tom: "red" },
+  processando: { rotulo: "Processando no marketplace", tom: "blue" },
 } as const;
 
 export async function generateMetadata({ params }: { params: Promise<{ canal: string }> }): Promise<Metadata> {

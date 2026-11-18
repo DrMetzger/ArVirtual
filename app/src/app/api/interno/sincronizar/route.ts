@@ -8,6 +8,7 @@ import { rotinaContagemAnuncios } from "@/lib/contagem-anuncios";
 import { rotinaRaioX } from "@/lib/raiox";
 import { rotinaTaxas } from "@/lib/taxas";
 import { analisarPendentes } from "@/lib/pesquisa-modelos";
+import { concluirPendentes } from "@/lib/publicacoes-pendentes";
 import { atualizarMetricas, atualizarTaxas, conferirAnuncios } from "@/lib/metricas";
 
 let ultimaComissoes = 0;
@@ -45,5 +46,7 @@ export async function POST(req: Request) {
   void rotinaTaxas().catch((e: Error) => console.warn(`[taxas] ${e.message}`));
   // Pesquisa de modelos 3D que parou no meio (servidor reiniciou): continua de onde estava.
   void analisarPendentes().catch((e: Error) => console.warn(`[pesquisa-modelos] ${e.message}`));
+  // Publicações que a plataforma ainda estava criando (Magalu): termina sozinho.
+  void concluirPendentes().catch((e: Error) => console.warn(`[publicações pendentes] ${e.message}`));
   return Response.json(r);
 }
