@@ -1,7 +1,7 @@
 import "server-only";
 import { categoriaMagaluPara, fichaObrigatoria } from "./magalu-categoria";
 import { getSetting, getSettings } from "@/lib/settings";
-import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type SituacaoAnuncio, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
@@ -310,22 +310,57 @@ export const magalu: MarketplaceAdapter = {
     }
 
     await precoEEstoque(conta.accessToken, canal, produto.sku, anuncio.preco, anuncio.estoque);
-    return {
-      idExterno: produto.sku,
-      link: "https://seller.magalu.com",
-      aviso: jaExistia
-        ? `O cadastro já existia no Magalu (${jaExistia.status === "DRAFT" ? "rascunho" : (jaExistia.status ?? "sem status")}): não criei outro, só completei preço e estoque. O Magalu analisa antes de publicar.`
-        : `O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).${avisoCategoria}`,
-    };
+    // O Magalu analisa antes de publicar: o anúncio fica "processando" e o ERP acompanha até sair o link real
+    // (e corrige sozinho se o Magalu deixar em rascunho ou bloquear).
+    throw new PublicacaoPendente(
+      produto.sku,
+      `${jaExistia ? "O cadastro já existia no Magalu: completei preço e estoque. " : "Enviado ao Magalu. "}Em análise: o ERP acompanha e marca como publicado quando o Magalu aprovar.${avisoCategoria}`,
+    );
   },
 
-  async concluir(conta, sku, preco, estoque) {
-    const existe = await api(`/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`, conta.accessToken).then(() => true, () => false);
-    if (!existe) return false;
+  async concluir(conta, sku, preco, estoque, produto) {
+    // Acompanha o SKU até o Magalu publicar: PUBLISHED → pronto (com o link real); em análise → espera;
+    // rascunho/bloqueado → lê o motivo (validation-info) e corrige sozinho o que dá (preço/estoque, categoria e ficha).
+    const caminho = `/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`;
+    const atual = await api<{ status?: string; url_marketplace?: { url?: string }[] }>(caminho, conta.accessToken).catch(() => null);
+    if (!atual) return { pronto: false, mensagem: "O Magalu ainda está criando o cadastro: o ERP confere de novo daqui a pouco." };
+    const st = String(atual.status ?? "").toUpperCase();
+    if (st === "PUBLISHED") return { pronto: true, link: atual.url_marketplace?.find((u) => u.url)?.url };
     const me = await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken);
-    if (!me.channel?.id) return false;
-    await precoEEstoque(conta.accessToken, me.channel.id, sku, preco, estoque);
-    return true;
+    // Preço e estoque no canal (idempotente): sem eles o SKU fica em rascunho.
+    if (me.channel?.id) await precoEEstoque(conta.accessToken, me.channel.id, sku, preco, estoque).catch(() => undefined);
+    if (st === "UNDER_REVIEW") return { pronto: false, mensagem: "Em análise no Magalu: o ERP marca como publicado assim que for aprovado." };
+    // Motivo do Magalu (política de publicação).
+    const info = await api<unknown>(`${caminho}/validation-info`, conta.accessToken, { headers: { "X-Tenant-Id": conta.idExterno } }).catch(() => null);
+    const eventos = (Array.isArray(info) ? info : info ? [info] : []) as { errors?: { message?: string; approved?: boolean; rules?: { field?: string; approved?: boolean }[] }[] }[];
+    const erros = eventos.flatMap((e) => e.errors ?? []).filter((e) => !e.approved);
+    const motivos = [...new Set(erros.map((e) => e.message).filter(Boolean))] as string[];
+    const campos = erros.flatMap((e) => (e.rules ?? []).filter((r) => !r.approved).map((r) => String(r.field ?? "").toLowerCase()));
+    let corrigido = "";
+    // Categoria/ficha/certificação: troca para uma categoria fora das reguladas e preenche a ficha obrigatória.
+    const deCategoria = campos.some((c) => /categor|datasheet|attribute|ficha/.test(c)) || motivos.some((m) => /categor|ficha|certif|anatel|inmetro|homolog|atribut/i.test(m)) || !motivos.length;
+    if (produto && deCategoria && (await getSetting("magalu.categorias")) === "ligado") {
+      const chamar = <T,>(path: string) => api<T>(path, conta.accessToken);
+      const c = await categoriaMagaluPara(chamar, produto).catch(() => null);
+      if (c) {
+        const ficha = [
+          produto.material && { name: "Material", value: produto.material },
+          produto.cor && { name: "Cor", value: produto.cor },
+          { name: "Fabricação", value: "Impressão 3D" },
+        ].filter(Boolean) as { name: string; value: string }[];
+        ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
+        const ok = await api(caminho, conta.accessToken, { method: "PATCH", body: JSON.stringify({ category: { id: c.id }, datasheet: ficha }) }).then(
+          () => true,
+          () => false,
+        );
+        if (ok) corrigido = ` O ERP trocou a categoria para ${c.path}, preencheu a ficha técnica e reenviou.`;
+      }
+    }
+    const situacao = st === "DRAFT" ? "Rascunho no Magalu (não aparece no portal)" : st === "BLOCKED" ? "Bloqueado pelo Magalu" : st === "UNPUBLISHED" ? "Despublicado no Magalu" : `Magalu: ${st || "sem situação"}`;
+    return {
+      pronto: false,
+      mensagem: `${situacao}${motivos.length ? `: ${motivos.join("; ")}` : ""}.${corrigido || (deCategoria && !corrigido ? " Para o ERP corrigir a categoria sozinho, ligue a permissão de categorias em Configurações › Magalu." : "")} O ERP confere de novo sozinho.`,
+    };
   },
 
   async atualizar(conta, sku, m) {
@@ -552,7 +587,7 @@ export const magalu: MarketplaceAdapter = {
   },
 
   async situacao(conta, ids) {
-    const out: Record<string, "publicado" | "pausado" | "encerrado"> = {};
+    const out: Record<string, SituacaoAnuncio> = {};
     for (const id of ids) {
       const res = await fetch(`${API}/seller/v1/portfolios/skus/${encodeURIComponent(id)}`, {
         headers: { Authorization: `Bearer ${conta.accessToken}`, Accept: "application/json" },
@@ -562,7 +597,15 @@ export const magalu: MarketplaceAdapter = {
       if (res.status === 404) out[id] = "encerrado";
       else if (res.ok) {
         const st = String(((await res.json().catch(() => ({}))) as { status?: string }).status ?? "").toUpperCase();
-        out[id] = ["DELETED", "DELETING"].includes(st) ? "encerrado" : ["UNPUBLISHED", "BLOCKED", "INACTIVE"].includes(st) ? "pausado" : "publicado";
+        out[id] = ["DELETED", "DELETING"].includes(st)
+          ? "encerrado"
+          : st === "PUBLISHED"
+            ? "publicado"
+            : ["DRAFT", "UNDER_REVIEW", "BLOCKED"].includes(st)
+              ? "processando"
+              : ["UNPUBLISHED", "INACTIVE"].includes(st)
+                ? "pausado"
+                : "publicado";
       }
     }
     return out;

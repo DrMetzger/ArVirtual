@@ -145,7 +145,9 @@ export type DadosRaioX = {
 };
 
 export type MetricasAnuncio = { visitas: number; curtidas: number };
-export type SituacaoAnuncio = "publicado" | "pausado" | "encerrado";
+export type SituacaoAnuncio = "publicado" | "pausado" | "encerrado" | "processando";
+/** Resultado de uma conferência de publicação pendente: pronto (com o link real) ou ainda não, com o motivo. */
+export type ConclusaoPublicacao = { pronto: boolean; link?: string; mensagem?: string };
 /** Taxas do pedido; `final` = valor fechado (enquanto não, é parcial e é lido de novo depois). */
 export type TaxasPedido = { taxas: number; freteVendedor: number; final: boolean };
 
@@ -210,7 +212,7 @@ export interface MarketplaceAdapter {
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */
   porSku?(conta: ContaComToken, skus: string[]): Promise<AnuncioExterno[]>;
   /** Termina uma publicação que ficou "processando" (preço e estoque); false se a plataforma ainda não terminou. */
-  concluir?(conta: ContaComToken, idExterno: string, preco: number, estoque: number): Promise<boolean>;
+  concluir?(conta: ContaComToken, idExterno: string, preco: number, estoque: number, produto: Produto | null): Promise<ConclusaoPublicacao>;
   /** Comissão da categoria da plataforma para um produto (termo de busca) — Mercado Livre: domain_discovery + listing_prices. */
   tarifa?(conta: ContaComToken, termo: string): Promise<TarifaCategoria | null>;
   /**
