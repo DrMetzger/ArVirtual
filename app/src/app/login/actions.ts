@@ -7,6 +7,7 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { db } from "@/db";
 import { usuarios } from "@/db/schema";
+import { limparErros, minutosBloqueado, registrarErro } from "@/lib/tentativas-login";
 import { conferirCodigo, enviarCodigo, exige2fa } from "@/lib/dois-fatores";
 import {
   PENDING_2FA_COOKIE,
@@ -36,14 +37,22 @@ export async function login(_: unknown, form: FormData): Promise<Estado> {
   const senha = String(form.get("senha") ?? "");
   const destino = destinoSeguro(String(form.get("redirectTo") ?? "/"));
   // Celular bloqueado em Configurações › Aparelhos não entra, nem com a senha certa.
-  if (await aparelhoBloqueado(idDoAparelho((await headers()).get("user-agent")))) {
+  const h = await headers();
+  const ip = h.get("x-real-ip") || h.get("x-forwarded-for")?.split(",")[0]?.trim() || "";
+  const espera = minutosBloqueado(email, ip);
+  if (espera) return { erro: `Muitas tentativas com senha errada. Tente de novo em ${espera} min.` };
+  if (await aparelhoBloqueado(idDoAparelho(h.get("user-agent")))) {
     return { erro: "Este aparelho foi bloqueado pelo administrador. Fale com ele para liberar." };
   }
 
   const user = await db.query.usuarios.findFirst({ where: eq(usuarios.email, email) });
   // Compara mesmo sem usuário para não revelar quais e-mails existem pelo tempo de resposta.
   const ok = await bcrypt.compare(senha, user?.senhaHash ?? "$2b$12$x8Kcopl2.6wglrN.TXyq/ONLaYWM9zDobK16BznHpRW1XbEP/GNNm");
-  if (!user || !ok) return { erro: "E-mail ou senha incorretos." };
+  if (!user || !ok) {
+    registrarErro(email, ip);
+    return { erro: "E-mail ou senha incorretos." };
+  }
+  limparErros(email);
 
   if (await exige2fa(user)) {
     const jar = await cookies();
