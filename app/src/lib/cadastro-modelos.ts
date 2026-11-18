@@ -11,6 +11,7 @@ import { encaixe, listaImpressoras } from "@/lib/impressoras";
 import { importarProduto } from "@/lib/importar-produto";
 import { emPortugues, fonteDoLink, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
 import { precosPorCanal } from "@/lib/precificacao";
+import { linkDownloadMakerWorld } from "@/lib/bambu-conta";
 import { precoDeMercado } from "@/lib/preco-mercado";
 import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 import { EXTENSOES_IMPRESSAO, MAX_ARQUIVO_IMPRESSAO, PASTA_IMPRESSAO } from "@/lib/uploads";
@@ -123,12 +124,13 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
       atualizadoEm: new Date(),
     })
     .where(eq(produtos.id, criado!.id));
-  await anexarArquivos(criado!.id, m).catch((e: Error) => console.warn(`[modelos3d] arquivos: ${e.message}`));
+  await anexarArquivos(criado!.id, m, e.perfilId).catch((err: Error) => console.warn(`[modelos3d] arquivos: ${err.message}`));
   return criado!;
 }
 
 /** Arquivos de impressão do modelo (o enviado na tela ou os que o site deixa baixar) vão para o produto. */
-async function anexarArquivos(produtoId: string, m: Modelo3d) {
+export async function anexarArquivos(produtoId: string, m: Modelo3d, perfilId?: string | null): Promise<number> {
+  let anexados = 0;
   await mkdir(PASTA_IMPRESSAO, { recursive: true });
   const gravar = async (nome: string, origem: { caminho?: string; dados?: Buffer }) => {
     const ext = (nome.split(".").pop() ?? "").toLowerCase();
@@ -138,16 +140,42 @@ async function anexarArquivos(produtoId: string, m: Modelo3d) {
     else await writeFile(`${PASTA_IMPRESSAO}/${arquivo}`, origem.dados!);
     const tamanho = (await stat(`${PASTA_IMPRESSAO}/${arquivo}`)).size;
     await db.insert(arquivosProduto).values({ produtoId, nome: nome.slice(0, 200), arquivo, tamanho, enviadoPor: `Importado (${NOMES_FONTE[m.fonte]})` });
+    anexados++;
   };
   if (m.arquivoLocal) await gravar(m.arquivoLocal.nome, { caminho: m.arquivoLocal.caminho });
   const token = m.fonte === "thingiverse" ? (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim() : "";
-  for (const a of (m.arquivos ?? []).slice(0, 10)) {
+  // MakerWorld: só o 3MF do perfil escolhido (ou o primeiro), pelo link que a conta Bambu libera.
+  const lista = m.fonte === "makerworld" ? (m.arquivos ?? []).filter((a, i) => (perfilId ? a.url === `makerworld:${perfilId}` : i === 0)).slice(0, 1) : (m.arquivos ?? []);
+  for (const original of lista.slice(0, 10)) {
+    let a = original;
+    if (a.url.startsWith("makerworld:")) {
+      const l = await linkDownloadMakerWorld(a.url.slice("makerworld:".length));
+      if (!l) continue;
+      a = { nome: /\.3mf$/i.test(l.nome) ? l.nome : a.nome, url: l.url };
+    }
     if ((a.tamanho ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
     const res = await fetch(a.url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(180_000) }).catch(() => null);
     if (!res?.ok || Number(res.headers.get("content-length") ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
     const dados = Buffer.from(await res.arrayBuffer());
     if (dados.length && dados.length <= MAX_ARQUIVO_IMPRESSAO) await gravar(a.nome, { dados });
   }
+  return anexados;
+}
+
+/** Produto já cadastrado de um modelo 3D: baixa agora os arquivos do site (ex.: depois de conectar a conta Bambu). */
+export async function baixarArquivosDoModelo(produtoId: string) {
+  const [p] = await db.select({ modelo3d: produtos.modelo3d }).from(produtos).where(eq(produtos.id, produtoId));
+  if (!p?.modelo3d?.link) throw new Error("Este produto não veio de um site de modelos 3D.");
+  const m = await lerModeloDoLink(p.modelo3d.link);
+  const n = await anexarArquivos(produtoId, m, null);
+  if (!n) {
+    throw new Error(
+      m.fonte === "makerworld"
+        ? "O MakerWorld não liberou o download: conecte (ou reconecte) sua conta Bambu Lab em Configurações › Integrações."
+        : `O ${NOMES_FONTE[m.fonte]} não libera o download sem login: baixe no site e arraste aqui.`,
+    );
+  }
+  return n;
 }
 
 /** Cadastro sem tela: primeiro perfil, cores ligadas aos filamentos mais parecidos, tempo do perfil ou estimado. */

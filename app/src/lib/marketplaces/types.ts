@@ -209,6 +209,8 @@ export interface MarketplaceAdapter {
   anuncios(conta: ContaComToken): Promise<AnuncioExterno[]>;
   /** Anúncios da conta com estes SKUs (busca direta, sem listar a conta toda). */
   porSku?(conta: ContaComToken, skus: string[]): Promise<AnuncioExterno[]>;
+  /** Termina uma publicação que ficou "processando" (preço e estoque); false se a plataforma ainda não terminou. */
+  concluir?(conta: ContaComToken, idExterno: string, preco: number, estoque: number): Promise<boolean>;
   /** Comissão da categoria da plataforma para um produto (termo de busca) — Mercado Livre: domain_discovery + listing_prices. */
   tarifa?(conta: ContaComToken, termo: string): Promise<TarifaCategoria | null>;
   /**
@@ -219,6 +221,16 @@ export interface MarketplaceAdapter {
 }
 
 export class MarketplaceError extends Error {}
+
+/** A plataforma aceitou o cadastro mas ainda está criando (ex.: Magalu): o ERP termina sozinho depois. */
+export class PublicacaoPendente extends Error {
+  constructor(
+    readonly idExterno: string,
+    mensagem: string,
+  ) {
+    super(mensagem);
+  }
+}
 
 export async function lerResposta<T>(res: Response, origem: string): Promise<T> {
   const text = await res.text();

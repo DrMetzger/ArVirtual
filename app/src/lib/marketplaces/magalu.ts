@@ -1,7 +1,7 @@
 import "server-only";
 import { categoriaMagaluPara, fichaObrigatoria } from "./magalu-categoria";
 import { getSetting, getSettings } from "@/lib/settings";
-import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
@@ -141,6 +141,20 @@ function cadastroCompleto(atual: Record<string, unknown>) {
   if (Array.isArray(out.identifiers)) out.identifiers = (out.identifiers as { value?: unknown }[]).filter((i) => i.value);
   for (const k of ["attributes", "datasheet", "dimensions", "images", "videos", "podcasts", "extra_data", "identifiers"]) out[k] ??= [];
   return out;
+}
+
+/** Preço e estoque do SKU no canal da loja: cria (POST) ou, se já existirem, altera (PATCH). */
+async function precoEEstoque(token: string, canal: string, sku: string, preco: number, estoque: number) {
+  const caminho = (recurso: string) => `/seller/v1/portfolios/${recurso}/${encodeURIComponent(sku)}`;
+  const enviar = (recurso: string, body: object) =>
+    api(caminho(recurso), token, { method: "POST", body: JSON.stringify(body) }).catch((e: Error) =>
+      api(caminho(recurso), token, { method: "PATCH", body: JSON.stringify(body) }).catch((e2: Error) => {
+        throw new MarketplaceError(`${e.message} / ${e2.message}`);
+      }),
+    );
+  const centavos = Math.round(preco * 100);
+  await enviar("prices", { channel: { id: canal }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos });
+  await enviar("stocks", { channel: { id: canal }, type: "AVAILABLE", quantity: Math.max(0, estoque) });
 }
 
 export const magalu: MarketplaceAdapter = {
@@ -290,22 +304,12 @@ export const magalu: MarketplaceAdapter = {
         criado = await api(caminhoSku("skus"), conta.accessToken).then(() => true, () => false);
       }
       if (!criado) {
-        throw new MarketplaceError(
-          "O Magalu recebeu o produto e ainda está criando o cadastro (pode levar alguns minutos). Clique em Publicar de novo daqui a pouco: o ERP só completa o preço e o estoque do cadastro já criado, sem duplicar.",
-        );
+        // O Magalu ainda está criando: o ERP termina sozinho (preço e estoque) assim que o cadastro existir.
+        throw new PublicacaoPendente(produto.sku, "O Magalu está criando o cadastro: o ERP manda o preço e o estoque sozinho assim que terminar (sem duplicar).");
       }
     }
 
-    // Preço e estoque: cria (POST) ou, se já existirem, altera (PATCH).
-    const enviar = (recurso: string, body: object) =>
-      api(caminhoSku(recurso), conta.accessToken, { method: "POST", body: JSON.stringify(body) }).catch((e: Error) =>
-        api(caminhoSku(recurso), conta.accessToken, { method: "PATCH", body: JSON.stringify(body) }).catch((e2: Error) => {
-          throw new MarketplaceError(`${e.message} / ${e2.message}`);
-        }),
-      );
-    const centavos = Math.round(anuncio.preco * 100);
-    await enviar("prices", { channel: { id: canal }, currency: "BRL", normalizer: 100, list_price: centavos, price: centavos });
-    await enviar("stocks", { channel: { id: canal }, type: "AVAILABLE", quantity: Math.max(0, anuncio.estoque) });
+    await precoEEstoque(conta.accessToken, canal, produto.sku, anuncio.preco, anuncio.estoque);
     return {
       idExterno: produto.sku,
       link: "https://seller.magalu.com",
@@ -313,6 +317,15 @@ export const magalu: MarketplaceAdapter = {
         ? `O cadastro já existia no Magalu (${jaExistia.status === "DRAFT" ? "rascunho" : (jaExistia.status ?? "sem status")}): não criei outro, só completei preço e estoque. O Magalu analisa antes de publicar.`
         : `O Magalu analisa o cadastro antes de publicar (status Em revisão no Portal do Seller).${avisoCategoria}`,
     };
+  },
+
+  async concluir(conta, sku, preco, estoque) {
+    const existe = await api(`/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`, conta.accessToken).then(() => true, () => false);
+    if (!existe) return false;
+    const me = await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken);
+    if (!me.channel?.id) return false;
+    await precoEEstoque(conta.accessToken, me.channel.id, sku, preco, estoque);
+    return true;
   },
 
   async atualizar(conta, sku, m) {

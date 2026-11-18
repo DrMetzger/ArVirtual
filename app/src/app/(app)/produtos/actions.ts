@@ -4,7 +4,10 @@ import { randomBytes } from "node:crypto";
 import { copyFile, rm } from "node:fs/promises";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { PublicacaoPendente } from "@/lib/marketplaces/types";
+import { acompanharPendentes } from "@/lib/publicacoes-pendentes";
 import { precoDeMercado } from "@/lib/preco-mercado";
+import { baixarArquivosDoModelo } from "@/lib/cadastro-modelos";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
@@ -15,7 +18,7 @@ import { estoqueInicialPadrao, getParametrosPreco, getSettings } from "@/lib/set
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { CAMPOS_ANUNCIO, type AnuncioExterno, type CampoAnuncio, type MudancasAnuncio } from "@/lib/marketplaces/types";
-import { adapter, contaComToken } from "@/lib/marketplaces";
+import { adapter, contaComToken, MARKETPLACE_INFO } from "@/lib/marketplaces";
 import { movimentar } from "@/lib/estoque";
 import { PASTA_IMPRESSAO, salvarImagem, salvarVideo } from "@/lib/uploads";
 import { onlyDigits, parseDecimal } from "@/lib/utils";
@@ -426,6 +429,27 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
     : [p];
   if (!itens.length) return [{ conta: "-", ok: false, mensagem: p.temVariacoes ? "Escolha ao menos uma variação para publicar." : "Produto não encontrado." }];
 
+  // Confere tudo o que as plataformas marcadas exigem ANTES de publicar: ou vai completo para todas, ou não vai
+  // para nenhuma (nada de publicar numa e falhar na outra).
+  const canais = [...new Set(contas.map((c) => c.marketplace))];
+  const problemas: string[] = [];
+  if (!(p.imagens.length || itens.some((i) => i.imagens.length))) problemas.push("ao menos uma foto");
+  if (dados.titulo.length < 10) problemas.push("título com pelo menos 10 letras");
+  if (!dados.descricao && !p.descricao) problemas.push("descrição");
+  if (!/^\d{8}$/.test(p.ncm)) problemas.push("NCM com 8 dígitos");
+  for (const i of itens) {
+    const nome = p.temVariacoes ? ` (${i.cor || i.sku})` : "";
+    if (!(i.estoque > 0)) problemas.push(`estoque maior que zero${nome}`);
+    if (canais.includes("magalu") && i.sku.length > 32) problemas.push(`SKU com até 32 caracteres para o Magalu${nome}`);
+  }
+  for (const c of canais) {
+    const preco = parseDecimal(form.get(`preco_${c}`)) || p.precosCanal[c as keyof typeof p.precosCanal] || dados.preco || p.preco;
+    if (!(preco > 0)) problemas.push(`preço do ${MARKETPLACE_INFO[c].nome}`);
+  }
+  if (problemas.length) {
+    return [{ conta: "-", ok: false, mensagem: `Não publiquei em nenhuma plataforma. Falta: ${problemas.join(", ")}. Corrija, salve e publique de novo.` }];
+  }
+
   const resultados: ResultadoPublicacao[] = [];
   for (const conta of contas) {
     const categoria = String(form.get(`categoria_${conta.marketplace}`) ?? "").trim() || undefined;
@@ -437,7 +461,7 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
         await db
           .select({ produtoId: anuncios.produtoId, idExterno: anuncios.idExterno })
           .from(anuncios)
-          .where(and(eq(anuncios.contaId, conta.id), eq(anuncios.status, "publicado"), inArray(anuncios.produtoId, itens.map((x) => x.id))))
+          .where(and(eq(anuncios.contaId, conta.id), inArray(anuncios.status, ["publicado", "processando"]), inArray(anuncios.produtoId, itens.map((x) => x.id))))
       ).map((x) => [x.produtoId, x.idExterno]),
     );
     let naPlataforma: AnuncioExterno[];
@@ -503,6 +527,13 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
         resultados.push({ conta: rotulo, ok: true, mensagem: `Publicado (${r.idExterno})${r.aviso ? `. ${r.aviso}` : ""}`, link: r.link });
       } catch (e) {
         const msg = (e as Error).message;
+        if (e instanceof PublicacaoPendente) {
+          // Aceito, mas a plataforma ainda está criando: o ERP termina sozinho (preço e estoque) assim que ela acabar.
+          await db.insert(anuncios).values({ produtoId: item.id, contaId: conta.id, marketplace: conta.marketplace, idExterno: e.idExterno, status: "processando", preco, mensagem: msg });
+          resultados.push({ conta: rotulo, ok: true, mensagem: msg });
+          void acompanharPendentes();
+          continue;
+        }
         await db.insert(anuncios).values({ produtoId: item.id, contaId: conta.id, marketplace: conta.marketplace, status: "erro", preco, mensagem: msg.slice(0, 2000) });
         resultados.push({ conta: rotulo, ok: false, mensagem: msg });
       }
@@ -659,5 +690,17 @@ export async function mercadoDoProduto(produtoId: string, custoTela: number) {
     };
   } catch (e) {
     return { erro: (e as Error).message.slice(0, 200) };
+  }
+}
+
+/** Baixa agora os arquivos de impressão do site de origem do modelo 3D (ex.: depois de conectar a conta Bambu). */
+export async function baixarArquivosOrigem(produtoId: string): Promise<{ ok?: string; erro?: string }> {
+  await requireUser();
+  try {
+    const n = await baixarArquivosDoModelo(produtoId);
+    revalidatePath(`/produtos/${produtoId}`);
+    return { ok: `${n} arquivo(s) baixado(s) para Arquivos de impressão.` };
+  } catch (e) {
+    return { erro: (e as Error).message.slice(0, 300) };
   }
 }

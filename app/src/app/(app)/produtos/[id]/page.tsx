@@ -17,6 +17,7 @@ import { confirmarLicencaModelo, conferirAnunciosProduto, desvincularAnuncio, du
 import { Anunciar } from "../anunciar";
 import { ArquivosImpressao } from "../arquivos-impressao";
 import { ProdutoForm } from "../produto-form";
+import { BaixarArquivosOrigem } from "../baixar-origem";
 import { listaCategorias } from "@/lib/categorias";
 import { ajustesPorCategoria } from "@/lib/taxas";
 
@@ -92,7 +93,7 @@ export default async function ProdutoPage({
       <div className="grid gap-6">
         {salvo ? <Alert tone="green">Produto salvo.</Alert> : null}
         {ok ? <Alert tone="green">{ok}</Alert> : null}
-        {produto.modelo3d ? <OrigemModelo produtoId={id} o={produto.modelo3d} /> : null}
+        {produto.modelo3d ? <OrigemModelo produtoId={id} o={produto.modelo3d} semArquivos={!arquivos.length} /> : null}
         {copia ? (
           <Alert tone="green">
             Cópia criada com SKU {produto.sku}, estoque inicial padrão e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
@@ -174,8 +175,8 @@ export default async function ProdutoPage({
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="font-semibold">{MARKETPLACE_INFO[a.marketplace].nome}</span>
                         <span className="text-muted">{a.conta.nome}</span>
-                        <Badge tone={a.status === "publicado" ? "green" : a.status === "pausado" ? "gold" : a.status === "encerrado" ? "neutral" : "red"}>
-                          {a.status === "encerrado" ? "não existe mais no marketplace" : a.status}
+                        <Badge tone={a.status === "publicado" ? "green" : a.status === "pausado" ? "gold" : a.status === "encerrado" ? "neutral" : a.status === "processando" ? "blue" : "red"}>
+                          {a.status === "encerrado" ? "não existe mais no marketplace" : a.status === "processando" ? "processando (o ERP termina sozinho)" : a.status}
                         </Badge>
                       </div>
                       <p className="text-xs text-muted">
@@ -207,7 +208,7 @@ export default async function ProdutoPage({
 }
 
 /** De onde veio o modelo 3D, a licença e (se não comercial) a confirmação da licença comercial para poder anunciar. */
-function OrigemModelo({ produtoId, o }: { produtoId: string; o: OrigemModelo3d }) {
+function OrigemModelo({ produtoId, o, semArquivos }: { produtoId: string; o: OrigemModelo3d; semArquivos: boolean }) {
   const bloqueado = o.comercial === false && !o.licencaComercialPropria;
   return (
     <Alert tone={bloqueado ? "red" : o.comercial === true || o.licencaComercialPropria ? "green" : "gold"}>
@@ -231,6 +232,7 @@ function OrigemModelo({ produtoId, o }: { produtoId: string; o: OrigemModelo3d }
                 : "Não comercial: o anúncio fica bloqueado até você confirmar que comprou a licença comercial do autor."
               : "Confira no site se o autor permite vender as impressões."}
         </p>
+        {semArquivos && o.link ? <BaixarArquivosOrigem produtoId={produtoId} /> : null}
         {o.comercial === false ? (
           <form action={confirmarLicencaModelo.bind(null, produtoId, !o.licencaComercialPropria)}>
             <SubmitButton size="sm" variant={o.licencaComercialPropria ? "outline" : "gold"} pendingText="Salvando...">
