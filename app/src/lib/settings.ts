@@ -88,6 +88,12 @@ export const SETTINGS = {
   "cults.chave": { label: "Chave da API (cults3d.com › Configurações › API)", secret: true, group: "Cults" },
   "magalu.clientId": { label: "Client ID (do idm client create)", secret: false, group: "Magalu" },
   "magalu.clientSecret": { label: "Client Secret (do idm client create)", secret: true, group: "Magalu" },
+  "magalu.categorias": {
+    label: "Categoria escolhida pelo ERP, fora das reguladas (evita pedir Anatel/Inmetro): rode antes o add-scope de categorias abaixo e reconecte",
+    secret: false,
+    group: "Magalu",
+    options: ["desligado", "ligado"],
+  },
   "magalu.etiquetas": {
     label: "Etiquetas pela API (liga a permissão de logística: rode antes o comando add-scope abaixo e reconecte a conta)",
     secret: false,
@@ -103,6 +109,7 @@ export const SETTINGS = {
   "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
   "precificacao.lucroMinimo": { label: "Lucro mínimo por peça (R$) — o sugerido nunca deixa menos que isso", secret: false, group: "Precificação: geral", placeholder: "10" },
   "precificacao.precoMinimo": { label: "Preço mínimo de venda (R$) — nenhuma plataforma abaixo disso", secret: false, group: "Precificação: geral", placeholder: "19,90" },
+  "produtos.estoqueInicial": { label: "Estoque inicial de todo produto novo (unidades)", secret: false, group: "Produtos", placeholder: "100" },
   "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
 
   "mercadolivre.tipoAnuncio": { label: "Tipo de anúncio", secret: false, group: "Precificação: Mercado Livre", options: ["classico", "premium"] },
@@ -135,7 +142,7 @@ export type SettingKey = keyof typeof SETTINGS;
 /** Grupos que ficam na aba Impressora 3D de Configurações. */
 export const GRUPOS_IMPRESSORA = ["Impressora 3D", "Impressão 3D: custos"];
 export function abaDoGrupo(grupo: string) {
-  if (grupo.startsWith("Precificação") || grupo === "Metas da loja") return "precificacao";
+  if (grupo.startsWith("Precificação") || grupo === "Metas da loja" || grupo === "Produtos") return "precificacao";
   if (GRUPOS_IMPRESSORA.includes(grupo)) return "impressora";
   return "integracoes";
 }
@@ -257,4 +264,11 @@ export async function getParametrosImpressao(): Promise<ParametrosImpressao> {
     custoKwh: num(s["impressao.custoKwh"], PARAMETROS_PADRAO.custoKwh),
     margem: num(s["impressao.margem"], PARAMETROS_PADRAO.margem),
   };
+}
+
+/** Estoque com que todo produto novo nasce (Configurações › Precificação › Produtos; padrão 100). */
+export async function estoqueInicialPadrao() {
+  const t = (await getSetting("produtos.estoqueInicial")).trim();
+  const v = Number(t.replace(",", "."));
+  return t && Number.isFinite(v) && v >= 0 ? Math.round(v) : 100;
 }

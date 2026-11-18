@@ -225,6 +225,8 @@ export const categorias = pgTable("categorias", {
   id: serial("id").primaryKey(),
   nome: text("nome").notNull().unique(),
   ordem: integer("ordem").notNull().default(0),
+  /** Categoria da plataforma escolhida para os produtos desta categoria (ex.: Magalu, fora dos departamentos regulados). */
+  noMarketplace: jsonb("no_marketplace").$type<Partial<Record<"magalu", { id: string; caminho: string }>>>().notNull().default({}),
   /** Taxa de cada plataforma para os produtos desta categoria (do contrato lido pela IA ou da API do Mercado Livre). */
   taxas: jsonb("taxas").$type<TaxasDaCategoria>().notNull().default({}),
   ...timestamps,

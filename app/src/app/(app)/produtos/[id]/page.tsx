@@ -95,7 +95,7 @@ export default async function ProdutoPage({
         {produto.modelo3d ? <OrigemModelo produtoId={id} o={produto.modelo3d} /> : null}
         {copia ? (
           <Alert tone="green">
-            Cópia criada com SKU {produto.sku}, estoque zero e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
+            Cópia criada com SKU {produto.sku}, estoque inicial padrão e sem anúncios. Ajuste o nome, o SKU e os preços e clique em Salvar alterações.
           </Alert>
         ) : null}
         {/* key: depois de salvar, o formulário recomeça com as mídias já gravadas (sem repetir os arquivos novos). */}

@@ -1,5 +1,5 @@
 import { Copiavel } from "@/components/copiavel";
-import { MAGALU_SCOPES, MAGALU_SCOPES_ETIQUETA } from "@/lib/marketplaces/magalu";
+import { MAGALU_SCOPES, MAGALU_SCOPES_CATEGORIAS, MAGALU_SCOPES_ETIQUETA } from "@/lib/marketplaces/magalu";
 
 /** Passo a passo do ID Magalu: o Client ID/Secret saem do `idm client create` (não são as chaves da Magalu Cloud). */
 export function MagaluGuia({ base, clientId }: { base: string; clientId: string }) {
@@ -12,8 +12,8 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
     `  --privacy-term "${base}/privacidade"`,
     `  --redirect-uris "${redirect}"`,
     `  --audience "https://api.magalu.com https://services.magalu.com"`,
-    `  --scopes "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}"`,
-    `  --scopes-default "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA}"`,
+    `  --scopes "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA} ${MAGALU_SCOPES_CATEGORIAS}"`,
+    `  --scopes-default "${MAGALU_SCOPES} ${MAGALU_SCOPES_ETIQUETA} ${MAGALU_SCOPES_CATEGORIAS}"`,
     "  --access-token-exp 7200",
     "  --always-require-login false",
   ];
@@ -31,6 +31,13 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
     `  --scopes "${MAGALU_SCOPES_ETIQUETA}"`,
     `  --scopes-default "${MAGALU_SCOPES_ETIQUETA}"`,
     `  --reason "Gerar e imprimir as etiquetas de envio dos pedidos pelo sistema de gestão"`,
+  ];
+  const addScopeCategorias = [
+    "client add-scope",
+    `  --client-uuid "${clientId || "SEU_CLIENT_ID"}"`,
+    `  --scopes "${MAGALU_SCOPES_CATEGORIAS}"`,
+    `  --scopes-default "${MAGALU_SCOPES_CATEGORIAS}"`,
+    `  --reason "Escolher a categoria correta dos produtos ao cadastrar pelo sistema de gestão"`,
   ];
   return (
     <div className="grid gap-3">
@@ -60,6 +67,12 @@ export function MagaluGuia({ base, clientId }: { base: string; clientId: string 
         aceitar a nova permissão.
       </p>
       <Copiavel rotulo="Adicionar permissão de etiquetas (Windows PowerShell)" texto={`.\\idm.exe ${addScope.map((p) => p.trim()).join(" ")}`} />
+      <p className="mt-2">
+        <b>Categoria pelo ERP (sem pedir Anatel/Inmetro):</b> rode o comando abaixo do mesmo jeito, ligue <b>Categoria escolhida pelo ERP</b> aqui em cima,
+        salve e clique em <b>Conectar conta</b> do Magalu de novo. Daí em diante o ERP escolhe uma categoria fora dos departamentos regulados e preenche a ficha
+        técnica obrigatória dela.
+      </p>
+      <Copiavel rotulo="Adicionar permissão de categorias (Windows PowerShell)" texto={`.\\idm.exe ${addScopeCategorias.map((p) => p.trim()).join(" ")}`} />
       <p>
         Termos: <a className="text-gold underline" href={`${base}/termos`} target="_blank" rel="noreferrer">{base}/termos</a> · Privacidade:{" "}
         <a className="text-gold underline" href={`${base}/privacidade`} target="_blank" rel="noreferrer">{base}/privacidade</a>
