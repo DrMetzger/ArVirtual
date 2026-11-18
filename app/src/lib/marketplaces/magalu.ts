@@ -1,5 +1,5 @@
 import "server-only";
-import { atributosDaCategoria, categoriaMagaluPara, fichaObrigatoria, fichaRegulatoria, REGULATORIO } from "./magalu-categoria";
+import { atributosDaCategoria, categoriaMagaluPara, fichaObrigatoria, fichaRegulatoria, REGULATORIO, regulatoriosPadrao } from "./magalu-categoria";
 import { getSetting, getSettings } from "@/lib/settings";
 import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type SituacaoAnuncio, type AnuncioExterno, type MarketplaceAdapter, type Tokens, type DadosRaioX, type ContaComToken } from "./types";
 
@@ -255,6 +255,7 @@ export const magalu: MarketplaceAdapter = {
         avisoCategoria = "";
       }
     }
+    ficha.push(...regulatoriosPadrao(ficha));
     const atributos = Object.entries(produto.atributos ?? {})
       .filter(([k, v]) => k && v)
       .slice(0, 3)
@@ -351,6 +352,7 @@ export const magalu: MarketplaceAdapter = {
         ].filter(Boolean) as { name: string; value: string }[];
         ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
         ficha.push(...(await fichaRegulatoria(chamar, c.id, ficha).catch(() => [])));
+        ficha.push(...regulatoriosPadrao(ficha));
         const ok = await api(caminho, conta.accessToken, { method: "PATCH", body: JSON.stringify({ category: { id: c.id }, datasheet: ficha }) }).then(
           () => true,
           () => false,
@@ -777,18 +779,14 @@ export async function corrigirRegulatorio(conta: ContaComToken, skus: string[], 
       const atual = await chamar<SkuFicha>(caminho);
       const cat = atual.category?.id;
       const ficha = (atual.datasheet ?? []).filter((d) => d?.name);
-      if (!cat) {
-        relatorio[sku] = { status: atual.status, erro: "sem categoria" };
-        continue;
-      }
-      const attrs = await atributosDaCategoria(chamar, cat);
-      const faltam = await fichaRegulatoria(chamar, cat, ficha);
+      const attrs = cat ? await atributosDaCategoria(chamar, cat) : [];
+      const faltam = cat ? await fichaRegulatoria(chamar, cat, ficha).catch(() => []) : [];
+      faltam.push(...regulatoriosPadrao([...ficha, ...faltam]));
       const info: Record<string, unknown> = {
         status: atual.status,
-        categoria: cat,
+        categoria: cat ?? "",
         atributos: attrs.length,
-        regulatorios: attrs.filter((a) => REGULATORIO.test(`${a.name} ${a.display_name ?? ""}`)).map((a) => `${a.name}|${a.display_name ?? ""}|${a.required ?? ""}|${(a.choices ?? []).slice(0, 4).join("/")}`),
-        naFicha: ficha.map((d) => d.name),
+        regulatoriosNaFicha: ficha.filter((d) => REGULATORIO.test(d.name)).map((d) => `${d.name}=${d.value}`),
         faltam: faltam.map((f) => `${f.name}=${f.value}`),
       };
       if (!soVer && faltam.length) {
@@ -803,4 +801,16 @@ export async function corrigirRegulatorio(conta: ContaComToken, skus: string[], 
     }
   }
   return relatorio;
+}
+
+/** Conferência: a API de Score responde para esta conta? (só a situação, sem dados) */
+export async function sondarScores(conta: ContaComToken) {
+  const canal = await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken).then((m) => m.channel?.id).catch((e: Error) => `me: ${e.message.slice(0, 120)}`);
+  if (!canal || canal.startsWith("me:")) return canal ?? "sem canal";
+  return api<{ count?: number; results?: { sku: string }[] }>(`/seller/v1/portfolios/products/scores?limit=5`, conta.accessToken, {
+    headers: { "X-Tenant-Id": conta.idExterno, "X-Channel-Id": canal },
+  }).then(
+    (r) => `ok: ${r.count ?? r.results?.length ?? 0} SKUs, ex.: ${(r.results ?? []).map((x) => x.sku).slice(0, 3).join(",")}`,
+    (e: Error) => `erro: ${e.message.slice(0, 200)}`,
+  );
 }
