@@ -210,8 +210,9 @@ function preencherObrigatorios(
     color: produto.cor,
     colour: produto.cor,
     material: produto.material,
-    marca: "ArVirtual",
-    brand: "ArVirtual",
+    marca: "SINCROLAB",
+    fabricante: "SINCROLAB",
+    brand: "SINCROLAB",
     ...Object.fromEntries(Object.entries(produto.atributos ?? {}).map(([k, v]) => [sem(k), v])),
     ...Object.fromEntries(Object.entries(daTela).map(([k, v]) => [sem(k), v])),
   };

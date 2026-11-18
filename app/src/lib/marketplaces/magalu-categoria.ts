@@ -101,7 +101,8 @@ export async function fichaObrigatoria(chamar: Chamar, categoriaId: string, prod
   const conhecidos: Record<string, string> = {
     material: produto.material || "PLA",
     cor: produto.cor || "Variada",
-    marca: "ArVirtual",
+    marca: "SINCROLAB",
+    fabricante: "SINCROLAB",
     modelo: produto.sku,
     garantia: "3 meses",
     "prazo de garantia": "3 meses",
