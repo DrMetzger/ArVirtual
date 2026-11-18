@@ -1,4 +1,5 @@
 import "server-only";
+import { concluirPendentes } from "@/lib/publicacoes-pendentes";
 import { and, eq, gte, inArray, isNotNull } from "drizzle-orm";
 import { db } from "@/db";
 import { anuncios, contasMarketplace, pedidosMarketplace } from "@/db/schema";
@@ -60,7 +61,16 @@ export async function conferirAnuncios(produtoIds?: string[]) {
         if (!novo || novo === l.status) continue;
         await db
           .update(anuncios)
-          .set({ status: novo, mensagem: novo === "encerrado" ? "Não existe mais no marketplace (excluído ou encerrado)." : "", atualizadoEm: new Date() })
+          .set({
+            status: novo,
+            mensagem:
+              novo === "encerrado"
+                ? "Não existe mais no marketplace (excluído ou encerrado)."
+                : novo === "processando"
+                  ? "Ainda não está no ar na plataforma (rascunho, em análise ou bloqueado): o ERP acompanha e corrige sozinho."
+                  : "",
+            atualizadoEm: new Date(),
+          })
           .where(eq(anuncios.id, l.id));
         mudou.push({ anuncio: l.id, de: l.status, para: novo });
       }
@@ -68,6 +78,8 @@ export async function conferirAnuncios(produtoIds?: string[]) {
       console.warn(`[anuncios] ${conta.marketplace}: ${(e as Error).message}`);
     }
   }
+  // Algum anúncio saiu do ar sem estar publicado (rascunho/análise/bloqueio): começa a acompanhar e corrigir já.
+  if (mudou.some((m) => m.para === "processando")) void concluirPendentes().catch(() => undefined);
   return mudou;
 }
 

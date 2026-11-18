@@ -36,7 +36,7 @@ export async function categoriaMagaluPara(chamar: Chamar, produto: Produto): Pro
   if (guardada?.id) return { id: guardada.id, name: guardada.caminho.split("/").pop() ?? "", path: guardada.caminho };
 
   // 1) A IA propõe nomes de categoria (como o comprador procuraria) para uma peça de plástico impressa em 3D.
-  const termos = json<string[]>(
+  const sugeridos = json<unknown>(
     await gerarComGemini(
       [
         {
@@ -52,8 +52,9 @@ export async function categoriaMagaluPara(chamar: Chamar, produto: Produto): Pro
       ],
       { json: true, temperature: 0.2 },
     ).catch(() => "[]"),
-    [] as string[],
-  ).filter((t) => typeof t === "string" && t.trim().length >= 3);
+    [],
+  );
+  const termos = (Array.isArray(sugeridos) ? sugeridos : []).filter((t): t is string => typeof t === "string" && t.trim().length >= 3);
   // 2) Busca cada nome na árvore do Magalu e fica só com o que não é regulado.
   const vistos = new Map<string, CategoriaMagalu>();
   for (const t of [...termos.slice(0, 5), "Objeto Decorativo", "Organizador"]) {
