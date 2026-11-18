@@ -1,7 +1,9 @@
 import { and, eq, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { raioxAnuncios } from "@/db/schema";
+import { contasMarketplace, raioxAnuncios } from "@/db/schema";
 import { chamadaInterna } from "@/lib/interno";
+import { contaComToken } from "@/lib/marketplaces";
+import { sondarScores } from "@/lib/marketplaces/magalu";
 import { rotinaRegulatorioMagalu } from "@/lib/magalu-regulatorio";
 import { coletarRaioX } from "@/lib/raiox";
 
@@ -18,7 +20,10 @@ export async function POST(req: Request) {
       .select({ n: sql<number>`count(*)::int` })
       .from(raioxAnuncios)
       .where(and(eq(raioxAnuncios.marketplace, "magalu"), isNotNull(raioxAnuncios.qualidade)));
-    raiox = { magaluComNota: r?.n ?? 0 };
+    const contas = await db.query.contasMarketplace.findMany({ where: eq(contasMarketplace.marketplace, "magalu") });
+    const score: Record<string, string> = {};
+    for (const c of contas) score[`conta ${c.id}`] = await contaComToken(c).then(sondarScores, (e: Error) => `token: ${e.message.slice(0, 100)}`);
+    raiox = { magaluComNota: r?.n ?? 0, score };
   }
   return Response.json({ regulatorio, raiox });
 }

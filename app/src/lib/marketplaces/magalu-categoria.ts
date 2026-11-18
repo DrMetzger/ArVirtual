@@ -154,6 +154,18 @@ export async function atributosDaCategoria(chamar: Chamar, categoriaId: string) 
   return todos;
 }
 
+/** Os três campos regulatórios do painel do Magalu (Anatel, Anvisa, MAPA), sempre "Não se aplica" em peça impressa em 3D. */
+export const REGULATORIOS_PADRAO = [
+  "Certificado de homologação da ANATEL",
+  "Registro do produto ANVISA",
+  "Registro do produto Ministério da Agricultura (MAPA)",
+];
+
+/** Os campos regulatórios padrão que faltam na ficha. */
+export function regulatoriosPadrao(jaTem: { name: string }[]) {
+  return REGULATORIOS_PADRAO.filter((n) => !jaTem.some((j) => j.name.toLowerCase() === n.toLowerCase())).map((name) => ({ name, value: "Não se aplica" }));
+}
+
 /** Campos regulatórios da categoria que ainda não estão na ficha, preenchidos com "Não se aplica". */
 export async function fichaRegulatoria(chamar: Chamar, categoriaId: string, jaTem: { name: string; value: string }[]) {
   const attrs = await atributosDaCategoria(chamar, categoriaId);
