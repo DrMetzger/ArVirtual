@@ -1,7 +1,9 @@
 import "server-only";
+import { randomBytes } from "node:crypto";
+import { mkdir, rename, stat, writeFile } from "node:fs/promises";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { produtos, type OrigemModelo3d } from "@/db/schema";
+import { arquivosProduto, NOMES_FONTE, produtos, type OrigemModelo3d } from "@/db/schema";
 import { maisParecido, tempoPeloPeso } from "@/lib/cores-filamento";
 import { listaFilamentos } from "@/lib/filamentos";
 import { custoComposicao, gramasTotais } from "@/lib/impressao";
@@ -9,7 +11,9 @@ import { encaixe, listaImpressoras } from "@/lib/impressoras";
 import { importarProduto } from "@/lib/importar-produto";
 import { emPortugues, fonteDoLink, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
 import { precosPorCanal } from "@/lib/precificacao";
-import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
+import { precoDeMercado } from "@/lib/preco-mercado";
+import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
+import { EXTENSOES_IMPRESSAO, MAX_ARQUIVO_IMPRESSAO, PASTA_IMPRESSAO } from "@/lib/uploads";
 
 // Cria o produto a partir de um modelo 3D (um por vez na tela, ou vários de uma vez no "Cadastrar tudo").
 // O mesmo modelo nunca vira dois produtos: a chave fonte:id fica gravada em produtos.modelo3d.
@@ -54,15 +58,24 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
   // Energia pela impressora que vai imprimir (a primeira em que cabe).
   const custo = custoComposicao(composicao, tempoMin, { ...pi, potenciaW: cabe[0]?.potenciaW ?? pi.potenciaW }, fils).custo;
   const sugeridos = custo > 0 ? precosPorCanal(custo, 0, pp) : [];
-  const preco = sugeridos.find((s) => s.canal === "loja")?.sugerido ?? 0;
-  const medidasCm = m.medidasMm ? m.medidasMm.map((v) => Math.round(v) / 10) : null;
+  // Preço pelo mercado (o que os concorrentes cobram); sem pesquisa, o sugerido com os mínimos.
+  const pm = custo > 0 ? await precoDeMercado(m.titulo, custo, pp).catch((e: Error) => (console.warn(`[modelos3d] mercado: ${e.message}`), null)) : null;
+  const precoCanal = (c: "mercadolivre" | "shopee" | "magalu" | "loja") => pm?.precos[c] ?? sugeridos.find((s) => s.canal === c)?.sugerido ?? 0;
+  const preco = precoCanal("loja");
+  // Medidas da caixa: a peça + 2 cm de folga (mínimo 5 cm); sem as medidas da peça ficam vazias e o anúncio fica
+  // bloqueado até você preencher no produto.
+  const medidasCm = m.medidasMm ? m.medidasMm.map((v) => Math.max(5, Math.ceil(v / 10) + 2)) : null;
   const it = importarProduto(m.link || m.titulo, process.env.APP_URL ?? origin, {
     titulo: m.titulo,
     descricao: m.descricao,
     fotos: m.fotos,
     videos: [],
     preco,
-    pesoG: Math.round(gramasTotais(composicao) || perfil?.pesoG || m.pesoEstimadoG || 0),
+    // Peso com embalagem: a peça + ~40 g de caixa e proteção.
+    pesoG: (() => {
+      const peca = Math.round(gramasTotais(composicao) || perfil?.pesoG || m.pesoEstimadoG || 0);
+      return peca ? peca + 40 : 0;
+    })(),
     ...(medidasCm ? { larguraCm: medidasCm[0], comprimentoCm: medidasCm[1], alturaCm: medidasCm[2] } : {}),
     link: m.link,
   });
@@ -86,6 +99,13 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
     ...(m.comercial === false ? { licencaComercialPropria: e.licencaPropria } : {}),
     medidasMm: m.medidasMm,
     impressoras: cabe.map((i) => i.id),
+    ...(pm
+      ? {
+          mercado: Object.fromEntries(
+            Object.entries(pm.mercado).map(([c, x]) => [c, { mediana: x!.mediana, anuncios: x!.anuncios, concorrer: x!.concorrer }]),
+          ),
+        }
+      : {}),
   };
   await db
     .update(produtos)
@@ -98,12 +118,36 @@ export async function criarProdutoDoModelo(m: Modelo3d, e: EscolhaCadastro, orig
       cor: principal?.cor ?? "",
       custo,
       preco,
-      precosCanal: Object.fromEntries(sugeridos.filter((s) => s.canal !== "loja" && s.sugerido > 0).map((s) => [s.canal, s.sugerido])),
+      precosCanal: Object.fromEntries((["mercadolivre", "shopee", "magalu"] as const).map((c) => [c, precoCanal(c)]).filter(([, v]) => Number(v) > 0)),
       modelo3d: origemModelo,
       atualizadoEm: new Date(),
     })
     .where(eq(produtos.id, criado!.id));
+  await anexarArquivos(criado!.id, m).catch((e: Error) => console.warn(`[modelos3d] arquivos: ${e.message}`));
   return criado!;
+}
+
+/** Arquivos de impressão do modelo (o enviado na tela ou os que o site deixa baixar) vão para o produto. */
+async function anexarArquivos(produtoId: string, m: Modelo3d) {
+  await mkdir(PASTA_IMPRESSAO, { recursive: true });
+  const gravar = async (nome: string, origem: { caminho?: string; dados?: Buffer }) => {
+    const ext = (nome.split(".").pop() ?? "").toLowerCase();
+    if (!EXTENSOES_IMPRESSAO.includes(ext)) return;
+    const arquivo = `${Date.now().toString(36)}-${randomBytes(6).toString("hex")}.${ext}`;
+    if (origem.caminho) await rename(origem.caminho, `${PASTA_IMPRESSAO}/${arquivo}`);
+    else await writeFile(`${PASTA_IMPRESSAO}/${arquivo}`, origem.dados!);
+    const tamanho = (await stat(`${PASTA_IMPRESSAO}/${arquivo}`)).size;
+    await db.insert(arquivosProduto).values({ produtoId, nome: nome.slice(0, 200), arquivo, tamanho, enviadoPor: `Importado (${NOMES_FONTE[m.fonte]})` });
+  };
+  if (m.arquivoLocal) await gravar(m.arquivoLocal.nome, { caminho: m.arquivoLocal.caminho });
+  const token = m.fonte === "thingiverse" ? (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim() : "";
+  for (const a of (m.arquivos ?? []).slice(0, 10)) {
+    if ((a.tamanho ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
+    const res = await fetch(a.url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(180_000) }).catch(() => null);
+    if (!res?.ok || Number(res.headers.get("content-length") ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
+    const dados = Buffer.from(await res.arrayBuffer());
+    if (dados.length && dados.length <= MAX_ARQUIVO_IMPRESSAO) await gravar(a.nome, { dados });
+  }
 }
 
 /** Cadastro sem tela: primeiro perfil, cores ligadas aos filamentos mais parecidos, tempo do perfil ou estimado. */

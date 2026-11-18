@@ -22,6 +22,7 @@ export function Anunciar({
   variacoes = [],
   existentes = [],
   temImagem,
+  faltaMedidas = [],
   iaConfigurada,
   ml = { tipo: "classico", frete: "automatico" },
 }: {
@@ -38,6 +39,8 @@ export function Anunciar({
   /** Contas em que o produto (ou variações) já tem anúncio: dá para atualizar título e descrição. */
   existentes?: { contaId: number; quantidade: number }[];
   temImagem: boolean;
+  /** Peso/medidas que faltam no cadastro: sem eles não anuncia. */
+  faltaMedidas?: string[];
   iaConfigurada: boolean;
   /** Padrões de Configurações › Precificação: Mercado Livre. */
   ml?: { tipo: string; frete: string };
@@ -90,6 +93,9 @@ export function Anunciar({
           className="grid gap-4 p-5"
         >
           {!temImagem ? <Alert tone="gold">Adicione ao menos uma imagem: os marketplaces exigem foto.</Alert> : null}
+          {faltaMedidas.length ? (
+            <Alert>Preencha {faltaMedidas.join(", ")} no cadastro acima e clique em Salvar alterações: sem isso nenhum marketplace recebe o anúncio.</Alert>
+          ) : null}
           <div className="flex items-center justify-between gap-2">
             <span className="text-xs font-semibold uppercase tracking-wide text-muted">Conteúdo do anúncio</span>
             <Button
@@ -237,7 +243,7 @@ export function Anunciar({
             </details>
           ) : null}
 
-          <Button type="submit" variant="gold" size="lg" disabled={publicando || !selecionadas.length}>
+          <Button type="submit" variant="gold" size="lg" disabled={publicando || !selecionadas.length || faltaMedidas.length > 0}>
             {publicando ? <Loader2 className="animate-spin" /> : <Megaphone />}
             {publicando ? "Publicando..." : "Publicar anúncio"}
           </Button>

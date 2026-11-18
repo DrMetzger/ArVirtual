@@ -1,8 +1,11 @@
 "use client";
 
+import { Search, TrendingUp } from "lucide-react";
 import Link from "next/link";
+import { useState, useTransition } from "react";
+import { mercadoDoProduto } from "./actions";
 import { CANAIS, MarcaIcone } from "@/components/marca";
-import { Card, CardHeader, Input } from "@/components/ui";
+import { Button, Card, CardHeader, Input } from "@/components/ui";
 import {
   precosPorCanal,
   type AjusteCategoria,
@@ -24,6 +27,8 @@ export function PrecosCanal({
   precosCanal,
   alterar,
   ajuste,
+  produtoId,
+  mercadoInicial,
 }: {
   custo: number;
   preco: string;
@@ -33,7 +38,32 @@ export function PrecosCanal({
   alterar: (canal: CanalPreco, valor: string) => void;
   /** Taxa da categoria do produto (mostrada na linha de cada plataforma). */
   ajuste?: AjusteCategoria;
+  /** Produto já salvo: permite buscar o preço de mercado. */
+  produtoId?: string;
+  /** Mercado guardado no cadastro (modelo 3D importado). */
+  mercadoInicial?: Partial<Record<string, MercadoTela>>;
 }) {
+  const [mercado, setMercado] = useState<Partial<Record<string, MercadoTela>> | null>(mercadoInicial ?? null);
+  const [precosMercado, setPrecosMercado] = useState<Partial<Record<string, number>> | null>(null);
+  const [msgMercado, setMsgMercado] = useState<string | null>(null);
+  const [buscando, iniciar] = useTransition();
+  const buscarMercado = () =>
+    iniciar(async () => {
+      setMsgMercado(null);
+      const r = await mercadoDoProduto(produtoId!, custo);
+      if ("erro" in r && r.erro) return setMsgMercado(r.erro);
+      if ("mercado" in r) {
+        setMercado(r.mercado as Partial<Record<string, MercadoTela>>);
+        setPrecosMercado(r.precos ?? null);
+        if (r.erros?.length) setMsgMercado(r.erros.join(" · "));
+      }
+    });
+  const usarMercado = () => {
+    // Sem pesquisa nova: usa o preço para concorrer guardado (ou deixa como está).
+    const p = precosMercado ?? Object.fromEntries(Object.entries(mercado ?? {}).map(([c, x]) => [c, x?.concorrer ?? 0]));
+    for (const c of ["mercadolivre", "shopee", "magalu"] as const) if (p[c]) alterar(c, formatValor(p[c]!));
+    if (p.loja) setPreco(formatValor(p.loja));
+  };
   const base = parseDecimal(preco);
   const numeros = Object.fromEntries(
     Object.entries(precosCanal).map(([k, v]) => [k, parseDecimal(v)]),
@@ -50,8 +80,8 @@ export function PrecosCanal({
         description={
           <>
             Cada plataforma com o seu preço. O sugerido deixa{" "}
-            {parametros.margem}% de lucro sobre o custo depois de comissão, taxa
-            fixa, campanha, {parametros.imposto}% de imposto
+            {parametros.margem}% de lucro sobre o custo (no mínimo {formatBRL(parametros.lucroMinimo ?? 0)} por peça e nunca abaixo de{" "}
+            {formatBRL(parametros.precoMinimo ?? 0)}) depois de comissão, taxa fixa, campanha, {parametros.imposto}% de imposto
             {parametros.embalagem
               ? ` e ${formatBRL(parametros.embalagem)} de embalagem`
               : ""}
@@ -62,6 +92,20 @@ export function PrecosCanal({
           </>
         }
       />
+      {produtoId ? (
+        <div className="flex flex-wrap items-center gap-2 border-b border-border px-5 py-3">
+          <Button type="button" variant="outline" size="sm" disabled={buscando || !(custo > 0)} onClick={buscarMercado}>
+            <Search /> {buscando ? "Pesquisando os concorrentes..." : "Ver preço de mercado"}
+          </Button>
+          {mercado ? (
+            <Button type="button" variant="gold" size="sm" onClick={usarMercado}>
+              <TrendingUp /> Usar preços do mercado
+            </Button>
+          ) : null}
+          <span className="text-xs text-muted">Preço um pouco abaixo da mediana dos concorrentes, sem passar do lucro mínimo.</span>
+          {msgMercado ? <span className="w-full text-xs text-gold">{msgMercado}</span> : null}
+        </div>
+      ) : null}
       <div className="divide-y divide-border">
         {ordem.map((canal) => {
           const l = linhas.find((x) => x.canal === canal)!;
@@ -143,6 +187,7 @@ export function PrecosCanal({
                   <span className="italic">usando o preço da loja</span>
                 ) : null}
               </div>
+              {!loja && mercado?.[canal] ? <LinhaMercado m={mercado[canal]!} /> : null}
               {!loja ? (
                 <TaxaAplicada
                   parametros={parametros}
@@ -190,6 +235,27 @@ function TaxaAplicada({
       {t.adicional ? ` (inclui ${formatBRL(t.adicional)} do CPF)` : ""}
       {t.campanha ? ` · campanha ${t.campanha}%` : ""}
       {categoria ? ` · categoria ${categoria}` : ""}
+    </p>
+  );
+}
+
+type MercadoTela = { mediana: number; anuncios: number; concorrer: number | null; min?: number; max?: number; vendas?: number };
+
+/** O que os concorrentes cobram nesta plataforma e o preço para disputar. */
+function LinhaMercado({ m }: { m: MercadoTela }) {
+  if (!m.anuncios) return <p className="pl-9 text-[11px] text-muted">mercado: ninguém vendendo parecido (preço livre)</p>;
+  return (
+    <p className="pl-9 text-[11px]">
+      <span className="text-muted">
+        mercado: {m.anuncios} anúncio(s){m.min && m.max ? ` · ${formatBRL(m.min)} a ${formatBRL(m.max)}` : ""} · mediana{" "}
+      </span>
+      <b>{formatBRL(m.mediana)}</b>
+      {m.vendas ? <span className="text-muted"> · {m.vendas} vendidos</span> : null}
+      {m.concorrer ? (
+        <span className="font-semibold text-green"> · concorrer por {formatBRL(m.concorrer)}</span>
+      ) : (
+        <span className="font-semibold text-red"> · abaixo do seu lucro mínimo</span>
+      )}
     </p>
   );
 }

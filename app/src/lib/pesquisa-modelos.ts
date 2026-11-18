@@ -1,18 +1,17 @@
 import "server-only";
 import { and, asc, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
-import { pesquisaModelosItens, pesquisasModelos, type CanalMercado, type DetalheModelo, type MercadoCanal } from "@/db/schema";
-import { pesquisarConcorrencia, resumir, type Anuncio } from "@/lib/concorrencia";
+import { pesquisaModelosItens, pesquisasModelos, type DetalheModelo } from "@/db/schema";
+import { pesquisarConcorrencia } from "@/lib/concorrencia";
+import { calcularMercado } from "@/lib/preco-mercado";
 import { tempoPeloPeso } from "@/lib/cores-filamento";
 import { custoComposicao } from "@/lib/impressao";
 import { buscarModelosDetalhado, lerModeloDoLink } from "@/lib/modelos3d";
-import { liquido, precosPorCanal } from "@/lib/precificacao";
 import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
 
 // Pesquisa de mercado de modelos 3D: acha os modelos (todas as licenças) e, um por vez em segundo plano, calcula
 // peso/tempo/custo e o mercado de cada um no Mercado Livre, na Shopee e no Magalu, com o preço para concorrer.
 
-const CANAIS: CanalMercado[] = ["magalu", "mercadolivre", "shopee"];
 const MAX_MODELOS = 48;
 
 export async function criarPesquisa(termo: string) {
@@ -26,8 +25,6 @@ export async function criarPesquisa(termo: string) {
   return p!.id;
 }
 
-/** Preço "bonito" um pouco abaixo da mediana (ex.: 31,90). */
-const abaixoDe = (v: number) => Math.max(0, Math.floor(v * 0.97) - 0.1);
 
 async function analisarItem(id: number) {
   const [item] = await db.select().from(pesquisaModelosItens).where(eq(pesquisaModelosItens.id, id));
@@ -51,39 +48,9 @@ async function analisarItem(id: number) {
   } catch {
     /* sem peso: o mercado sai mesmo assim, sem o preço para concorrer */
   }
-  // 2) Mercado nas plataformas pelo título em português.
+  // 2) Mercado nas plataformas pelo título em português (preço para concorrer pela regra do mercado).
   const r = await pesquisarConcorrencia(item.modelo.titulo);
-  const sugeridos = detalhe.custo > 0 ? precosPorCanal(detalhe.custo, 0, pp) : [];
-  const mercado: Partial<Record<CanalMercado, MercadoCanal>> = {};
-  for (const c of CANAIS) {
-    const lista: Anuncio[] = r[c];
-    const res = resumir(lista, c === "shopee");
-    const s = sugeridos.find((x) => x.canal === c);
-    let concorrer: number | null = null;
-    let lucro: number | null = null;
-    if (res.mediana > 0 && s && detalhe.custo > 0) {
-      const alvo = Math.round(Math.max(abaixoDe(res.mediana), s.minimo) * 100) / 100;
-      const l = liquido(alvo, detalhe.custo, pp.canais[c], pp);
-      // Só "concorre" se ainda sobra lucro no preço da disputa.
-      if (l.lucro > 0 && alvo <= res.mediana) {
-        concorrer = alvo;
-        lucro = l.lucro;
-      }
-    }
-    mercado[c] = {
-      anuncios: res.anuncios,
-      vendedores: res.vendedores,
-      min: res.min,
-      mediana: res.mediana,
-      max: res.max,
-      vendas: res.vendas,
-      concorrer,
-      lucro,
-      minimo: s?.minimo ?? 0,
-      sugerido: s?.sugerido ?? 0,
-      top: lista.slice(0, 3).map((a) => ({ produto: a.produto.slice(0, 120), preco: a.preco, vendas: a.vendas, link: a.link, vendedor: a.vendedor })),
-    };
-  }
+  const { mercado } = calcularMercado(r, detalhe.custo, pp);
   const erro = r.erros.filter((e) => !/Filtro da IA/.test(e)).join(" · ").slice(0, 300);
   await db.update(pesquisaModelosItens).set({ detalhe, mercado, status: "pronto", erro, atualizadoEm: new Date() }).where(eq(pesquisaModelosItens.id, id));
 }

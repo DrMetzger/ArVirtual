@@ -20,6 +20,10 @@ export type ParametrosPreco = {
   imposto: number; // % sobre a venda (Simples Nacional)
   embalagem: number; // R$ por pedido
   margem: number; // % de lucro sobre o custo
+  /** Lucro mínimo por peça (R$): peça barata não sai por centavos de lucro. */
+  lucroMinimo?: number;
+  /** Preço mínimo de venda (R$) em qualquer plataforma. */
+  precoMinimo?: number;
   canais: Record<CanalPreco, TaxasCanal>;
 };
 
@@ -125,9 +129,11 @@ export function precosPorCanal(custo: number, precoAtual: number, p: ParametrosP
     const t = p.canais[canal];
     // Preço próprio do canal (cadastro do produto) ou, sem ele, o preço de venda.
     const preco = precoDoCanal[canal] || precoAtual;
+    // Sugerido: o maior entre a % de lucro sobre o custo, o lucro mínimo em reais e o preço mínimo de venda.
+    const sugerido = custo > 0 ? Math.max(precoPara(custo * (1 + p.margem / 100), t, p), precoPara(custo + (p.lucroMinimo ?? 0), t, p), p.precoMinimo ?? 0) : 0;
     return {
       canal,
-      sugerido: custo > 0 ? precoPara(custo * (1 + p.margem / 100), t, p) : 0,
+      sugerido: round2(sugerido),
       minimo: custo > 0 ? precoPara(custo, t, p) : 0,
       atual: preco > 0 ? liquido(preco, custo, t, p) : null,
     };

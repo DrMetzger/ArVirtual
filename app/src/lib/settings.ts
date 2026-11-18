@@ -101,6 +101,8 @@ export const SETTINGS = {
   "impressao.tamanhoMaxCm": { label: "Maior peça para a pesquisa de mercado (cm) — vazio = maior impressora menos 1 cm", secret: false, group: "Impressão 3D: custos", placeholder: "17" },
   "impressao.margem": { label: "Lucro desejado sobre o custo (%)", secret: false, group: "Precificação: geral", placeholder: "60" },
   "precificacao.imposto": { label: "Imposto sobre a venda (%) — Simples", secret: false, group: "Precificação: geral", placeholder: "6" },
+  "precificacao.lucroMinimo": { label: "Lucro mínimo por peça (R$) — o sugerido nunca deixa menos que isso", secret: false, group: "Precificação: geral", placeholder: "10" },
+  "precificacao.precoMinimo": { label: "Preço mínimo de venda (R$) — nenhuma plataforma abaixo disso", secret: false, group: "Precificação: geral", placeholder: "19,90" },
   "precificacao.embalagem": { label: "Embalagem por pedido (R$)", secret: false, group: "Precificação: geral", placeholder: "0" },
 
   "mercadolivre.tipoAnuncio": { label: "Tipo de anúncio", secret: false, group: "Precificação: Mercado Livre", options: ["classico", "premium"] },
@@ -192,7 +194,7 @@ export async function pedidosShopee90d() {
 /** Parâmetros de preço por canal (Configurações › Precificação); campos vazios usam os padrões. */
 export async function getParametrosPreco(): Promise<ParametrosPreco> {
   const chaves = [
-    "impressao.margem", "precificacao.imposto", "precificacao.embalagem",
+    "impressao.margem", "precificacao.imposto", "precificacao.embalagem", "precificacao.lucroMinimo", "precificacao.precoMinimo",
     "mercadolivre.faixas", "mercadolivre.faixasPremium", "mercadolivre.tipoAnuncio", "mercadolivre.freteGratis", "mercadolivre.freteAcima",
     "mercadolivre.campanha", "mercadolivre.frete",
     "shopee.faixas", "shopee.campanha", "shopee.frete", "shopee.tipoVendedor", "shopee.adicionalCpf",
@@ -215,6 +217,8 @@ export async function getParametrosPreco(): Promise<ParametrosPreco> {
     margem: num(s["impressao.margem"], PARAMETROS_PADRAO.margem),
     imposto: num(s["precificacao.imposto"], 6),
     embalagem: num(s["precificacao.embalagem"], 0),
+    lucroMinimo: num(s["precificacao.lucroMinimo"], 10),
+    precoMinimo: num(s["precificacao.precoMinimo"], 19.9),
     canais: {
       mercadolivre: {
         faixas:

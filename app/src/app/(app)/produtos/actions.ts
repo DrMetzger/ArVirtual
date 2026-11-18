@@ -4,13 +4,14 @@ import { randomBytes } from "node:crypto";
 import { copyFile, rm } from "node:fs/promises";
 import { and, eq, inArray, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
+import { precoDeMercado } from "@/lib/preco-mercado";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { db } from "@/db";
 import { anuncios, arquivosProduto, contasMarketplace, movimentosEstoque, produtos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
-import { getSettings } from "@/lib/settings";
+import { getParametrosPreco, getSettings } from "@/lib/settings";
 import { garantirNcm, sugerirNcm, type SugestaoNcm } from "@/lib/fiscal/ncm";
 import { sugerirAnuncio, type SugestaoAnuncio } from "@/lib/gemini";
 import { CAMPOS_ANUNCIO, type AnuncioExterno, type CampoAnuncio, type MudancasAnuncio } from "@/lib/marketplaces/types";
@@ -113,6 +114,10 @@ export async function salvarProduto(_: FormState, form: FormData): Promise<FormS
     temVariacoes: form.get("temVariacoes") === "1",
   };
   if (valores.preco <= 0) return { erro: "Informe o preço de venda." };
+  // Medidas e peso com embalagem são obrigatórios: sem eles os marketplaces recusam o anúncio e calculam o frete errado.
+  if (!(valores.pesoG > 0) || !(valores.alturaCm > 0) || !(valores.larguraCm > 0) || !(valores.comprimentoCm > 0)) {
+    return { erro: "Preencha o peso com embalagem (g) e a altura, a largura e o comprimento (cm): são obrigatórios para anunciar." };
+  }
 
   // Variações (cores/filamentos): validadas antes de salvar qualquer coisa.
   let variacoes: z.infer<typeof VariacaoSchema>[] = [];
@@ -377,6 +382,11 @@ export async function publicarAnuncio(produtoId: string, form: FormData): Promis
   await requireUser();
   const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId) });
   if (!p) return [{ conta: "-", ok: false, mensagem: "Produto não encontrado." }];
+  // Sem medidas e peso não vai para nenhum marketplace (frete errado e recusa do Magalu).
+  const faltam = [!(p.pesoG > 0) && "peso com embalagem", !(p.alturaCm > 0) && "altura", !(p.larguraCm > 0) && "largura", !(p.comprimentoCm > 0) && "comprimento"].filter(Boolean);
+  if (faltam.length) {
+    return [{ conta: "-", ok: false, mensagem: `Preencha ${faltam.join(", ")} no cadastro do produto e salve antes de anunciar (obrigatório em todas as plataformas).` }];
+  }
   // Modelo 3D de licença não comercial: só anuncia depois de confirmar a licença comercial no produto.
   if (p.modelo3d?.comercial === false && !p.modelo3d.licencaComercialPropria) {
     return [
@@ -626,4 +636,23 @@ export async function confirmarLicencaModelo(produtoId: string, tem: boolean) {
   if (!p?.modelo3d) return;
   await db.update(produtos).set({ modelo3d: { ...p.modelo3d, licencaComercialPropria: tem } }).where(eq(produtos.id, produtoId));
   revalidatePath(`/produtos/${produtoId}`);
+}
+
+/** Preço de mercado do produto: concorrentes no Magalu, ML e Shopee e o preço de cada plataforma pela regra do mercado. */
+export async function mercadoDoProduto(produtoId: string, custoTela: number) {
+  await requireUser();
+  const p = await db.query.produtos.findFirst({ where: eq(produtos.id, produtoId), columns: { nome: true, custo: true } });
+  if (!p) return { erro: "Produto não encontrado." };
+  const custo = custoTela > 0 ? custoTela : p.custo;
+  if (!(custo > 0)) return { erro: "Informe o custo (filamento e tempo) para calcular." };
+  try {
+    const r = await precoDeMercado(p.nome, custo, await getParametrosPreco());
+    return {
+      mercado: Object.fromEntries(Object.entries(r.mercado).map(([c, x]) => [c, { mediana: x!.mediana, anuncios: x!.anuncios, concorrer: x!.concorrer, min: x!.min, max: x!.max, vendas: x!.vendas }])),
+      precos: r.precos,
+      erros: r.erros,
+    };
+  } catch (e) {
+    return { erro: (e as Error).message.slice(0, 200) };
+  }
 }

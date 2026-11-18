@@ -216,6 +216,8 @@ export type OrigemModelo3d = {
   medidasMm?: number[] | null;
   /** Impressoras (ids) em que o modelo cabe. */
   impressoras?: number[];
+  /** Mercado na hora do cadastro: mediana, anúncios e o preço para concorrer em cada plataforma. */
+  mercado?: Partial<Record<"magalu" | "mercadolivre" | "shopee", { mediana: number; anuncios: number; concorrer: number | null }>>;
 };
 
 /** Categorias do catálogo (separam o site e as grades: produtos, raio-x...). */

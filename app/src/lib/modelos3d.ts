@@ -6,7 +6,7 @@ import { FONTES_MODELO, type FonteModelo, type ModeloAchado, type OrigemModelo3d
 import { ler3mf, lerZip, malhaStl, medidasMalha, pesoEstimadoPla, type Malha } from "@/lib/assistente/arquivos";
 import { gerarComGemini } from "@/lib/gemini";
 import { getSettings } from "@/lib/settings";
-import { UPLOAD_DIR } from "@/lib/uploads";
+import { PASTA_IMPRESSAO, UPLOAD_DIR } from "@/lib/uploads";
 
 // Modelos 3D de sites de arquivos para impressão: lê título, fotos, licença e (quando o site informa) perfis de impressão
 // com tempo, peso e cores; mede a peça pelo arquivo (STL/3MF) para saber em qual impressora cabe.
@@ -39,7 +39,14 @@ export type Modelo3d = {
   medidasMm: number[] | null;
   pesoEstimadoG: number | null;
   avisos: string[];
+  /** Arquivos de impressão que o site deixa baixar (vão para "Arquivos de impressão" do produto). */
+  arquivos?: { nome: string; url: string; tamanho?: number }[];
+  /** Arquivo enviado na tela (guardado até cadastrar). */
+  arquivoLocal?: { nome: string; caminho: string };
 };
+
+const AVISO_LOGIN = (site: string) =>
+  `O ${site} só libera o download do arquivo com login: baixe no site e arraste em "Arquivos de impressão" do produto depois de cadastrar.`;
 
 const NAVEGADOR = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
 const MAX_ARQUIVO = 60 * 1024 * 1024;
@@ -213,7 +220,7 @@ async function makerWorld(id: string, link: string): Promise<Modelo3d> {
     perfis,
     medidasMm: null,
     pesoEstimadoG: null,
-    avisos: perfis.length ? [] : ["O modelo não tem perfil de impressão publicado: informe o filamento e o tempo depois de fatiar."],
+    avisos: [AVISO_LOGIN("MakerWorld"), ...(perfis.length ? [] : ["O modelo não tem perfil de impressão publicado: informe o filamento e o tempo depois de fatiar."])],
   };
 }
 
@@ -238,14 +245,14 @@ async function printables(id: string, link: string): Promise<Modelo3d> {
   const p = r.data?.print;
   if (!p) throw new Error(r.errors?.[0]?.message ? `Printables: ${r.errors[0].message}` : "Modelo não encontrado no Printables.");
   const arquivos: { url: string; nome: string; tamanho?: number }[] = [];
-  for (const s of (p.stls ?? []).slice(0, 6)) {
+  for (const s of (p.stls ?? []).slice(0, 10)) {
     const l = await gql<{ getDownloadLink: { ok: boolean; output?: { link: string } } }>(
       `mutation { getDownloadLink(id: "${s.id}", printId: "${p.id}", fileType: stl, source: model_detail) { ok output { link } } }`,
     ).catch(() => null);
     const url = l?.data?.getDownloadLink?.output?.link;
     if (url) arquivos.push({ url, nome: s.name, tamanho: s.fileSize });
   }
-  const med = await medirVarios(arquivos);
+  const med = await medirVarios(arquivos.slice(0, 6));
   const lic = licencaPt([p.license?.abbreviation, p.license?.name].filter(Boolean).join(" "));
   return {
     fonte: "printables",
@@ -259,6 +266,7 @@ async function printables(id: string, link: string): Promise<Modelo3d> {
     perfis: [],
     medidasMm: med.medidasMm,
     pesoEstimadoG: med.pesoEstimadoG,
+    arquivos,
     avisos: [
       ...(med.medidos ? [] : ["Não deu para medir os arquivos (grandes demais ou sem STL): confira o tamanho no fatiador."]),
       "O Printables não informa tempo nem cores: o peso é uma estimativa pelo volume (2 paredes, 15%). Para o número exato, envie o 3MF fatiado.",
@@ -293,6 +301,7 @@ async function thingiverse(id: string, link: string): Promise<Modelo3d> {
     perfis: [],
     medidasMm: med.medidasMm,
     pesoEstimadoG: med.pesoEstimadoG,
+    arquivos: arqs.filter((a) => a.download_url).map((a) => ({ nome: a.name, url: a.download_url!, tamanho: a.size })).slice(0, 10),
     avisos: [
       ...(med.medidos ? [] : ["Não deu para medir os arquivos: confira o tamanho no fatiador."]),
       "O Thingiverse não informa tempo nem cores: o peso é estimado pelo volume. Para o número exato, envie o 3MF fatiado.",
@@ -334,7 +343,7 @@ async function cults(slug: string, link: string): Promise<Modelo3d> {
     perfis: [],
     medidasMm: null,
     pesoEstimadoG: null,
-    avisos: ["O Cults não entrega o arquivo pela API: envie o .3mf/.stl baixado para medir e calcular o peso exato."],
+    avisos: [AVISO_LOGIN("Cults3D"), "Envie o .3mf/.stl baixado para medir e calcular o peso exato."],
   };
 }
 
@@ -364,7 +373,7 @@ async function thangs(id: string, link: string): Promise<Modelo3d> {
     perfis: [],
     medidasMm: null,
     pesoEstimadoG: null,
-    avisos: ["O Thangs não informa peso nem tempo: baixe o arquivo e envie aqui (ou fatie no Bambu Studio) para o custo exato."],
+    avisos: [AVISO_LOGIN("Thangs"), "O Thangs não informa peso nem tempo: envie o arquivo aqui (ou o 3MF fatiado) para o custo exato."],
   };
 }
 
@@ -390,7 +399,7 @@ async function myMiniFactory(id: string, link: string): Promise<Modelo3d> {
     perfis: [],
     medidasMm: null,
     pesoEstimadoG: null,
-    avisos: ["O MyMiniFactory não informa peso nem tempo pela API: envie o arquivo para o custo exato."],
+    avisos: [AVISO_LOGIN("MyMiniFactory"), "O MyMiniFactory não informa peso nem tempo pela API: envie o arquivo para o custo exato."],
   };
 }
 
@@ -417,7 +426,20 @@ export async function lerModeloDoArquivo(nome: string, buf: Buffer, origin: stri
   const ehStl = /\.stl$/i.test(nome);
   if (!ehStl && !/\.3mf$/i.test(nome)) throw new Error("Envie um arquivo .3mf (Bambu Studio / OrcaSlicer) ou .stl.");
   if (buf.length > MAX_ARQUIVO) throw new Error("Arquivo maior que 60 MB.");
-  const base = { fonte: (fonteDoLink(link)?.fonte ?? "arquivo") as Fonte, link, titulo: nome.replace(/\.(3mf|stl)$/i, "").replace(/[_-]+/g, " ").trim(), autor: "", descricao: "", licenca: "", comercial: null };
+  // O próprio arquivo fica guardado e vai para os arquivos de impressão do produto ao cadastrar.
+  await mkdir(PASTA_IMPRESSAO, { recursive: true });
+  const caminho = `${PASTA_IMPRESSAO}/tmp-${Date.now().toString(36)}-${randomBytes(6).toString("hex")}.${ehStl ? "stl" : "3mf"}`;
+  await writeFile(caminho, buf);
+  const base = {
+    fonte: (fonteDoLink(link)?.fonte ?? "arquivo") as Fonte,
+    link,
+    titulo: nome.replace(/\.(gcode\.)?(3mf|stl)$/i, "").replace(/[_-]+/g, " ").trim(),
+    autor: "",
+    descricao: "",
+    licenca: "",
+    comercial: null,
+    arquivoLocal: { nome: nome.slice(0, 200), caminho },
+  };
   if (ehStl) {
     const m = malhaStl(buf);
     return { ...base, fotos: [], perfis: [], medidasMm: medidasMalha(m), pesoEstimadoG: m.triangulos ? pesoEstimadoPla(m) : null, avisos: ["STL não tem fotos, tempo nem cores: o peso é estimado pelo volume."] };
