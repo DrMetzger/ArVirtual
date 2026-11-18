@@ -132,3 +132,31 @@ export async function fichaObrigatoria(chamar: Chamar, categoriaId: string, prod
     return { name: a.name, value: (v || "Não se aplica").slice(0, 100) };
   });
 }
+
+/** Campos regulatórios (Anvisa, MAPA, Anatel, Inmetro...): peça impressa em 3D não tem registro, vai "Não se aplica". */
+export const REGULATORIO = /anvisa|\bmapa\b|anatel|homologa|inmetro|registro|certifica|regulat/i;
+
+function naoSeAplica(a: AtributoMagalu) {
+  if (!a.choices?.length) return "Não se aplica";
+  return a.choices.find((c) => /n[aã]o se aplica/i.test(c)) ?? a.choices.find((c) => /^(n[aã]o|isento|dispensad|n\/a)/i.test(c)) ?? "Não se aplica";
+}
+
+/** Todos os atributos da categoria (obrigatórios, recomendados e opcionais). */
+export async function atributosDaCategoria(chamar: Chamar, categoriaId: string) {
+  const todos: AtributoMagalu[] = [];
+  for (let offset = 0; offset < 300; offset += 100) {
+    const r = await chamar<unknown>(`/seller/v1/portfolios/categories/${categoriaId}/datasheet?_limit=100&_offset=${offset}`).catch(() => null);
+    const lista = ((r as { results?: AtributoMagalu[] })?.results ?? []).filter((a) => a?.name);
+    todos.push(...lista);
+    if (lista.length < 100) break;
+  }
+  return todos;
+}
+
+/** Campos regulatórios da categoria que ainda não estão na ficha, preenchidos com "Não se aplica". */
+export async function fichaRegulatoria(chamar: Chamar, categoriaId: string, jaTem: { name: string; value: string }[]) {
+  const attrs = await atributosDaCategoria(chamar, categoriaId);
+  return attrs
+    .filter((a) => REGULATORIO.test(`${a.name} ${a.display_name ?? ""}`) && !jaTem.some((j) => j.name.toLowerCase() === a.name.toLowerCase()))
+    .map((a) => ({ name: a.name, value: naoSeAplica(a).slice(0, 100) }));
+}

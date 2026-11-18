@@ -77,7 +77,7 @@ function Anuncio({ l, voltar }: { l: LinhaRaioX; voltar: string }) {
                       : "red"
                 }
               >
-                qualidade ML {l.qualidade.nota}/100
+                {l.marketplace === "magalu" ? "relevância" : "qualidade ML"} {l.qualidade.nota}/100
               </Badge>
             ) : null}
             <span className="font-semibold">{formatBRL(l.preco)}</span>
@@ -413,7 +413,7 @@ export default async function RaioXPage({
                       title={`${daqui.length} anúncio(s)`}
                       description={
                         k === "magalu"
-                          ? "O Magalu não informa visitas por API: aqui contam as vendas dos últimos 30 dias e as melhorias de anúncio."
+                          ? "A API do Magalu informa a relevância do conteúdo (a nota do painel) e o que melhorar, mas não as visitas: aqui contam as vendas dos últimos 30 dias."
                           : k === "shopee"
                             ? "A Shopee só informa visualizações e vendas desde a publicação; a conversão compara cada anúncio com a média da sua loja."
                             : "Visitas dos últimos 30 dias, vendas do mesmo período e as ações que o próprio Mercado Livre pede em cada anúncio."

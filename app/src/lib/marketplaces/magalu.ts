@@ -1,7 +1,7 @@
 import "server-only";
-import { categoriaMagaluPara, fichaObrigatoria } from "./magalu-categoria";
+import { atributosDaCategoria, categoriaMagaluPara, fichaObrigatoria, fichaRegulatoria, REGULATORIO } from "./magalu-categoria";
 import { getSetting, getSettings } from "@/lib/settings";
-import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type SituacaoAnuncio, type AnuncioExterno, type MarketplaceAdapter, type Tokens } from "./types";
+import { aplicarCampos, fotoJpeg, lerResposta, MarketplaceError, PublicacaoPendente, type SituacaoAnuncio, type AnuncioExterno, type MarketplaceAdapter, type Tokens, type DadosRaioX, type ContaComToken } from "./types";
 
 // API aberta do Magalu (https://developers.magalu.com). Login via ID Magalu (OAuth2).
 // Escopos e endpoints de seller conforme a documentação pública; confira no portal ao
@@ -248,6 +248,7 @@ export const magalu: MarketplaceAdapter = {
           categoria = c.id;
           avisoCategoria = ` Categoria: ${c.path}.`;
           ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
+          ficha.push(...(await fichaRegulatoria(chamar, c.id, ficha).catch(() => [])));
         }
       } catch (e) {
         void e;
@@ -349,6 +350,7 @@ export const magalu: MarketplaceAdapter = {
           { name: "Fabricação", value: "Impressão 3D" },
         ].filter(Boolean) as { name: string; value: string }[];
         ficha.push(...(await fichaObrigatoria(chamar, c.id, produto, ficha).catch(() => [])));
+        ficha.push(...(await fichaRegulatoria(chamar, c.id, ficha).catch(() => [])));
         const ok = await api(caminho, conta.accessToken, { method: "PATCH", body: JSON.stringify({ category: { id: c.id }, datasheet: ficha }) }).then(
           () => true,
           () => false,
@@ -611,6 +613,44 @@ export const magalu: MarketplaceAdapter = {
     return out;
   },
 
+  async raiox(conta, ids) {
+    // Relevância do conteúdo (a nota do painel do Magalu) e o que melhorar: API de Score. Visitas e conversão
+    // orgânicas não existem na API pública do Magalu (só nas métricas de anúncios patrocinados).
+    type Score = {
+      sku: string;
+      score?: { experience?: number };
+      relevance?: Record<string, number | string | undefined>;
+      price?: { recommendation?: string };
+      delivery?: { recommendation?: string };
+    };
+    const out: Record<string, DadosRaioX> = {};
+    const canal = await api<{ channel?: { id?: string } }>("/seller/v1/portfolios/me", conta.accessToken).then((m) => m.channel?.id).catch(() => undefined);
+    if (!canal) return out;
+    const quero = new Set(ids);
+    for (let offset = 0; offset < 5000 && quero.size; offset += 100) {
+      const r = await api<{ results?: Score[] }>(`/seller/v1/portfolios/products/scores?limit=100&offset=${offset}`, conta.accessToken, {
+        headers: { "X-Tenant-Id": conta.idExterno, "X-Channel-Id": canal },
+      }).catch(() => null);
+      const lista = r?.results ?? [];
+      for (const x of lista) {
+        if (!quero.has(x.sku)) continue;
+        const rel = x.relevance ?? {};
+        const nota = Number(rel.relevance_total_score ?? x.score?.experience);
+        const acoes = [
+          ...["title", "description", "datasheet", "images", "ean"].map((k) => (Number(rel[`${k}_score`] ?? 100) < 100 ? rel[`${k}_recommendation`] : "")),
+          x.price?.recommendation,
+          x.delivery?.recommendation,
+        ].filter((t): t is string => typeof t === "string" && t.trim().length > 0);
+        out[x.sku] = {
+          fotos: typeof rel.images_quantity === "number" ? rel.images_quantity : undefined,
+          qualidade: Number.isFinite(nota) ? { nota: Math.round(nota), nivel: nota >= 80 ? "alta" : nota >= 50 ? "média" : "baixa", acoes: [...new Set(acoes)] } : undefined,
+        };
+      }
+      if (lista.length < 100) break;
+    }
+    return out;
+  },
+
   async taxas(_conta, _id, dados) {
     // A comissão do Magalu vem no próprio pedido (amounts.commission, em centavos com normalizer).
     const a = (dados as { amounts?: { commission?: { total?: number; normalizer?: number } }; status?: string } | null) ?? {};
@@ -721,3 +761,46 @@ export const magalu: MarketplaceAdapter = {
     return Buffer.from(await pdf.arrayBuffer());
   },
 };
+
+type SkuFicha = { status?: string; category?: { id?: string }; datasheet?: { name: string; value: string }[] };
+
+/**
+ * Anúncios já publicados: preenche os campos regulatórios da categoria (Anvisa, MAPA, Anatel...) com "Não se aplica",
+ * mantendo a ficha que já existe. Só altera o SKU quando falta algum. Devolve o que fez em cada SKU.
+ */
+export async function corrigirRegulatorio(conta: ContaComToken, skus: string[], soVer = false) {
+  const chamar = <T,>(path: string) => api<T>(path, conta.accessToken);
+  const relatorio: Record<string, unknown> = {};
+  for (const sku of skus) {
+    const caminho = `/seller/v1/portfolios/skus/${encodeURIComponent(sku)}`;
+    try {
+      const atual = await chamar<SkuFicha>(caminho);
+      const cat = atual.category?.id;
+      const ficha = (atual.datasheet ?? []).filter((d) => d?.name);
+      if (!cat) {
+        relatorio[sku] = { status: atual.status, erro: "sem categoria" };
+        continue;
+      }
+      const attrs = await atributosDaCategoria(chamar, cat);
+      const faltam = await fichaRegulatoria(chamar, cat, ficha);
+      const info: Record<string, unknown> = {
+        status: atual.status,
+        categoria: cat,
+        atributos: attrs.length,
+        regulatorios: attrs.filter((a) => REGULATORIO.test(`${a.name} ${a.display_name ?? ""}`)).map((a) => `${a.name}|${a.display_name ?? ""}|${a.required ?? ""}|${(a.choices ?? []).slice(0, 4).join("/")}`),
+        naFicha: ficha.map((d) => d.name),
+        faltam: faltam.map((f) => `${f.name}=${f.value}`),
+      };
+      if (!soVer && faltam.length) {
+        info.alterado = await api(caminho, conta.accessToken, { method: "PATCH", body: JSON.stringify({ datasheet: [...ficha, ...faltam] }) }).then(
+          () => true,
+          (e: Error) => e.message.slice(0, 200),
+        );
+      }
+      relatorio[sku] = info;
+    } catch (e) {
+      relatorio[sku] = { erro: (e as Error).message.slice(0, 200) };
+    }
+  }
+  return relatorio;
+}
