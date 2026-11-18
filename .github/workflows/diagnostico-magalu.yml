@@ -17,8 +17,10 @@ jobs:
           docker compose exec -T app node --input-type=module </dev/null -e '
           import { createHmac } from "node:crypto";
           const k = createHmac("sha256", process.env.AUTH_SECRET).update("rotas-internas").digest("hex");
-          const r = await fetch("http://localhost:3000/api/interno/magalu-regulatorio?raiox=1", { method: "POST", headers: { "x-chave-interna": k } });
+          const r = await fetch("http://localhost:3000/api/interno/magalu-regulatorio?ver=1&raiox=1", { method: "POST", headers: { "x-chave-interna": k } });
           const j = await r.json().catch(() => null);
-          console.log(r.status, JSON.stringify(j, null, 1).slice(0, 6000));
+          const todos = Object.values(j?.regulatorio ?? {}).flatMap((c) => Object.values(c));
+          console.log(r.status, "skus", todos.length, "alterados", todos.filter((x) => x.alterado === true).length, "falhas", JSON.stringify(todos.filter((x) => x.erro || (x.alterado && x.alterado !== true)).map((x) => x.erro || x.alterado)).slice(0, 800), "faltando", todos.filter((x) => x.faltam?.length).length);
+          console.log("raiox", JSON.stringify(j?.raiox));
           '
           REMOTO
