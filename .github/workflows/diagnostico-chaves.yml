@@ -1,0 +1,45 @@
+name: Diagnóstico chaves modelos 3D (somente leitura)
+on:
+  push:
+    branches: [claude/funny-mayer-500izs]
+    paths: [.github/workflows/diagnostico-chaves.yml]
+jobs:
+  diagnostico:
+    runs-on: ubuntu-latest
+    env:
+      SSHPASS: ${{ secrets.VM_PSW }}
+    steps:
+      - name: Testa Thingiverse, Cults e MyMiniFactory
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          sshpass -e ssh -p ${{ secrets.VM_PORT || '22' }} -o StrictHostKeyChecking=accept-new -o ConnectTimeout=30 ${{ secrets.VM_USER || 'root' }}@${{ secrets.VM_HOST }} "bash -s" <<'REMOTO'
+          cd /opt/arvirtual-app
+          docker compose exec -T app node --input-type=module </dev/null -e '
+          import postgres from "postgres";
+          import { createDecipheriv, createHash } from "node:crypto";
+          const sql = postgres(process.env.DATABASE_URL);
+          const key = createHash("sha256").update(process.env.ENCRYPTION_KEY).digest();
+          const dec = (v) => { const [, iv, tag, data] = v.split(":"); const d = createDecipheriv("aes-256-gcm", key, Buffer.from(iv, "base64")); d.setAuthTag(Buffer.from(tag, "base64")); return Buffer.concat([d.update(Buffer.from(data, "base64")), d.final()]).toString("utf8"); };
+          const rows = await sql`select chave, valor, secreto from configuracoes where chave in (${"thingiverse.token"}, ${"cults.usuario"}, ${"cults.chave"}, ${"myminifactory.chave"})`;
+          const s = {}; for (const r of rows) { try { s[r.chave] = (r.secreto ? dec(r.valor) : r.valor); } catch (e) { s[r.chave] = ""; console.log("nao decifrou", r.chave); } }
+          const segredos = Object.values(s).filter((v) => v && v.length > 3);
+          const limpo = (t) => { let x = String(t); for (const v of segredos) x = x.split(v).join("***"); return x.replace(/\s+/g, " ").slice(0, 260); };
+          for (const [k, v] of Object.entries(s)) console.log(k, "tamanho", v.length, "espacos", v !== v.trim(), "formato", v.replace(/[A-Za-z]/g, "a").replace(/[0-9]/g, "9").slice(0, 6) + "...");
+          const UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36";
+          const teste = async (nome, url, init = {}) => { try { const r = await fetch(url, { ...init, signal: AbortSignal.timeout(30000) }); const t = await r.text(); console.log(nome, r.status, r.headers.get("content-type"), limpo(t)); } catch (e) { console.log(nome, "ERRO", limpo(e.message)); } };
+          const tt = (s["thingiverse.token"] || "").trim();
+          await teste("thingiverse-bearer-ua", "https://api.thingiverse.com/search/hamster/?type=things&per_page=2", { headers: { Authorization: "Bearer " + tt, "User-Agent": UA, Accept: "application/json" } });
+          await teste("thingiverse-bearer-semua", "https://api.thingiverse.com/search/hamster/?type=things&per_page=2", { headers: { Authorization: "Bearer " + tt } });
+          await teste("thingiverse-param", "https://api.thingiverse.com/search/hamster/?type=things&per_page=2&access_token=" + encodeURIComponent(tt));
+          await teste("thingiverse-thing", "https://api.thingiverse.com/things/763622", { headers: { Authorization: "Bearer " + tt } });
+          const auth = Buffer.from((s["cults.usuario"] || "").trim() + ":" + (s["cults.chave"] || "").trim()).toString("base64");
+          await teste("cults-myself", "https://cults3d.com/graphql", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Basic " + auth }, body: JSON.stringify({ query: "{ myself { user { nick } } }" }) });
+          await teste("cults-busca", "https://cults3d.com/graphql", { method: "POST", headers: { "Content-Type": "application/json", Authorization: "Basic " + auth, "User-Agent": UA }, body: JSON.stringify({ query: "query($q: String!, $n: Int) { creationsSearchBatch(query: $q, limit: $n) { results { name(locale: PT) url(locale: PT) illustrationImageUrl license { code name(locale: PT) } creator { nick } downloadsCount likesCount } } }", variables: { q: "hamster", n: 2 } }) });
+          const mk = (s["myminifactory.chave"] || "").trim();
+          await teste("mmf-key-ua", "https://www.myminifactory.com/api/v2/search?q=hamster&per_page=2&key=" + encodeURIComponent(mk), { headers: { "User-Agent": UA, Accept: "application/json" } });
+          await teste("mmf-key-semua", "https://www.myminifactory.com/api/v2/search?q=hamster&per_page=2&key=" + encodeURIComponent(mk));
+          await teste("mmf-bearer", "https://www.myminifactory.com/api/v2/search?q=hamster&per_page=2", { headers: { Authorization: "Bearer " + mk, Accept: "application/json" } });
+          await teste("mmf-xapikey", "https://www.myminifactory.com/api/v2/search?q=hamster&per_page=2", { headers: { "X-Api-Key": mk, Accept: "application/json" } });
+          await sql.end();
+          '
+          REMOTO
