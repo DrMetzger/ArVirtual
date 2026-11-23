@@ -2,7 +2,8 @@
 
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
-import { criarPesquisa, itensDaPesquisa, reanalisar } from "@/lib/pesquisa-modelos";
+import { revalidatePath } from "next/cache";
+import { apagarPesquisa, criarPesquisa, itensDaPesquisa, limparPesquisas, reanalisar } from "@/lib/pesquisa-modelos";
 
 export async function novaPesquisa(form: FormData) {
   await requireUser();
@@ -24,4 +25,16 @@ export async function andamentoPesquisa(pesquisaId: number) {
 export async function analisarDeNovo(itemId: number) {
   await requireUser();
   await reanalisar(itemId);
+}
+
+export async function excluirPesquisa(pesquisaId: number) {
+  await requireUser();
+  await apagarPesquisa(pesquisaId);
+  revalidatePath("/modelos3d");
+}
+
+export async function limparHistorico() {
+  await requireUser();
+  await limparPesquisas();
+  revalidatePath("/modelos3d");
 }

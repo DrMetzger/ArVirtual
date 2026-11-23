@@ -27,13 +27,12 @@ import {
   Users,
   X,
   type LucideIcon,
-  BadgePercent,
   TrendingUp,
   Clapperboard,
   Link2,
   BarChart3,
   Wrench,
-  Smartphone, Film, Gem, Radar, ScanSearch, Tags, Percent, Box } from "lucide-react";
+  Smartphone, Film, Radar, ScanSearch, Tags, Percent, Box } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -116,14 +115,6 @@ const NAV: (Item | Grupo)[] = [
       { href: "/sentinela", label: "Sentinela de mercado", icon: Radar },
       { href: "/sentinela/concorrencia", label: "Concorrência por produto", icon: Users },
       { href: "/pesquisa", label: "Pesquisa manual", icon: TrendingUp },
-    ],
-  },
-  {
-    label: "Afiliados Shopee",
-    icon: BadgePercent,
-    itens: [
-      { href: "/afiliados", label: "Meus produtos", icon: BadgePercent },
-      { href: "/afiliados/garimpo", label: "Garimpo automático", icon: Gem },
     ],
   },
   {

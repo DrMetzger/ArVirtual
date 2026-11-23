@@ -47,9 +47,8 @@ export const SETTINGS = {
   "shopee.partnerKey": { label: "Partner Key", secret: true, group: "Shopee" },
   "shopee.ambiente": { label: "Ambiente", secret: false, group: "Shopee", options: ["producao", "sandbox"] },
 
-  "afiliados.appId": { label: "App ID", secret: false, group: "Shopee Afiliados" },
-  "afiliados.secret": { label: "Senha (Secret)", secret: true, group: "Shopee Afiliados" },
-  "afiliados.subId": { label: "Sub ID padrão dos links (identifica as vendas que vieram do ERP)", secret: false, group: "Shopee Afiliados", placeholder: "arvirtual" },
+  "afiliados.appId": { label: "App ID", secret: false, group: "Shopee · preços da concorrência" },
+  "afiliados.secret": { label: "Senha (Secret)", secret: true, group: "Shopee · preços da concorrência" },
 
   "push.googleServices": {
     label: "Arquivo google-services.json do app Android (cole o conteúdo)",
@@ -85,6 +84,7 @@ export const SETTINGS = {
   "makerworld.email": { label: "E-mail da conta Bambu Lab (MakerWorld)", secret: false, group: "Conta Bambu Lab (MakerWorld)" },
   "makerworld.token": { label: "Chave de acesso (preenchida pelo login abaixo)", secret: true, group: "Conta Bambu Lab (MakerWorld)" },
   "makerworld.validade": { label: "Validade da chave", secret: false, group: "Conta Bambu Lab (MakerWorld)" },
+  "sketchfab.token": { label: "API Token (sketchfab.com › Settings › Password & API)", secret: true, group: "Sketchfab" },
   "thingiverse.token": { label: "App Token (thingiverse.com › Apps › Create an App)", secret: true, group: "Thingiverse" },
   "myminifactory.chave": { label: "Chave da API (myminifactory.com › Settings › Developer)", secret: true, group: "MyMiniFactory" },
   "cults.usuario": { label: "Usuário (apelido) do Cults", secret: false, group: "Cults" },

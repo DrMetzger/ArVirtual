@@ -2,8 +2,6 @@ import type { Metadata } from "next";
 import { Film } from "lucide-react";
 import Link from "next/link";
 import { buttonClass, Card, PageHeader } from "@/components/ui";
-import { db } from "@/db";
-import { afiliadosProdutos } from "@/db/schema";
 import { requireUser } from "@/lib/auth";
 import { listarVideos } from "@/lib/videos-lista";
 import { Conversor } from "./conversor";
@@ -12,10 +10,7 @@ export const metadata: Metadata = { title: "Conversor de vídeo" };
 
 export default async function VideosPage() {
   await requireUser();
-  const [videos, produtos] = await Promise.all([
-    listarVideos(),
-    db.select({ id: afiliadosProdutos.id, nome: afiliadosProdutos.nome }).from(afiliadosProdutos).orderBy(afiliadosProdutos.nome),
-  ]);
+  const videos = await listarVideos();
   return (
     <>
       <PageHeader
@@ -28,7 +23,7 @@ export default async function VideosPage() {
         }
       />
       <Card className="p-4 sm:p-5">
-        <Conversor iniciais={videos} produtos={produtos} />
+        <Conversor iniciais={videos} produtos={[]} />
       </Card>
     </>
   );

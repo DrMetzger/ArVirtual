@@ -9,7 +9,8 @@ import { listaFilamentos } from "@/lib/filamentos";
 import { custoComposicao, gramasTotais } from "@/lib/impressao";
 import { encaixe, listaImpressoras } from "@/lib/impressoras";
 import { importarProduto } from "@/lib/importar-produto";
-import { emPortugues, fonteDoLink, lerModeloDoLink, type Modelo3d } from "@/lib/modelos3d";
+import { emPortugues, fonteDoLink, lerModeloDoLink, linkDownloadSketchfab, type Modelo3d } from "@/lib/modelos3d";
+import { lerZip } from "@/lib/assistente/arquivos";
 import { precosPorCanal } from "@/lib/precificacao";
 import { linkDownloadMakerWorld } from "@/lib/bambu-conta";
 import { precoDeMercado } from "@/lib/preco-mercado";
@@ -153,11 +154,31 @@ export async function anexarArquivos(produtoId: string, m: Modelo3d, perfilId?: 
       if (!l) continue;
       a = { nome: /\.3mf$/i.test(l.nome) ? l.nome : a.nome, url: l.url };
     }
+    if (a.url.startsWith("sketchfab:")) {
+      const url = await linkDownloadSketchfab(a.url.slice("sketchfab:".length));
+      if (!url) continue;
+      a = { ...a, url };
+    }
     if ((a.tamanho ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
     const res = await fetch(a.url, { headers: token ? { Authorization: `Bearer ${token}` } : {}, signal: AbortSignal.timeout(180_000) }).catch(() => null);
     if (!res?.ok || Number(res.headers.get("content-length") ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
     const dados = Buffer.from(await res.arrayBuffer());
-    if (dados.length && dados.length <= MAX_ARQUIVO_IMPRESSAO) await gravar(a.nome, { dados });
+    if (!dados.length || dados.length > MAX_ARQUIVO_IMPRESSAO) continue;
+    // Pacote .zip (Sketchfab, Thingiverse): guarda os arquivos de impressão de dentro; sem nenhum, o próprio .zip.
+    if (/\.zip$/i.test(a.nome) || dados.subarray(0, 2).toString() === "PK") {
+      const dentro = (() => {
+        try {
+          return lerZip(dados, (n) => /\.(stl|3mf|obj|step|stp|amf|ply)$/i.test(n) && !n.startsWith("__MACOSX"));
+        } catch {
+          return new Map<string, Buffer>();
+        }
+      })();
+      if (dentro.size) {
+        for (const [n, b] of [...dentro].slice(0, 20)) if (b.length <= MAX_ARQUIVO_IMPRESSAO) await gravar(n.split("/").pop() || n, { dados: b });
+        continue;
+      }
+    }
+    await gravar(a.nome, { dados });
   }
   return anexados;
 }

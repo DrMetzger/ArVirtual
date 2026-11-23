@@ -12,8 +12,8 @@ const URL_API = process.env.SHOPEE_AFILIADOS_URL || "https://open-api.affiliate.
 export class AfiliadosErro extends Error {}
 
 async function credenciais() {
-  const s = await getSettings(["afiliados.appId", "afiliados.secret", "afiliados.subId"]);
-  return { appId: s["afiliados.appId"], secret: s["afiliados.secret"], subId: s["afiliados.subId"] || "arvirtual" };
+  const s = await getSettings(["afiliados.appId", "afiliados.secret"]);
+  return { appId: s["afiliados.appId"], secret: s["afiliados.secret"], subId: "arvirtual" };
 }
 
 export async function afiliadosConfigurado() {
