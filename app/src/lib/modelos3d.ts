@@ -454,7 +454,7 @@ const POR_FONTE = 20;
 const statusDe = (n: number) => (n ? `${n} modelo(s)` : "nada encontrado");
 const erroDe = (e: unknown) => {
   const m = (e as Error).message ?? "";
-  return /bloqueou/.test(m) ? "bloqueou a pesquisa" : /recusou|401|403/.test(m) ? "recusou a chave" : "fora do ar agora";
+  return /bloqueou/.test(m) ? "o site bloqueia pesquisa vinda de servidores (não é a sua chave)" : /recusou|401|403/.test(m) ? "recusou a chave" : "fora do ar agora";
 };
 
 async function buscaMakerWorld(q: string): Promise<ResultadoFonte> {
