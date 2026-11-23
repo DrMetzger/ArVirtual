@@ -56,9 +56,9 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
       </>
     ),
     Sketchfab: "Opcional: a pesquisa e as fotos do Sketchfab funcionam sem chave. O token grátis (sketchfab.com › Settings › Password & API) deixa o ERP baixar o arquivo original do modelo para o produto.",
-    Thingiverse: "Para a pesquisa de modelos 3D e o download dos arquivos do Thingiverse. Cole aqui o App Token (thingiverse.com › Apps › seu app › App Token).",
-    MyMiniFactory: "Opcional: para a pesquisa de modelos 3D incluir o MyMiniFactory. Crie a chave na sua conta do site (área de desenvolvedor).",
-    Cults: "Para a pesquisa de modelos 3D incluir o Cults3D. Use o apelido (API user) e a chave da API (cults3d.com › Configurações › API keys).",
+    Thingiverse: "Pesquisa e download dos arquivos do Thingiverse. Só o App Token é usado (acesso de leitura, sem login). Na tela do app no Thingiverse, os campos de endereço podem ficar: App Informational URL = https://arvirtual.com.br, App URL e Callback URL = https://app.arvirtual.com.br (o ERP não usa o Callback).",
+    MyMiniFactory: "Pesquisa de modelos no MyMiniFactory. Em myminifactory.com › Settings › Developer, crie o app: nome ArVirtual, site https://app.arvirtual.com.br e Redirect/Callback URL https://app.arvirtual.com.br (o ERP não usa o retorno). Cole aqui a API Key (Client Key) que ele mostrar.",
+    Cults: "Pesquisa de modelos no Cults3D. Em cults3d.com › API Keys › ADD, crie a chave (só leitura, READ, basta) e copie os dois campos com COPY: o código da chave e o API user (seu apelido).",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
     "Shopee · preços da concorrência": (
       <>
