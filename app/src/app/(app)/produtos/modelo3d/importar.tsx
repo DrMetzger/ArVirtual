@@ -97,7 +97,7 @@ export function ImportarModelo({
   return (
     <div className="grid gap-5">
       <Alert tone="blue">
-        Para procurar o produto em 5 sites de modelos 3D ao mesmo tempo, ver o mercado de cada um e cadastrar todos de uma vez, use{" "}
+        Para procurar o produto em 4 sites de modelos 3D ao mesmo tempo, ver o mercado de cada um e cadastrar todos de uma vez, use{" "}
         <a href="/modelos3d" className="font-semibold underline">
           Modelos 3D
         </a>{" "}
@@ -124,7 +124,7 @@ export function ImportarModelo({
         </div>
         <form ref={formRef} onSubmit={onSubmit} className="grid gap-3 p-5">
           {modo === "link" ? (
-            <Field label="Link do modelo" hint="MakerWorld, Printables, Thingiverse, Cults3D ou MyMiniFactory">
+            <Field label="Link do modelo" hint="MakerWorld, Printables, Cults3D ou MyMiniFactory">
               <Input name="link" required defaultValue={linkInicial} placeholder="https://makerworld.com/pt/models/..." />
             </Field>
           ) : (
@@ -139,7 +139,7 @@ export function ImportarModelo({
                 />
               </Field>
               <Field label="Link de onde baixou (opcional)" hint="Guardado no produto para lembrar a origem e a licença.">
-                <Input name="link" placeholder="https://www.thingiverse.com/thing:..." />
+                <Input name="link" placeholder="https://makerworld.com/pt/models/..." />
               </Field>
             </>
           )}

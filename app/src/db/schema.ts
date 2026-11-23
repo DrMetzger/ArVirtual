@@ -190,15 +190,15 @@ export const impressoras = pgTable("impressoras", {
 export type Impressora = typeof impressoras.$inferSelect;
 
 /** Sites de arquivos para impressão 3D usados na pesquisa e na importação. */
-export const FONTES_MODELO = ["makerworld", "printables", "thingiverse", "cults", "myminifactory"] as const;
+export const FONTES_MODELO = ["makerworld", "printables", "cults", "myminifactory"] as const;
 export type FonteModelo = (typeof FONTES_MODELO)[number];
 export const NOMES_FONTE: Record<FonteModelo | "arquivo", string> & Record<string, string> = {
   makerworld: "MakerWorld",
   printables: "Printables",
   /** Saíram da pesquisa; ficam os nomes para os produtos antigos que vieram deles. */
+  thingiverse: "Thingiverse",
   thangs: "Thangs",
   sketchfab: "Sketchfab",
-  thingiverse: "Thingiverse",
   cults: "Cults3D",
   myminifactory: "MyMiniFactory",
   arquivo: "Arquivo enviado",
@@ -305,7 +305,7 @@ export const produtos = pgTable(
     paiId: uuid("pai_id").references((): AnyPgColumn => produtos.id, { onDelete: "cascade" }),
     /** Categoria do catálogo (a variação usa a do produto principal). */
     categoriaId: integer("categoria_id").references((): AnyPgColumn => categorias.id, { onDelete: "set null" }),
-    /** Modelo 3D de origem (MakerWorld, Printables, Thingiverse, Cults ou arquivo): link, autor e licença. */
+    /** Modelo 3D de origem (MakerWorld, Printables, Cults, MyMiniFactory ou arquivo): link, autor e licença. */
     modelo3d: jsonb("modelo3d").$type<OrigemModelo3d>(),
     /** Atributos da variação, ex.: { Cor: "Preto", Material: "PLA" }. */
     atributos: jsonb("atributos").$type<Record<string, string>>().notNull().default({}),
@@ -1104,9 +1104,6 @@ export type ModeloAchado = {
   comercial: boolean | null;
   downloads: number;
   curtidas: number;
-  /** Só nos que o navegador trouxe (Thingiverse): descrição e fotos para cadastrar sem ler o site pelo servidor. */
-  descricao?: string;
-  fotos?: string[];
 };
 /** Pesquisa de mercado de modelos 3D: um termo, os modelos achados e o mercado de cada um nas plataformas. */
 export const pesquisasModelos = pgTable("pesquisas_modelos", {

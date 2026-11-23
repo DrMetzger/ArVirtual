@@ -21,7 +21,7 @@ export default async function Modelo3dPage({ searchParams }: { searchParams: Pro
       </Link>
       <PageHeader
         title="Importar modelo 3D"
-        description="Cole o link do MakerWorld (Bambu), Printables, Thingiverse, Cults3D ou MyMiniFactory, ou envie o .3mf/.stl. O sistema confere a licença, mostra em qual impressora cabe, liga as cores aos seus filamentos e já cadastra o produto com custo e preço de cada plataforma."
+        description="Cole o link do MakerWorld (Bambu), Printables, Cults3D ou MyMiniFactory, ou envie o .3mf/.stl. O sistema confere a licença, mostra em qual impressora cabe, liga as cores aos seus filamentos e já cadastra o produto com custo e preço de cada plataforma."
       />
       <ImportarModelo
         impressoras={maquinas.map((i) => ({ id: i.id, nome: i.nome, potenciaW: i.potenciaW }))}
