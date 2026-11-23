@@ -1104,6 +1104,9 @@ export type ModeloAchado = {
   comercial: boolean | null;
   downloads: number;
   curtidas: number;
+  /** Só nos que o navegador trouxe (Thingiverse): descrição e fotos para cadastrar sem ler o site pelo servidor. */
+  descricao?: string;
+  fotos?: string[];
 };
 /** Pesquisa de mercado de modelos 3D: um termo, os modelos achados e o mercado de cada um nas plataformas. */
 export const pesquisasModelos = pgTable("pesquisas_modelos", {

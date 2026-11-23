@@ -2,7 +2,9 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import sharp from "sharp";
-import { FONTES_MODELO, type FonteModelo, type ModeloAchado, type OrigemModelo3d } from "@/db/schema";
+import { desc, sql } from "drizzle-orm";
+import { db } from "@/db";
+import { FONTES_MODELO, pesquisaModelosItens, type FonteModelo, type ModeloAchado, type OrigemModelo3d } from "@/db/schema";
 import { ler3mf, lerZip, malhaStl, medidasMalha, pesoEstimadoPla, type Malha } from "@/lib/assistente/arquivos";
 import { gerarComGemini } from "@/lib/gemini";
 import { getSettings } from "@/lib/settings";
@@ -285,7 +287,13 @@ async function thingiverse(id: string, link: string): Promise<Modelo3d> {
   if (!token) throw new Error("Para ler do Thingiverse, cadastre o App Token em Configurações › Integrações › Thingiverse (ou envie o arquivo baixado).");
   const api = (p: string) => `https://api.thingiverse.com${p}`;
   const auth = { headers: { Authorization: `Bearer ${token}` } };
-  const t = await json<ThingTV>(api(`/things/${id}`), auth, "Thingiverse");
+  const t = await json<ThingTV>(api(`/things/${id}`), auth, "Thingiverse").catch(async (e: Error) => {
+    // O Thingiverse bloqueia (Cloudflare) pedidos vindos de servidor: usa o que o seu navegador trouxe na pesquisa.
+    const achado = /bloqueou/.test(e.message) ? await achadoDoNavegador(id) : null;
+    if (!achado) throw e;
+    return null;
+  });
+  if (!t) return modeloDoAchado((await achadoDoNavegador(id))!, link);
   const imgs = await json<{ sizes?: { type: string; size: string; url: string }[] }[]>(api(`/things/${id}/images`), auth, "Thingiverse").catch(() => []);
   const arqs = await json<{ name: string; size?: number; download_url?: string }[]>(api(`/things/${id}/files`), auth, "Thingiverse").catch(() => []);
   const med = await medirVarios(arqs.filter((a) => a.download_url).map((a) => ({ url: a.download_url!, nome: a.name, tamanho: a.size, init: auth })));
@@ -310,6 +318,78 @@ async function thingiverse(id: string, link: string): Promise<Modelo3d> {
       "O Thingiverse não informa tempo nem cores: o peso é estimado pelo volume. Para o número exato, envie o 3MF fatiado.",
     ],
   };
+}
+
+/** Modelo do Thingiverse que o navegador trouxe na pesquisa (o servidor é bloqueado pelo Cloudflare do site). */
+async function achadoDoNavegador(id: string): Promise<ModeloAchado | null> {
+  const [r] = await db
+    .select({ modelo: pesquisaModelosItens.modelo })
+    .from(pesquisaModelosItens)
+    .where(sql`${pesquisaModelosItens.modelo}->>'fonte' = 'thingiverse' and ${pesquisaModelosItens.modelo}->>'link' ~ ${`thing:${id}([^0-9]|$)`}`)
+    .orderBy(desc(pesquisaModelosItens.id))
+    .limit(1);
+  return r?.modelo ?? null;
+}
+
+function modeloDoAchado(a: ModeloAchado, link: string): Modelo3d {
+  return {
+    fonte: "thingiverse",
+    link: a.link || link,
+    titulo: a.titulo,
+    autor: a.autor,
+    descricao: a.descricao ?? "",
+    fotos: a.fotos?.length ? a.fotos : a.imagem ? [a.imagem] : [],
+    licenca: a.licenca,
+    comercial: a.comercial,
+    perfis: [],
+    medidasMm: null,
+    pesoEstimadoG: null,
+    avisos: [
+      "O Thingiverse bloqueia o servidor do ERP (Cloudflare): os dados vieram da pesquisa feita pelo seu navegador. Baixe o arquivo no Thingiverse e arraste em \"Arquivos de impressão\" do produto para medir e calcular o peso.",
+    ],
+  };
+}
+
+/** Termo em inglês para o navegador pesquisar no Thingiverse (os sites são em inglês). */
+export async function termoEmIngles(q: string) {
+  const [en] = await traduzir([q.trim().slice(0, 80)], "en");
+  return en || q;
+}
+
+export type HitThingiverse = {
+  id: number;
+  name: string;
+  public_url?: string;
+  thumbnail?: string;
+  preview_image?: string;
+  like_count?: number;
+  collect_count?: number;
+  creator?: { name?: string };
+  license?: string;
+  description?: string;
+};
+
+/** Converte o que o navegador trouxe do Thingiverse em modelos achados (títulos em português). */
+export async function achadosThingiverse(hits: HitThingiverse[]): Promise<ModeloAchado[]> {
+  const lista = hits
+    .filter((h) => h && Number.isFinite(Number(h.id)) && typeof h.name === "string")
+    .slice(0, 40)
+    .map(
+      (h): ModeloAchado => ({
+        fonte: "thingiverse",
+        titulo: h.name.slice(0, 200),
+        link: `https://www.thingiverse.com/thing:${Number(h.id)}`,
+        imagem: String(h.preview_image || h.thumbnail || "").slice(0, 500),
+        autor: String(h.creator?.name ?? "").slice(0, 100),
+        licenca: licencaPt(String(h.license ?? "")),
+        comercial: licencaComercial(String(h.license ?? "")),
+        downloads: Number(h.collect_count) || 0,
+        curtidas: Number(h.like_count) || 0,
+        descricao: textoDeHtml(String(h.description ?? "")).slice(0, 4000),
+      }),
+    );
+  const titulos = await traduzir(lista.map((m) => m.titulo), "pt");
+  return lista.map((m, i) => ({ ...m, titulo: titulos[i] ?? m.titulo }));
 }
 
 // ------------------------------------------------------------------------------------------------ Cults

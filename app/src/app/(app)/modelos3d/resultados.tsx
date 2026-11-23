@@ -10,7 +10,8 @@ import { Badge, Button, buttonClass, Card, Input, Select } from "@/components/ui
 import { FONTES_MODELO, NOMES_FONTE, type CanalMercado, type FonteModelo, type MercadoCanal, type pesquisaModelosItens } from "@/db/schema";
 import type { EstadoCadastro } from "@/lib/cadastro-modelos";
 import { cn, formatBRL } from "@/lib/utils";
-import { analisarDeNovo, andamentoPesquisa } from "./actions";
+import type { HitThingiverse } from "@/lib/modelos3d";
+import { analisarDeNovo, andamentoPesquisa, resultadoThingiverse, thingiversePeloNavegador } from "./actions";
 
 type Item = typeof pesquisaModelosItens.$inferSelect;
 const CANAIS: CanalMercado[] = ["magalu", "mercadolivre", "shopee"];
@@ -47,7 +48,7 @@ export function ResultadosPesquisa({
   termo,
   inicial,
   andamento,
-  fontes,
+  fontes: fontesIniciais,
 }: {
   pesquisaId: number;
   termo: string;
@@ -56,6 +57,44 @@ export function ResultadosPesquisa({
   fontes: Partial<Record<FonteModelo, string>>;
 }) {
   const [itens, setItens] = useState(inicial);
+  const [fontes, setFontes] = useState(fontesIniciais);
+  // O Thingiverse bloqueia o servidor (Cloudflare): a pesquisa dele sai do seu navegador, uma vez por pesquisa.
+  useEffect(() => {
+    if (!/bloqueia|bloqueou/.test(fontesIniciais.thingiverse ?? "") || /navegador/.test(fontesIniciais.thingiverse ?? "")) return;
+    let parado = false;
+    (async () => {
+      const pedido = await thingiversePeloNavegador(pesquisaId).catch(() => null);
+      if (!pedido || parado) return;
+      setFontes((f) => ({ ...f, thingiverse: "pesquisando pelo seu navegador..." }));
+      const tk = `access_token=${encodeURIComponent(pedido.token)}`;
+      let hits: HitThingiverse[] | null = null;
+      let erro = "";
+      try {
+        const r = await fetch(`https://api.thingiverse.com/search/${encodeURIComponent(pedido.termo)}/?type=things&per_page=30&sort=popular&${tk}`);
+        if (!r.ok) throw new Error(`resposta ${r.status}`);
+        const j = (await r.json()) as { hits?: HitThingiverse[] };
+        hits = j.hits ?? [];
+        // Licença e descrição de cada um (a busca não traz): o que der, em paralelo.
+        const detalhes = await Promise.all(
+          hits.slice(0, 30).map((h) =>
+            fetch(`https://api.thingiverse.com/things/${h.id}?${tk}`)
+              .then((x) => (x.ok ? (x.json() as Promise<{ license?: string; description?: string; description_html?: string }>) : null))
+              .catch(() => null),
+          ),
+        );
+        hits = hits.map((h, n) => ({ ...h, license: detalhes[n]?.license ?? h.license, description: detalhes[n]?.description_html || detalhes[n]?.description || h.description }));
+      } catch (e) {
+        erro = (e as Error).message || "sem resposta";
+      }
+      if (parado) return;
+      const novos = await resultadoThingiverse(pesquisaId, hits, erro).catch(() => null);
+      if (novos) setItens(novos);
+      setFontes((f) => ({ ...f, thingiverse: hits ? `${hits.length} modelo(s) (pelo seu navegador)` : "bloqueado também pelo navegador" }));
+    })();
+    return () => {
+      parado = true;
+    };
+  }, [pesquisaId, fontesIniciais.thingiverse]);
   const pendentes = itens.filter((i) => i.status === "pendente").length;
   // Enquanto há modelos em análise, busca os resultados novos a cada 6 s (sem recarregar a página).
   useEffect(() => {
@@ -75,6 +114,10 @@ export function ResultadosPesquisa({
   const [precoMax, setPrecoMax] = useState("");
   const [ordem, setOrdem] = useState<Ordem>("vendidos");
   const [vigiar, setVigiar] = useState(0);
+  // Ordem guardada (ids): congelada na primeira vez e a cada troca de ordem/filtro; null = calcular agora.
+  const [ordemFixa, setOrdemFixa] = useState<number[] | null>(null);
+  const [prontosAoOrdenar, setProntosAoOrdenar] = useState(0);
+  useEffect(() => setOrdemFixa(null), [licenca, site, plat, soVendendo, precoMin, precoMax, ordem]);
 
   const lista = useMemo(() => {
     const min = Number(precoMin.replace(",", ".")) || 0;
@@ -98,10 +141,22 @@ export function ResultadosPesquisa({
       maisConcorrentes: (i) => anunciosDe(i, plat),
       baixados: (i) => i.modelo.downloads,
     };
-    return [...f].sort((a, b) => (a.status === "pronto" ? 0 : 1) - (b.status === "pronto" ? 0 : 1) || chave[ordem](b) - chave[ordem](a));
-  }, [itens, licenca, site, plat, soVendendo, precoMin, precoMax, ordem]);
+    const ordenada = [...f].sort((a, b) => (a.status === "pronto" ? 0 : 1) - (b.status === "pronto" ? 0 : 1) || chave[ordem](b) - chave[ordem](a));
+    // Ordem fixa enquanto a análise termina: o modelo que fica pronto não pula para o topo (a tela não mexe sozinha).
+    // Só reordena quando você troca a ordem/filtros ou toca em "Reordenar".
+    if (!ordemFixa) return ordenada;
+    const pos = new Map(ordemFixa.map((id, n) => [id, n]));
+    return [...f].sort((a, b) => (pos.get(a.id) ?? 1e9 + a.posicao) - (pos.get(b.id) ?? 1e9 + b.posicao));
+  }, [itens, licenca, site, plat, soVendendo, precoMin, precoMax, ordem, ordemFixa]);
 
+  useEffect(() => {
+    if (ordemFixa) return;
+    setOrdemFixa(lista.map((i) => i.id));
+    setProntosAoOrdenar(itens.length - pendentes);
+  }, [ordemFixa, lista, itens.length, pendentes]);
   const prontos = itens.length - pendentes;
+  // Ficaram prontos modelos depois de ordenar: o botão reordena quando você quiser.
+  const foraDeOrdem = Boolean(ordemFixa) && prontos > prontosAoOrdenar;
   const vendaveis = itens.filter((i) => i.modelo.comercial === true).length;
   return (
     <div className="grid gap-4">
@@ -185,6 +240,11 @@ export function ResultadosPesquisa({
           </label>
         </div>
         <p className="text-xs text-muted">
+          {foraDeOrdem ? (
+            <button type="button" onClick={() => setOrdemFixa(null)} className="mr-2 inline-flex items-center gap-1 font-semibold text-gold hover:underline">
+              <RefreshCw className="size-3.5" /> Reordenar pelos resultados
+            </button>
+          ) : null}
           Mostrando {lista.length} de {itens.length}. O preço de mercado é a mediana dos anúncios parecidos; o preço para concorrer fica um pouco abaixo dela, sem passar do
           seu mínimo.
         </p>

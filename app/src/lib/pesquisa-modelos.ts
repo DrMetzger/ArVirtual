@@ -6,8 +6,8 @@ import { pesquisarConcorrencia } from "@/lib/concorrencia";
 import { calcularMercado } from "@/lib/preco-mercado";
 import { tempoPeloPeso } from "@/lib/cores-filamento";
 import { custoComposicao } from "@/lib/impressao";
-import { buscarModelosDetalhado, lerModeloDoLink } from "@/lib/modelos3d";
-import { getParametrosImpressao, getParametrosPreco } from "@/lib/settings";
+import { achadosThingiverse, buscarModelosDetalhado, lerModeloDoLink, termoEmIngles, type HitThingiverse } from "@/lib/modelos3d";
+import { getParametrosImpressao, getParametrosPreco, getSettings } from "@/lib/settings";
 
 // Pesquisa de mercado de modelos 3D: acha os modelos (todas as licenças) e, um por vez em segundo plano, calcula
 // peso/tempo/custo e o mercado de cada um no Mercado Livre, na Shopee e no Magalu, com o preço para concorrer.
@@ -108,4 +108,36 @@ export async function apagarPesquisa(pesquisaId: number) {
 /** Limpa todo o histórico de pesquisas (os produtos já cadastrados continuam). */
 export async function limparPesquisas() {
   await db.delete(pesquisasModelos);
+}
+
+/** O Thingiverse bloqueou o servidor nesta pesquisa? Então o navegador pesquisa (com o termo em inglês e o token). */
+export async function pedidoThingiverse(pesquisaId: number) {
+  const [p] = await db.select().from(pesquisasModelos).where(eq(pesquisasModelos.id, pesquisaId));
+  if (!p || !/bloqueia|bloqueou/.test(p.fontes.thingiverse ?? "")) return null;
+  const token = (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim();
+  if (!token) return null;
+  return { token, termo: await termoEmIngles(p.termo) };
+}
+
+/** Guarda os modelos do Thingiverse que o navegador trouxe (sem repetir) e manda analisar o mercado deles. */
+export async function guardarThingiverse(pesquisaId: number, hits: HitThingiverse[] | null, erro = "") {
+  const [p] = await db.select().from(pesquisasModelos).where(eq(pesquisasModelos.id, pesquisaId));
+  if (!p) return;
+  if (!hits) {
+    await db
+      .update(pesquisasModelos)
+      .set({ fontes: { ...p.fontes, thingiverse: `bloqueado também pelo navegador${erro ? ` (${erro.slice(0, 80)})` : ""}` } })
+      .where(eq(pesquisasModelos.id, pesquisaId));
+    return;
+  }
+  const atuais = await itensDaPesquisa(pesquisaId);
+  const vistos = new Set(atuais.map((i) => i.modelo.link));
+  const novos = (await achadosThingiverse(hits)).filter((m) => !vistos.has(m.link));
+  const inicio = atuais.reduce((n, i) => Math.max(n, i.posicao + 1), 0);
+  if (novos.length) await db.insert(pesquisaModelosItens).values(novos.map((modelo, n) => ({ pesquisaId, posicao: inicio + n, modelo })));
+  await db
+    .update(pesquisasModelos)
+    .set({ fontes: { ...p.fontes, thingiverse: `${novos.length} modelo(s) (pelo seu navegador)` } })
+    .where(eq(pesquisasModelos.id, pesquisaId));
+  if (novos.length) void analisarPendentes();
 }
