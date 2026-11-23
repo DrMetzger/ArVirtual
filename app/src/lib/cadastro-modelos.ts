@@ -144,7 +144,7 @@ export async function anexarArquivos(produtoId: string, m: Modelo3d, perfilId?: 
     anexados++;
   };
   if (m.arquivoLocal) await gravar(m.arquivoLocal.nome, { caminho: m.arquivoLocal.caminho });
-  const token = m.fonte === "thingiverse" ? (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim() : "";
+  const token = "";
   // MakerWorld: só o 3MF do perfil escolhido (ou o primeiro), pelo link que a conta Bambu libera.
   const lista = m.fonte === "makerworld" ? (m.arquivos ?? []).filter((a, i) => (perfilId ? a.url === `makerworld:${perfilId}` : i === 0)).slice(0, 1) : (m.arquivos ?? []);
   for (const original of lista.slice(0, 10)) {
@@ -159,7 +159,7 @@ export async function anexarArquivos(produtoId: string, m: Modelo3d, perfilId?: 
     if (!res?.ok || Number(res.headers.get("content-length") ?? 0) > MAX_ARQUIVO_IMPRESSAO) continue;
     const dados = Buffer.from(await res.arrayBuffer());
     if (!dados.length || dados.length > MAX_ARQUIVO_IMPRESSAO) continue;
-    // Pacote .zip (ex.: Thingiverse): guarda os arquivos de impressão de dentro; sem nenhum, o próprio .zip.
+    // Pacote .zip: guarda os arquivos de impressão de dentro; sem nenhum, o próprio .zip.
     if (/\.zip$/i.test(a.nome) || dados.subarray(0, 2).toString() === "PK") {
       const dentro = (() => {
         try {

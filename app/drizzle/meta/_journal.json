@@ -295,6 +295,13 @@
       "when": 1795447568135,
       "tag": "0041_remove_afiliados",
       "breakpoints": true
+    },
+    {
+      "idx": 42,
+      "version": "7",
+      "when": 1795466745874,
+      "tag": "0042_remove_thingiverse",
+      "breakpoints": true
     }
   ]
 }

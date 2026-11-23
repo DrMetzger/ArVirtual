@@ -84,7 +84,6 @@ export const SETTINGS = {
   "makerworld.email": { label: "E-mail da conta Bambu Lab (MakerWorld)", secret: false, group: "Conta Bambu Lab (MakerWorld)" },
   "makerworld.token": { label: "Chave de acesso (preenchida pelo login abaixo)", secret: true, group: "Conta Bambu Lab (MakerWorld)" },
   "makerworld.validade": { label: "Validade da chave", secret: false, group: "Conta Bambu Lab (MakerWorld)" },
-  "thingiverse.token": { label: "App Token (o 3º campo da tela API Information do seu app no Thingiverse; Client ID e Client Secret não precisam)", secret: true, group: "Thingiverse" },
   "myminifactory.chave": { label: "API Key / Client Key do app criado em myminifactory.com › Settings › Developer", secret: true, group: "MyMiniFactory" },
   "cults.usuario": { label: "API user (o seu apelido, o 2º campo com COPY na tela API Keys do Cults)", secret: false, group: "Cults" },
   "cults.chave": { label: "API key code (o 1º campo com COPY, que o Cults mostra uma vez só)", secret: true, group: "Cults" },

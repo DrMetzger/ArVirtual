@@ -10,8 +10,7 @@ import { Badge, Button, buttonClass, Card, Input, Select } from "@/components/ui
 import { FONTES_MODELO, NOMES_FONTE, type CanalMercado, type FonteModelo, type MercadoCanal, type pesquisaModelosItens } from "@/db/schema";
 import type { EstadoCadastro } from "@/lib/cadastro-modelos";
 import { cn, formatBRL } from "@/lib/utils";
-import type { HitThingiverse } from "@/lib/modelos3d";
-import { analisarDeNovo, andamentoPesquisa, resultadoThingiverse, thingiversePeloNavegador } from "./actions";
+import { analisarDeNovo, andamentoPesquisa } from "./actions";
 
 type Item = typeof pesquisaModelosItens.$inferSelect;
 const CANAIS: CanalMercado[] = ["magalu", "mercadolivre", "shopee"];
@@ -57,44 +56,7 @@ export function ResultadosPesquisa({
   fontes: Partial<Record<FonteModelo, string>>;
 }) {
   const [itens, setItens] = useState(inicial);
-  const [fontes, setFontes] = useState(fontesIniciais);
-  // O Thingiverse bloqueia o servidor (Cloudflare): a pesquisa dele sai do seu navegador, uma vez por pesquisa.
-  useEffect(() => {
-    if (!/bloqueia|bloqueou/.test(fontesIniciais.thingiverse ?? "") || /navegador/.test(fontesIniciais.thingiverse ?? "")) return;
-    let parado = false;
-    (async () => {
-      const pedido = await thingiversePeloNavegador(pesquisaId).catch(() => null);
-      if (!pedido || parado) return;
-      setFontes((f) => ({ ...f, thingiverse: "pesquisando pelo seu navegador..." }));
-      const tk = `access_token=${encodeURIComponent(pedido.token)}`;
-      let hits: HitThingiverse[] | null = null;
-      let erro = "";
-      try {
-        const r = await fetch(`https://api.thingiverse.com/search/${encodeURIComponent(pedido.termo)}/?type=things&per_page=30&sort=popular&${tk}`);
-        if (!r.ok) throw new Error(`resposta ${r.status}`);
-        const j = (await r.json()) as { hits?: HitThingiverse[] };
-        hits = j.hits ?? [];
-        // Licença e descrição de cada um (a busca não traz): o que der, em paralelo.
-        const detalhes = await Promise.all(
-          hits.slice(0, 30).map((h) =>
-            fetch(`https://api.thingiverse.com/things/${h.id}?${tk}`)
-              .then((x) => (x.ok ? (x.json() as Promise<{ license?: string; description?: string; description_html?: string }>) : null))
-              .catch(() => null),
-          ),
-        );
-        hits = hits.map((h, n) => ({ ...h, license: detalhes[n]?.license ?? h.license, description: detalhes[n]?.description_html || detalhes[n]?.description || h.description }));
-      } catch (e) {
-        erro = (e as Error).message || "sem resposta";
-      }
-      if (parado) return;
-      const novos = await resultadoThingiverse(pesquisaId, hits, erro).catch(() => null);
-      if (novos) setItens(novos);
-      setFontes((f) => ({ ...f, thingiverse: hits ? `${hits.length} modelo(s) (pelo seu navegador)` : "bloqueado também pelo navegador" }));
-    })();
-    return () => {
-      parado = true;
-    };
-  }, [pesquisaId, fontesIniciais.thingiverse]);
+  const fontes = fontesIniciais;
   const pendentes = itens.filter((i) => i.status === "pendente").length;
   // Enquanto há modelos em análise, busca os resultados novos a cada 6 s (sem recarregar a página).
   useEffect(() => {

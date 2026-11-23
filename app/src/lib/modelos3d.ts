@@ -2,9 +2,7 @@ import "server-only";
 import { randomBytes } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import sharp from "sharp";
-import { desc, sql } from "drizzle-orm";
-import { db } from "@/db";
-import { FONTES_MODELO, pesquisaModelosItens, type FonteModelo, type ModeloAchado, type OrigemModelo3d } from "@/db/schema";
+import { FONTES_MODELO, type FonteModelo, type ModeloAchado, type OrigemModelo3d } from "@/db/schema";
 import { ler3mf, lerZip, malhaStl, medidasMalha, pesoEstimadoPla, type Malha } from "@/lib/assistente/arquivos";
 import { gerarComGemini } from "@/lib/gemini";
 import { getSettings } from "@/lib/settings";
@@ -12,7 +10,7 @@ import { PASTA_IMPRESSAO, UPLOAD_DIR } from "@/lib/uploads";
 
 // Modelos 3D de sites de arquivos para impressão: lê título, fotos, licença e (quando o site informa) perfis de impressão
 // com tempo, peso e cores; mede a peça pelo arquivo (STL/3MF) para saber em qual impressora cabe.
-// Só pelos caminhos oficiais: MakerWorld e Printables são públicos; Thingiverse e Cults pedem a chave da sua conta
+// Só pelos caminhos oficiais: MakerWorld e Printables são públicos; Cults e MyMiniFactory pedem a chave da sua conta
 // (Configurações › Integrações). Quando um site não deixa, envie o arquivo .3mf/.stl baixado.
 
 export type Fonte = OrigemModelo3d["fonte"];
@@ -101,8 +99,6 @@ export function fonteDoLink(link: string): { fonte: Exclude<Fonte, "arquivo">; i
   if (m) return { fonte: "makerworld", id: m[1]!, perfil: m[2] };
   m = u.match(/printables\.com\/(?:[a-z-]+\/)?model\/(\d+)/i);
   if (m) return { fonte: "printables", id: m[1]! };
-  m = u.match(/thingiverse\.com\/thing:(\d+)/i);
-  if (m) return { fonte: "thingiverse", id: m[1]! };
   m = u.match(/myminifactory\.com\/object\/(?:[a-z0-9-]*-)?(\d+)/i);
   if (m) return { fonte: "myminifactory", id: m[1]! };
   m = u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/[^/]+\/([a-z0-9-]+)/i) ?? u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/([a-z0-9-]+)/i);
@@ -279,119 +275,6 @@ async function printables(id: string, link: string): Promise<Modelo3d> {
   };
 }
 
-// ------------------------------------------------------------------------------------------------ Thingiverse
-type ThingTV = { id: number; name: string; description?: string; description_html?: string; license?: string; creator?: { name?: string } };
-
-async function thingiverse(id: string, link: string): Promise<Modelo3d> {
-  const token = (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim();
-  if (!token) throw new Error("Para ler do Thingiverse, cadastre o App Token em Configurações › Integrações › Thingiverse (ou envie o arquivo baixado).");
-  const api = (p: string) => `https://api.thingiverse.com${p}`;
-  const auth = { headers: { Authorization: `Bearer ${token}` } };
-  const t = await json<ThingTV>(api(`/things/${id}`), auth, "Thingiverse").catch(async (e: Error) => {
-    // O Thingiverse bloqueia (Cloudflare) pedidos vindos de servidor: usa o que o seu navegador trouxe na pesquisa.
-    const achado = /bloqueou/.test(e.message) ? await achadoDoNavegador(id) : null;
-    if (!achado) throw e;
-    return null;
-  });
-  if (!t) return modeloDoAchado((await achadoDoNavegador(id))!, link);
-  const imgs = await json<{ sizes?: { type: string; size: string; url: string }[] }[]>(api(`/things/${id}/images`), auth, "Thingiverse").catch(() => []);
-  const arqs = await json<{ name: string; size?: number; download_url?: string }[]>(api(`/things/${id}/files`), auth, "Thingiverse").catch(() => []);
-  const med = await medirVarios(arqs.filter((a) => a.download_url).map((a) => ({ url: a.download_url!, nome: a.name, tamanho: a.size, init: auth })));
-  const fotos = imgs
-    .map((i) => i.sizes?.find((s) => s.type === "display" && s.size === "large")?.url ?? i.sizes?.find((s) => s.size === "large")?.url)
-    .filter((x): x is string => Boolean(x));
-  return {
-    fonte: "thingiverse",
-    link,
-    titulo: t.name,
-    autor: t.creator?.name ?? "",
-    descricao: textoDeHtml(t.description_html || t.description || ""),
-    fotos: fotos.slice(0, 10),
-    licenca: licencaPt(t.license ?? ""),
-    comercial: licencaComercial(t.license ?? ""),
-    perfis: [],
-    medidasMm: med.medidasMm,
-    pesoEstimadoG: med.pesoEstimadoG,
-    arquivos: arqs.filter((a) => a.download_url).map((a) => ({ nome: a.name, url: a.download_url!, tamanho: a.size })).slice(0, 10),
-    avisos: [
-      ...(med.medidos ? [] : ["Não deu para medir os arquivos: confira o tamanho no fatiador."]),
-      "O Thingiverse não informa tempo nem cores: o peso é estimado pelo volume. Para o número exato, envie o 3MF fatiado.",
-    ],
-  };
-}
-
-/** Modelo do Thingiverse que o navegador trouxe na pesquisa (o servidor é bloqueado pelo Cloudflare do site). */
-async function achadoDoNavegador(id: string): Promise<ModeloAchado | null> {
-  const [r] = await db
-    .select({ modelo: pesquisaModelosItens.modelo })
-    .from(pesquisaModelosItens)
-    .where(sql`${pesquisaModelosItens.modelo}->>'fonte' = 'thingiverse' and ${pesquisaModelosItens.modelo}->>'link' ~ ${`thing:${id}([^0-9]|$)`}`)
-    .orderBy(desc(pesquisaModelosItens.id))
-    .limit(1);
-  return r?.modelo ?? null;
-}
-
-function modeloDoAchado(a: ModeloAchado, link: string): Modelo3d {
-  return {
-    fonte: "thingiverse",
-    link: a.link || link,
-    titulo: a.titulo,
-    autor: a.autor,
-    descricao: a.descricao ?? "",
-    fotos: a.fotos?.length ? a.fotos : a.imagem ? [a.imagem] : [],
-    licenca: a.licenca,
-    comercial: a.comercial,
-    perfis: [],
-    medidasMm: null,
-    pesoEstimadoG: null,
-    avisos: [
-      "O Thingiverse bloqueia o servidor do ERP (Cloudflare): os dados vieram da pesquisa feita pelo seu navegador. Baixe o arquivo no Thingiverse e arraste em \"Arquivos de impressão\" do produto para medir e calcular o peso.",
-    ],
-  };
-}
-
-/** Termo em inglês para o navegador pesquisar no Thingiverse (os sites são em inglês). */
-export async function termoEmIngles(q: string) {
-  const [en] = await traduzir([q.trim().slice(0, 80)], "en");
-  return en || q;
-}
-
-export type HitThingiverse = {
-  id: number;
-  name: string;
-  public_url?: string;
-  thumbnail?: string;
-  preview_image?: string;
-  like_count?: number;
-  collect_count?: number;
-  creator?: { name?: string };
-  license?: string;
-  description?: string;
-};
-
-/** Converte o que o navegador trouxe do Thingiverse em modelos achados (títulos em português). */
-export async function achadosThingiverse(hits: HitThingiverse[]): Promise<ModeloAchado[]> {
-  const lista = hits
-    .filter((h) => h && Number.isFinite(Number(h.id)) && typeof h.name === "string")
-    .slice(0, 40)
-    .map(
-      (h): ModeloAchado => ({
-        fonte: "thingiverse",
-        titulo: h.name.slice(0, 200),
-        link: `https://www.thingiverse.com/thing:${Number(h.id)}`,
-        imagem: String(h.preview_image || h.thumbnail || "").slice(0, 500),
-        autor: String(h.creator?.name ?? "").slice(0, 100),
-        licenca: licencaPt(String(h.license ?? "")),
-        comercial: licencaComercial(String(h.license ?? "")),
-        downloads: Number(h.collect_count) || 0,
-        curtidas: Number(h.like_count) || 0,
-        descricao: textoDeHtml(String(h.description ?? "")).slice(0, 4000),
-      }),
-    );
-  const titulos = await traduzir(lista.map((m) => m.titulo), "pt");
-  return lista.map((m, i) => ({ ...m, titulo: titulos[i] ?? m.titulo }));
-}
-
 // ------------------------------------------------------------------------------------------------ Cults
 type CultsCriacao = { name: string; description?: string; url?: string; illustrations?: { imageUrl: string }[]; license?: { name?: string; code?: string }; creator?: { nick?: string } };
 
@@ -458,12 +341,11 @@ async function myMiniFactory(id: string, link: string): Promise<Modelo3d> {
 
 export async function lerModeloDoLink(link: string): Promise<Modelo3d> {
   const f = fonteDoLink(link);
-  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Thingiverse, Cults3D ou MyMiniFactory.");
+  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Cults3D ou MyMiniFactory.");
   const limpo = link.trim();
   const leitores: Record<FonteModelo, (id: string, l: string) => Promise<Modelo3d>> = {
     makerworld: makerWorld,
     printables,
-    thingiverse,
     cults,
     myminifactory: myMiniFactory,
   };
@@ -592,30 +474,6 @@ async function buscaPrintables(q: string): Promise<ResultadoFonte> {
   return { modelos, status: statusDe(modelos.length) };
 }
 
-async function buscaThingiverse(q: string): Promise<ResultadoFonte> {
-  const token = (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim();
-  if (!token) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
-  const r = await json<{ hits?: { id: number; name: string; public_url?: string; thumbnail?: string; preview_image?: string; like_count?: number; collect_count?: number; creator?: { name?: string } }[] }>(
-    `https://api.thingiverse.com/search/${encodeURIComponent(q)}/?type=things&per_page=${POR_FONTE}&sort=popular`,
-    { headers: { Authorization: `Bearer ${token}` } },
-    "Thingiverse",
-  );
-  const modelos = (r.hits ?? []).map(
-    (h): ModeloAchado => ({
-      fonte: "thingiverse",
-      titulo: h.name,
-      link: h.public_url || `https://www.thingiverse.com/thing:${h.id}`,
-      imagem: h.preview_image || h.thumbnail || "",
-      autor: h.creator?.name ?? "",
-      licenca: "",
-      comercial: null,
-      downloads: h.collect_count ?? 0,
-      curtidas: h.like_count ?? 0,
-    }),
-  );
-  return { modelos, status: statusDe(modelos.length) };
-}
-
 async function buscaCults(q: string): Promise<ResultadoFonte> {
   const s = await getSettings(["cults.usuario", "cults.chave"]);
   if (!s["cults.usuario"] || !s["cults.chave"]) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
@@ -678,12 +536,11 @@ async function buscaMyMiniFactory(q: string): Promise<ResultadoFonte> {
 const BUSCAS: Record<FonteModelo, (q: string) => Promise<ResultadoFonte>> = {
   makerworld: buscaMakerWorld,
   printables: buscaPrintables,
-  thingiverse: buscaThingiverse,
   cults: buscaCults,
   myminifactory: buscaMyMiniFactory,
 };
 
-/** Pesquisa um termo (já em inglês) nos 5 sites ao mesmo tempo. */
+/** Pesquisa um termo (já em inglês) nos 4 sites ao mesmo tempo. */
 async function buscarTermo(q: string) {
   const resultados = await Promise.all(
     FONTES_MODELO.map(async (f) => [f, await BUSCAS[f](q).catch((e) => ({ modelos: [], status: erroDe(e) }))] as const),
@@ -730,7 +587,7 @@ async function traduzir(textos: string[], para: "pt" | "en"): Promise<string[]> 
 }
 
 /**
- * Procura modelos nos 5 sites (você digita em português; vai traduzido por dentro) e devolve TODOS (todas as licenças),
+ * Procura modelos nos 4 sites (você digita em português; vai traduzido por dentro) e devolve TODOS (todas as licenças),
  * com como foi em cada site. Títulos voltam em português. Ordem: mais baixados primeiro, intercalando os sites.
  */
 export async function buscarModelosDetalhado(termo: string, limite = 60): Promise<{ modelos: ModeloAchado[]; fontes: Partial<Record<FonteModelo, string>> }> {
