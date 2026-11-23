@@ -23,7 +23,7 @@ export default async function PesquisaModelosPage({ searchParams }: { searchPara
     <>
       <PageHeader
         title="Modelos 3D"
-        description="Todos os modelos de 6 sites (MakerWorld, Printables, Sketchfab, Thingiverse, Cults3D e MyMiniFactory) para o que você procurar, com o mercado de cada um no Magalu, Mercado Livre e Shopee: quem vende, por quanto, quanto vende e o preço para você concorrer."
+        description="Todos os modelos de 5 sites (MakerWorld, Printables, Thingiverse, Cults3D e MyMiniFactory) para o que você procurar, com o mercado de cada um no Magalu, Mercado Livre e Shopee: quem vende, por quanto, quanto vende e o preço para você concorrer."
       />
       <Card className="mb-5 p-5">
         <form action={novaPesquisa} className="flex gap-2">

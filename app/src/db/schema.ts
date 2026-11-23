@@ -190,14 +190,14 @@ export const impressoras = pgTable("impressoras", {
 export type Impressora = typeof impressoras.$inferSelect;
 
 /** Sites de arquivos para impressão 3D usados na pesquisa e na importação. */
-export const FONTES_MODELO = ["makerworld", "printables", "sketchfab", "thingiverse", "cults", "myminifactory"] as const;
+export const FONTES_MODELO = ["makerworld", "printables", "thingiverse", "cults", "myminifactory"] as const;
 export type FonteModelo = (typeof FONTES_MODELO)[number];
 export const NOMES_FONTE: Record<FonteModelo | "arquivo", string> & Record<string, string> = {
   makerworld: "MakerWorld",
   printables: "Printables",
-  sketchfab: "Sketchfab",
-  /** Saiu da pesquisa (sem API); fica o nome para os produtos antigos que vieram dele. */
+  /** Saíram da pesquisa; ficam os nomes para os produtos antigos que vieram deles. */
   thangs: "Thangs",
+  sketchfab: "Sketchfab",
   thingiverse: "Thingiverse",
   cults: "Cults3D",
   myminifactory: "MyMiniFactory",
