@@ -55,14 +55,15 @@ export default async function ConfiguracoesPage({ searchParams }: { searchParams
         {apicpfReserva ? " · usando a chave do servidor (segredo APICPF_CHAVE)" : ""}.
       </>
     ),
-    Thingiverse: "Opcional: só para importar modelos do Thingiverse pelo link. Sem a chave, baixe o arquivo no site e envie em Produtos › Importar modelo 3D.",
+    Sketchfab: "Opcional: a pesquisa e as fotos do Sketchfab funcionam sem chave. O token grátis (sketchfab.com › Settings › Password & API) deixa o ERP baixar o arquivo original do modelo para o produto.",
+    Thingiverse: "Para a pesquisa de modelos 3D e o download dos arquivos do Thingiverse. Cole aqui o App Token (thingiverse.com › Apps › seu app › App Token).",
     MyMiniFactory: "Opcional: para a pesquisa de modelos 3D incluir o MyMiniFactory. Crie a chave na sua conta do site (área de desenvolvedor).",
-    Cults: "Opcional: só para importar modelos do Cults pelo link (fotos, descrição e licença). O arquivo para medir o tamanho você envia baixado.",
+    Cults: "Para a pesquisa de modelos 3D incluir o Cults3D. Use o apelido (API user) e a chave da API (cults3d.com › Configurações › API keys).",
     "Mercado Livre": <>Redirect URI: <code className="break-all">{callbackUrl(origin, "mercadolivre")}</code></>,
-    "Shopee Afiliados": (
+    "Shopee · preços da concorrência": (
       <>
-        Em affiliate.shopee.com.br › Open API (precisa ser afiliado aprovado), gere o App ID e a Senha. Com eles o ERP busca produtos com comissão, gera seus links de
-        afiliado e traz as comissões a cada 6 horas.
+        Só para pesquisar os preços e as vendas dos concorrentes na Shopee (Modelos 3D, preço de mercado e Sentinela). É a chave da Open API de afiliados
+        (affiliate.shopee.com.br); o ERP não usa mais a parte de afiliados.
       </>
     ),
     "Notificações no celular (Firebase)": (

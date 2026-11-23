@@ -175,8 +175,13 @@ public class MainActivity extends Activity {
         VerificarPedidos.agendar(this);
         // Push na hora (Firebase): registra este celular no ERP.
         Push.registrar(this);
-        // Conexão permanente com o ERP: aviso de pedido no instante em que entra (sem Firebase).
-        ConexaoPedidos.iniciar(this);
+        // A antiga conexão permanente mostrava uma notificação "ArVirtual" vazia (ao reiniciar o celular): saiu de vez.
+        if (Build.VERSION.SDK_INT >= 26) {
+            NotificationManager nm = (NotificationManager) getSystemService(NOTIFICATION_SERVICE);
+            nm.cancel(4242);
+            nm.deleteNotificationChannel("conexao-oculta");
+            nm.deleteNotificationChannel("conexao");
+        }
         pedirPermissoes();
         pedirSemEconomiaDeBateria();
     }

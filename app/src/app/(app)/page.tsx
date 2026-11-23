@@ -1,11 +1,11 @@
 import { and, desc, eq, gte, lte, sql } from "drizzle-orm";
 import { MarcaIcone } from "@/components/marca";
-import { ArrowRight, BadgePercent, CheckCircle2, Circle, FileText, Gauge, Package, PiggyBank, Printer, ShoppingBag, Snowflake, Trophy, Truck, TrendingUp, Users } from "lucide-react";
+import { ArrowRight, CheckCircle2, Circle, FileText, Gauge, Package, PiggyBank, Printer, ShoppingBag, Snowflake, Trophy, Truck, TrendingUp, Users } from "lucide-react";
 import Link from "next/link";
 import { Alert, Badge, buttonClass, Card, CardHeader } from "@/components/ui";
 import { VendasChart, type PontoVendas } from "@/components/vendas-chart";
 import { db } from "@/db";
-import { afiliadosComissoes, clientes, contasMarketplace, MARKETPLACES, notas, pedidosMarketplace, produtos, regrasFiscais, sentinelaItens } from "@/db/schema";
+import { clientes, contasMarketplace, MARKETPLACES, notas, pedidosMarketplace, produtos, regrasFiscais, sentinelaItens } from "@/db/schema";
 import { analisarVendas } from "@/lib/analise-vendas";
 import { situacaoPedido } from "@/lib/marketplaces/situacao";
 import { estatisticaAnuncios } from "@/lib/sentinela";
@@ -86,7 +86,7 @@ export default async function Dashboard() {
     ]),
   ]);
 
-  const [analise, estAnuncios, metas, recentes, comissoes, oportunidades, naPlataforma] = await Promise.all([
+  const [analise, estAnuncios, metas, recentes, oportunidades, naPlataforma] = await Promise.all([
     analisarVendas("30d").catch(() => null),
     estatisticaAnuncios().catch(() => null),
     getSettings(["meta.anuncios.magalu", "meta.anuncios.mercadolivre", "meta.anuncios.shopee"]),
@@ -95,10 +95,6 @@ export default async function Dashboard() {
       .from(pedidosMarketplace)
       .where(gte(pedidosMarketplace.data, new Date(Date.now() - 45 * 86400_000)))
       .orderBy(pedidosMarketplace.data),
-    db
-      .select({ total: sql<number>`coalesce(sum(${afiliadosComissoes.comissao}), 0)::float`, qtd: sql<number>`count(*)::int` })
-      .from(afiliadosComissoes)
-      .where(and(gte(afiliadosComissoes.compraEm, desde), sql`${afiliadosComissoes.status} <> 'CANCELLED'`)),
     db
       .select({ id: sentinelaItens.id, nome: sentinelaItens.nome, imagem: sentinelaItens.imagem, preco: sentinelaItens.preco, link: sentinelaItens.link, margem: sql<number>`(${sentinelaItens.analise}->>'margem')::float` })
       .from(sentinelaItens)
@@ -227,7 +223,7 @@ export default async function Dashboard() {
         <Kpi icon={<Truck />} label="A enviar" value={`${aEnviar.length} pedido(s)`} sub={aEnviar.length ? `mais antigo: ${formatDate(aEnviar[0]!.data)}` : "nada pendente"} />
         <Kpi icon={<ShoppingBag />} label="Ticket médio" value={formatBRL(qtdPedidos ? vendas / qtdPedidos : 0)} sub={`${analise?.totais.unidades ?? 0} unidades vendidas`} />
         <Kpi icon={<FileText />} label="NF-e no mês" value={formatBRL(notasMes[0]?.total ?? 0)} sub={`${notasMes[0]?.qtd ?? 0} notas autorizadas`} />
-        <Kpi icon={<BadgePercent />} label="Afiliados · 30 dias" value={formatBRL(comissoes[0]?.total ?? 0)} sub={`${comissoes[0]?.qtd ?? 0} venda(s) · ${qtdClientes} clientes · ${qtdProdutos} produtos`} />
+        <Kpi icon={<Package />} label="Cadastro" value={`${qtdProdutos} produtos`} sub={`${qtdClientes} clientes`} />
       </div>
 
       <Card className="mb-6">

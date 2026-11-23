@@ -81,11 +81,6 @@ export default async function GaleriaPage({ searchParams }: { searchParams: Prom
                       <ExternalLink className="size-3 shrink-0" /> Extraído de: {v.urlOrigem.replace(/^https?:\/\//, "").slice(0, 70)}
                     </a>
                   ) : null}
-                  {produto ? (
-                    <Link href={`/afiliados/${v.produtoId}`} className="text-xs text-muted hover:text-gold">
-                      Produto de afiliado: {produto}
-                    </Link>
-                  ) : null}
                   <form action={salvarVideoGaleria.bind(null, v.id, aqui)} className="grid gap-2">
                     <Input name="titulo" defaultValue={v.titulo} placeholder="Título" className="font-semibold" />
                     <Textarea name="descricao" defaultValue={v.descricao} placeholder="Descrição (legenda para postar)" rows={4} />

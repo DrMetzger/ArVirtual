@@ -212,11 +212,6 @@ export function Conversor({ iniciais, produtos, compacto = false }: { iniciais: 
                   {v.arquivo ? `${dur(v.duracaoS)} · ${mb(v.tamanho)} · ` : ""}
                   {new Date(v.criadoEm).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}
                 </p>
-                {v.produto && v.produtoId ? (
-                  <Link href={`/afiliados/${v.produtoId}`} className="truncate text-xs text-gold hover:underline">
-                    {v.produto}
-                  </Link>
-                ) : null}
               </div>
               <div className="flex flex-wrap items-center gap-1 border-t border-border p-2">
                 {v.arquivo ? (

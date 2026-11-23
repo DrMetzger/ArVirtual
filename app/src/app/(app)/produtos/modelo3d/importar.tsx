@@ -124,7 +124,7 @@ export function ImportarModelo({
         </div>
         <form ref={formRef} onSubmit={onSubmit} className="grid gap-3 p-5">
           {modo === "link" ? (
-            <Field label="Link do modelo" hint="MakerWorld, Printables, Thangs, Thingiverse, Cults3D ou MyMiniFactory">
+            <Field label="Link do modelo" hint="MakerWorld, Printables, Sketchfab, Thingiverse, Cults3D ou MyMiniFactory">
               <Input name="link" required defaultValue={linkInicial} placeholder="https://makerworld.com/pt/models/..." />
             </Field>
           ) : (

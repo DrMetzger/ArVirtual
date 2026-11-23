@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, desc, eq } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { pesquisaModelosItens, pesquisasModelos, type DetalheModelo } from "@/db/schema";
 import { pesquisarConcorrencia } from "@/lib/concorrencia";
@@ -96,4 +96,16 @@ export async function listaPesquisas() {
 
 export async function itensDaPesquisa(pesquisaId: number) {
   return db.select().from(pesquisaModelosItens).where(and(eq(pesquisaModelosItens.pesquisaId, pesquisaId))).orderBy(asc(pesquisaModelosItens.posicao));
+}
+
+/** Apaga uma pesquisa do histórico (e as repetidas do mesmo termo, que a tela mostra como uma só). */
+export async function apagarPesquisa(pesquisaId: number) {
+  const [p] = await db.select({ termo: pesquisasModelos.termo }).from(pesquisasModelos).where(eq(pesquisasModelos.id, pesquisaId));
+  if (!p) return;
+  await db.delete(pesquisasModelos).where(sql`lower(${pesquisasModelos.termo}) = lower(${p.termo})`);
+}
+
+/** Limpa todo o histórico de pesquisas (os produtos já cadastrados continuam). */
+export async function limparPesquisas() {
+  await db.delete(pesquisasModelos);
 }

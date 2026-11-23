@@ -7,8 +7,6 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- Conexão com o ERP sempre ligada (avisos de pedido na hora, sem Firebase). -->
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
-    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.WAKE_LOCK" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Localização do aparelho em Configurações › Aparelhos (só com o app aberto). -->
@@ -57,14 +55,6 @@
             </intent-filter>
         </service>
 
-        <service
-            android:name=".ConexaoPedidos"
-            android:exported="false"
-            android:foregroundServiceType="specialUse">
-            <property
-                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Conexão permanente com o ERP da empresa para avisar pedidos de venda no instante em que entram." />
-        </service>
 
         <receiver
             android:name=".AoLigar"
