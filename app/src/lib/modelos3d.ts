@@ -101,8 +101,6 @@ export function fonteDoLink(link: string): { fonte: Exclude<Fonte, "arquivo">; i
   if (m) return { fonte: "printables", id: m[1]! };
   m = u.match(/thingiverse\.com\/thing:(\d+)/i);
   if (m) return { fonte: "thingiverse", id: m[1]! };
-  m = u.match(/sketchfab\.com\/(?:3d-models|models)\/(?:[^/?#]*-)?([0-9a-f]{32})/i);
-  if (m) return { fonte: "sketchfab", id: m[1]! };
   m = u.match(/myminifactory\.com\/object\/(?:[a-z0-9-]*-)?(\d+)/i);
   if (m) return { fonte: "myminifactory", id: m[1]! };
   m = u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/[^/]+\/([a-z0-9-]+)/i) ?? u.match(/cults3d\.com\/[a-z-]+\/[^/]+\/([a-z0-9-]+)/i);
@@ -352,72 +350,6 @@ async function cults(slug: string, link: string): Promise<Modelo3d> {
   };
 }
 
-// ------------------------------------------------------------------------------------------------ Sketchfab
-// API pública oficial (api.sketchfab.com/v3): busca, fotos e licença sem chave; o arquivo original pede o token grátis
-// da conta (sketchfab.com › Settings › Password & API).
-type SketchfabModelo = {
-  uid: string;
-  name: string;
-  description?: string;
-  viewerUrl?: string;
-  isDownloadable?: boolean;
-  license?: { label?: string; fullName?: string; requirements?: string; slug?: string } | null;
-  user?: { username?: string; displayName?: string };
-  thumbnails?: { images?: { url: string; width: number }[] };
-  likeCount?: number;
-  viewCount?: number;
-};
-
-const fotosSketchfab = (t: SketchfabModelo["thumbnails"]) =>
-  [...(t?.images ?? [])].sort((a, b) => b.width - a.width).filter((i) => i.width >= 400).map((i) => i.url);
-
-const licencaSketchfab = (l: SketchfabModelo["license"]) => {
-  const texto = [l?.fullName || l?.label, l?.slug === "st" || l?.slug === "ed" ? "Standard" : "", l?.requirements].filter(Boolean).join(" ");
-  // "Commercial use is allowed" / "not allowed" vem escrito na licença.
-  const comercial = /commercial use is not allowed|non-?commercial/i.test(texto) ? false : /commercial use is allowed/i.test(texto) ? true : licencaComercial(texto);
-  return { licenca: licencaPt(l?.fullName || l?.label || ""), comercial };
-};
-
-async function sketchfab(id: string, link: string): Promise<Modelo3d> {
-  const m = await json<SketchfabModelo>(`https://api.sketchfab.com/v3/models/${id}`, {}, "Sketchfab");
-  const { licenca, comercial } = licencaSketchfab(m.license);
-  const token = (await getSettings(["sketchfab.token"]))["sketchfab.token"].trim();
-  return {
-    fonte: "sketchfab",
-    link: m.viewerUrl || link,
-    titulo: m.name,
-    autor: m.user?.username || m.user?.displayName || "",
-    descricao: textoDeHtml(m.description ?? ""),
-    fotos: fotosSketchfab(m.thumbnails).slice(0, 1),
-    licenca,
-    comercial,
-    perfis: [],
-    medidasMm: null,
-    pesoEstimadoG: null,
-    avisos: [
-      m.isDownloadable === false
-        ? "O autor não liberou o download deste modelo no Sketchfab."
-        : token
-          ? "O ERP baixa o arquivo original do Sketchfab para o produto."
-          : "Para o ERP baixar o arquivo do Sketchfab, cadastre o token grátis em Configurações › Integrações › Sketchfab.",
-      "O Sketchfab não informa peso nem tempo: envie o arquivo (ou o 3MF fatiado) para o custo exato.",
-    ],
-    arquivos: m.isDownloadable === false ? [] : [{ nome: `${m.name} (Sketchfab).zip`.replace(/[\\/:*?"<>|]+/g, " ").slice(0, 180), url: `sketchfab:${m.uid}` }],
-  };
-}
-
-/** Link temporário do arquivo original do Sketchfab (precisa do token da conta). */
-export async function linkDownloadSketchfab(uid: string): Promise<string | null> {
-  const token = (await getSettings(["sketchfab.token"]))["sketchfab.token"].trim();
-  if (!token) return null;
-  const r = await json<{ source?: { url?: string }; glb?: { url?: string } }>(
-    `https://api.sketchfab.com/v3/models/${uid}/download`,
-    { headers: { Authorization: `Token ${token}` } },
-    "Sketchfab",
-  ).catch(() => null);
-  return r?.source?.url ?? null;
-}
-
 // ------------------------------------------------------------------------------------------------ MyMiniFactory
 async function myMiniFactory(id: string, link: string): Promise<Modelo3d> {
   const chave = (await getSettings(["myminifactory.chave"]))["myminifactory.chave"].trim();
@@ -446,12 +378,11 @@ async function myMiniFactory(id: string, link: string): Promise<Modelo3d> {
 
 export async function lerModeloDoLink(link: string): Promise<Modelo3d> {
   const f = fonteDoLink(link);
-  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Sketchfab, Thingiverse, Cults3D ou MyMiniFactory.");
+  if (!f) throw new Error("Link não reconhecido. Use um link de modelo do MakerWorld, Printables, Thingiverse, Cults3D ou MyMiniFactory.");
   const limpo = link.trim();
   const leitores: Record<FonteModelo, (id: string, l: string) => Promise<Modelo3d>> = {
     makerworld: makerWorld,
     printables,
-    sketchfab,
     thingiverse,
     cults,
     myminifactory: myMiniFactory,
@@ -581,30 +512,6 @@ async function buscaPrintables(q: string): Promise<ResultadoFonte> {
   return { modelos, status: statusDe(modelos.length) };
 }
 
-async function buscaSketchfab(q: string): Promise<ResultadoFonte> {
-  const r = await json<{ results?: SketchfabModelo[] }>(
-    `https://api.sketchfab.com/v3/search?type=models&downloadable=true&q=${encodeURIComponent(q)}&count=${POR_FONTE}`,
-    {},
-    "Sketchfab",
-  );
-  const modelos = (r.results ?? []).map((x): ModeloAchado => {
-    const { licenca, comercial } = licencaSketchfab(x.license);
-    const fotos = fotosSketchfab(x.thumbnails);
-    return {
-      fonte: "sketchfab",
-      titulo: x.name,
-      link: x.viewerUrl || `https://sketchfab.com/3d-models/${x.uid}`,
-      imagem: fotos[fotos.length - 1] ?? fotos[0] ?? "",
-      autor: x.user?.username || x.user?.displayName || "",
-      licenca,
-      comercial,
-      downloads: x.viewCount ?? 0,
-      curtidas: x.likeCount ?? 0,
-    };
-  });
-  return { modelos, status: statusDe(modelos.length) };
-}
-
 async function buscaThingiverse(q: string): Promise<ResultadoFonte> {
   const token = (await getSettings(["thingiverse.token"]))["thingiverse.token"].trim();
   if (!token) return { modelos: [], status: "precisa da chave (Configurações › Integrações)" };
@@ -691,13 +598,12 @@ async function buscaMyMiniFactory(q: string): Promise<ResultadoFonte> {
 const BUSCAS: Record<FonteModelo, (q: string) => Promise<ResultadoFonte>> = {
   makerworld: buscaMakerWorld,
   printables: buscaPrintables,
-  sketchfab: buscaSketchfab,
   thingiverse: buscaThingiverse,
   cults: buscaCults,
   myminifactory: buscaMyMiniFactory,
 };
 
-/** Pesquisa um termo (já em inglês) nos 6 sites ao mesmo tempo. */
+/** Pesquisa um termo (já em inglês) nos 5 sites ao mesmo tempo. */
 async function buscarTermo(q: string) {
   const resultados = await Promise.all(
     FONTES_MODELO.map(async (f) => [f, await BUSCAS[f](q).catch((e) => ({ modelos: [], status: erroDe(e) }))] as const),
@@ -744,7 +650,7 @@ async function traduzir(textos: string[], para: "pt" | "en"): Promise<string[]> 
 }
 
 /**
- * Procura modelos nos 6 sites (você digita em português; vai traduzido por dentro) e devolve TODOS (todas as licenças),
+ * Procura modelos nos 5 sites (você digita em português; vai traduzido por dentro) e devolve TODOS (todas as licenças),
  * com como foi em cada site. Títulos voltam em português. Ordem: mais baixados primeiro, intercalando os sites.
  */
 export async function buscarModelosDetalhado(termo: string, limite = 60): Promise<{ modelos: ModeloAchado[]; fontes: Partial<Record<FonteModelo, string>> }> {
