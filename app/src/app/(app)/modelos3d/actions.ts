@@ -3,7 +3,8 @@
 import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { apagarPesquisa, criarPesquisa, itensDaPesquisa, limparPesquisas, reanalisar } from "@/lib/pesquisa-modelos";
+import { apagarPesquisa, criarPesquisa, guardarThingiverse, itensDaPesquisa, limparPesquisas, pedidoThingiverse, reanalisar } from "@/lib/pesquisa-modelos";
+import type { HitThingiverse } from "@/lib/modelos3d";
 
 export async function novaPesquisa(form: FormData) {
   await requireUser();
@@ -37,4 +38,16 @@ export async function limparHistorico() {
   await requireUser();
   await limparPesquisas();
   revalidatePath("/modelos3d");
+}
+
+/** Dados para o navegador pesquisar no Thingiverse (só quando o servidor foi bloqueado). */
+export async function thingiversePeloNavegador(pesquisaId: number) {
+  await requireUser();
+  return pedidoThingiverse(pesquisaId);
+}
+
+export async function resultadoThingiverse(pesquisaId: number, hits: HitThingiverse[] | null, erro = "") {
+  await requireUser();
+  await guardarThingiverse(pesquisaId, Array.isArray(hits) ? hits.slice(0, 40) : null, String(erro));
+  return itensDaPesquisa(pesquisaId);
 }
